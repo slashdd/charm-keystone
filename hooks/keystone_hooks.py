@@ -51,7 +51,7 @@ from keystone_utils import (
     CLUSTER_RES,
     KEYSTONE_CONF,
     SSH_USER,
-    stored_passwd,
+    STORED_PASSWD,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -258,8 +258,8 @@ def admin_relation_changed():
         'service_tenant_name': config('admin-role'),
         'service_region': config('region'),
     }
-    if os.path.isfile(stored_passwd):
-        with open(stored_passwd) as f:
+    if os.path.isfile(STORED_PASSWD):
+        with open(STORED_PASSWD) as f:
             relation_data['service_password'] = f.readline().strip('\n')
     relation_set(**relation_data)
 

@@ -51,6 +51,7 @@ from keystone_utils import (
     CLUSTER_RES,
     KEYSTONE_CONF,
     SSH_USER,
+    stored_passwd,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -240,6 +241,27 @@ def ha_changed():
             relation_set(relation_id=rid,
                          auth_host=config('vip'),
                          service_host=config('vip'))
+
+
+@hooks.hook('identity-admin-relation-joined')
+def admin_relation_joined():
+    """ Do nothing until we get information about requested service """
+    pass
+
+
+@hooks.hook('identity-admin-relation-changed')
+def admin_relation_changed():
+    relation_data = {
+        'service_hostname': config('hostname'),
+        'service_port': config('service-port'),
+        'service_username': config('admin-user'),
+        'service_tenant_name': config('admin-role'),
+        'service_region': config('region'),
+    }
+    if os.path.isfile(stored_passwd):
+        with open(stored_passwd) as f:
+            relation_data['service_password'] = f.readline().strip('\n')
+    relation_set(**relation_data)
 
 
 def configure_https():

@@ -168,6 +168,10 @@ valid_services = {
     "heat-cfn": {
         "type": "cloudformation",
         "desc": "Heat CloudFormation API"
+    },
+    "glance-simplestreams": {
+        "type": "image",
+        "desc": "Simple Streams Image Loader"
     }
 }
 

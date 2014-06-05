@@ -169,9 +169,9 @@ valid_services = {
         "type": "cloudformation",
         "desc": "Heat CloudFormation API"
     },
-    "glance-simplestreams": {
-        "type": "image",
-        "desc": "Simple Streams Image Loader"
+    "image-stream": {
+        "type": "product-streams",
+        "desc": "Ubuntu Product Streams"
     }
 }
 

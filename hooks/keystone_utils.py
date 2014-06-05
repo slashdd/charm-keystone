@@ -168,6 +168,10 @@ valid_services = {
     "heat-cfn": {
         "type": "cloudformation",
         "desc": "Heat CloudFormation API"
+    },
+    "image-stream": {
+        "type": "product-streams",
+        "desc": "Ubuntu Product Streams"
     }
 }
 

@@ -486,10 +486,10 @@ def ensure_initial_admin(config):
         public_ip = internal_ip = config("vip")
     else:
         log("Creating standard endpoint")
-        internal_ip = get_address_in_network(config('os-public-network'),
-                                             unit_private_ip())
-        public_ip = get_address_in_network(config('os-internal-network'),
+        public_ip = get_address_in_network(config('os-public-network'),
                                            unit_private_ip())
+        internal_ip = get_address_in_network(config('os-internal-network'),
+                                             unit_private_ip())
 
     for region in config('region').split():
         create_keystone_endpoint(public_ip=public_ip,

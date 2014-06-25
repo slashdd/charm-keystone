@@ -163,12 +163,6 @@ def pgsql_db_changed():
                     identity_changed(relation_id=rid, remote_unit=unit)
 
 
-@hooks.hook('identity-service-relation-joined')
-def identity_joined():
-    """ Do nothing until we get information about requested service """
-    pass
-
-
 @hooks.hook('identity-service-relation-changed')
 def identity_changed(relation_id=None, remote_unit=None):
     if eligible_leader(CLUSTER_RES):
@@ -241,12 +235,6 @@ def ha_changed():
             relation_set(relation_id=rid,
                          auth_host=config('vip'),
                          service_host=config('vip'))
-
-
-@hooks.hook('identity-admin-relation-joined')
-def admin_relation_joined():
-    """ Do nothing until we get information about requested service """
-    pass
 
 
 @hooks.hook('identity-admin-relation-changed')

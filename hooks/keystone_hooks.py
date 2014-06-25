@@ -240,7 +240,7 @@ def ha_changed():
 @hooks.hook('identity-admin-relation-changed')
 def admin_relation_changed():
     relation_data = {
-        'service_hostname': config('private-address'),
+        'service_hostname': unit_get('private-address'),
         'service_port': config('service-port'),
         'service_username': config('admin-user'),
         'service_tenant_name': config('admin-role'),

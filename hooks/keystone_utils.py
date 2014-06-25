@@ -168,6 +168,10 @@ valid_services = {
     "heat-cfn": {
         "type": "cloudformation",
         "desc": "Heat CloudFormation API"
+    },
+    "image-stream": {
+        "type": "product-streams",
+        "desc": "Ubuntu Product Streams"
     }
 }
 
@@ -425,7 +429,7 @@ def grant_role(user, role, tenant):
     manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
                                       token=get_admin_token())
     log("Granting user '%s' role '%s' on tenant '%s'" %
-       (user, role, tenant))
+        (user, role, tenant))
     user_id = manager.resolve_user_id(user)
     role_id = manager.resolve_role_id(role)
     tenant_id = manager.resolve_tenant_id(tenant)
@@ -436,10 +440,10 @@ def grant_role(user, role, tenant):
                                         role=role_id,
                                         tenant=tenant_id)
         log("Granted user '%s' role '%s' on tenant '%s'" %
-           (user, role, tenant))
+            (user, role, tenant))
     else:
         log("User '%s' already has role '%s' on tenant '%s'" %
-           (user, role, tenant))
+            (user, role, tenant))
 
 
 def ensure_initial_admin(config):

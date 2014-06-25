@@ -31,7 +31,7 @@ class ApacheSSLContext(context.ApacheSSLContext):
         return super(ApacheSSLContext, self).__call__()
 
     def configure_cert(self):
-        #import keystone_ssl as ssl
+        # import keystone_ssl as ssl
         from keystone_utils import SSH_USER, get_ca
         if not os.path.isdir('/etc/apache2/ssl'):
             os.mkdir('/etc/apache2/ssl')

@@ -1,0 +1,10 @@
+#!/usr/bin/python
+
+"""Amulet tests on a basic keystone deployment on precise-grizzly."""
+
+from basic_deployment import KeystoneBasicDeployment
+
+if __name__ == '__main__':
+    deployment = KeystoneBasicDeployment(series='precise',
+                                         openstack='cloud:precise-grizzly')
+    deployment.run_tests()

@@ -483,31 +483,31 @@ def ensure_initial_admin(config):
 
     if is_clustered():
         log("Creating endpoint for clustered configuration")
-        service_host = auth_host = config("vip")
+        public_ip = internal_ip = config("vip")
     else:
         log("Creating standard endpoint")
-        service_host = get_address_in_network(config('os-public-network'),
-                                              unit_private_ip())
-        auth_host = get_address_in_network(config('os-internal-network'),
+        internal_ip = get_address_in_network(config('os-public-network'),
+                                             unit_private_ip())
+        public_ip = get_address_in_network(config('os-internal-network'),
                                            unit_private_ip())
 
     for region in config('region').split():
-        create_keystone_endpoint(service_host=service_host,
+        create_keystone_endpoint(public_ip=public_ip,
                                  service_port=config("service-port"),
-                                 auth_host=auth_host,
+                                 internal_ip=internal_ip,
                                  auth_port=config("admin-port"),
                                  region=region)
 
 
-def create_keystone_endpoint(service_host, service_port,
-                             auth_host, auth_port, region):
+def create_keystone_endpoint(public_ip, service_port,
+                             internal_ip, auth_port, region):
     proto = 'http'
     if https():
         log("Setting https keystone endpoint")
         proto = 'https'
-    public_url = "%s://%s:%s/v2.0" % (proto, service_host, service_port)
-    admin_url = "%s://%s:%s/v2.0" % (proto, auth_host, auth_port)
-    internal_url = "%s://%s:%s/v2.0" % (proto, service_host, service_port)
+    public_url = "%s://%s:%s/v2.0" % (proto, public_ip, service_port)
+    admin_url = "%s://%s:%s/v2.0" % (proto, internal_ip, auth_port)
+    internal_url = "%s://%s:%s/v2.0" % (proto, internal_ip, service_port)
     create_endpoint_template(region, "keystone", public_url,
                              admin_url, internal_url)
 

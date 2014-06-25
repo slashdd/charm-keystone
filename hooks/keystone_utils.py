@@ -16,6 +16,7 @@ from charmhelpers.contrib.hahelpers.cluster import(
 )
 
 from charmhelpers.contrib.openstack import context, templating
+from charmhelpers.contrib.network.ip import get_address_in_network
 
 from charmhelpers.contrib.openstack.utils import (
     configure_installation_source,
@@ -485,7 +486,10 @@ def ensure_initial_admin(config):
         service_host = auth_host = config("vip")
     else:
         log("Creating standard endpoint")
-        service_host = auth_host = unit_private_ip()
+        service_host = get_address_in_network(config('os-public-network'),
+                                              unit_private_ip())
+        auth_host = get_address_in_network(config('os-internal-network'),
+                                           unit_private_ip())
 
     for region in config('region').split():
         create_keystone_endpoint(service_host=service_host,
@@ -626,8 +630,10 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
                 relation_data["auth_host"] = config('vip')
                 relation_data["service_host"] = config('vip')
             else:
-                relation_data["auth_host"] = unit_private_ip()
-                relation_data["service_host"] = unit_private_ip()
+                relation_data["auth_host"] = get_address_in_network(config('os-internal-network'),
+                                                                    unit_private_ip())
+                relation_data["service_host"] = get_address_in_network(config('os-public-network'),
+                                                                       unit_private_ip())
             if https():
                 relation_data["auth_protocol"] = "https"
                 relation_data["service_protocol"] = "https"
@@ -734,9 +740,11 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
     service_tenant = config('service-tenant')
     relation_data = {
         "admin_token": token,
-        "service_host": unit_private_ip(),
+        "service_host": get_address_in_network(config('os-public-network'),
+                                               unit_private_ip()),
         "service_port": config("service-port"),
-        "auth_host": unit_private_ip(),
+        "auth_host": get_address_in_network(config('os-internal-network'),
+                                            unit_private_ip()),
         "auth_port": config("admin-port"),
         "service_username": service_username,
         "service_password": service_password,

@@ -61,6 +61,7 @@ from charmhelpers.contrib.hahelpers.cluster import (
 
 from charmhelpers.payload.execd import execd_preinstall
 from charmhelpers.contrib.peerstorage import peer_echo
+from charmhelpers.contrib.network.ip import get_address_in_network
 
 hooks = Hooks()
 CONFIGS = register_configs()

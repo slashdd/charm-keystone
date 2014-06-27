@@ -636,7 +636,7 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
             else:
                 relation_data["auth_host"] = get_address_in_network(config('os-admin-network'),
                                                                     unit_private_ip())
-                relation_data["service_host"] = get_address_in_network(config('os-internal-network'),
+                relation_data["service_host"] = get_address_in_network(config('os-public-network'),
                                                                        unit_private_ip())
             if https():
                 relation_data["auth_protocol"] = "https"
@@ -744,7 +744,7 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
     service_tenant = config('service-tenant')
     relation_data = {
         "admin_token": token,
-        "service_host": get_address_in_network(config('os-internal-network'),
+        "service_host": get_address_in_network(config('os-public-network'),
                                                unit_private_ip()),
         "service_port": config("service-port"),
         "auth_host": get_address_in_network(config('os-admin-network'),

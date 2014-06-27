@@ -483,30 +483,34 @@ def ensure_initial_admin(config):
 
     if is_clustered():
         log("Creating endpoint for clustered configuration")
-        public_ip = internal_ip = config("vip")
+        public_ip = internal_ip = admin_ip = config("vip")
     else:
         log("Creating standard endpoint")
         public_ip = get_address_in_network(config('os-public-network'),
                                            unit_private_ip())
         internal_ip = get_address_in_network(config('os-internal-network'),
                                              unit_private_ip())
+        admin_ip = get_address_in_network(config('os-admin-network'),
+                                         unit_private_ip())
+        
 
     for region in config('region').split():
         create_keystone_endpoint(public_ip=public_ip,
                                  service_port=config("service-port"),
                                  internal_ip=internal_ip,
+                                 admin_ip=admin_ip,
                                  auth_port=config("admin-port"),
                                  region=region)
 
 
 def create_keystone_endpoint(public_ip, service_port,
-                             internal_ip, auth_port, region):
+                             internal_ip, admin_ip, auth_port, region):
     proto = 'http'
     if https():
         log("Setting https keystone endpoint")
         proto = 'https'
     public_url = "%s://%s:%s/v2.0" % (proto, public_ip, service_port)
-    admin_url = "%s://%s:%s/v2.0" % (proto, internal_ip, auth_port)
+    admin_url = "%s://%s:%s/v2.0" % (proto, admin_ip, auth_port)
     internal_url = "%s://%s:%s/v2.0" % (proto, internal_ip, service_port)
     create_endpoint_template(region, "keystone", public_url,
                              admin_url, internal_url)
@@ -630,9 +634,9 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
                 relation_data["auth_host"] = config('vip')
                 relation_data["service_host"] = config('vip')
             else:
-                relation_data["auth_host"] = get_address_in_network(config('os-internal-network'),
+                relation_data["auth_host"] = get_address_in_network(config('os-admin-network'),
                                                                     unit_private_ip())
-                relation_data["service_host"] = get_address_in_network(config('os-public-network'),
+                relation_data["service_host"] = get_address_in_network(config('os-internal-network'),
                                                                        unit_private_ip())
             if https():
                 relation_data["auth_protocol"] = "https"
@@ -740,10 +744,10 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
     service_tenant = config('service-tenant')
     relation_data = {
         "admin_token": token,
-        "service_host": get_address_in_network(config('os-public-network'),
+        "service_host": get_address_in_network(config('os-internal-network'),
                                                unit_private_ip()),
         "service_port": config("service-port"),
-        "auth_host": get_address_in_network(config('os-internal-network'),
+        "auth_host": get_address_in_network(config('os-admin-network'),
                                             unit_private_ip()),
         "auth_port": config("admin-port"),
         "service_username": service_username,

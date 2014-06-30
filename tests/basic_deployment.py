@@ -90,11 +90,10 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         """Verify the expected services are running on the corresponding
            service units."""
         commands = {
-            self.mysql_sentry: 'status mysql',
-            self.keystone_sentry: 'status keystone',
-            self.cinder_sentry: 'status cinder-api',
-            self.cinder_sentry: 'status cinder-scheduler',
-            self.cinder_sentry: 'status cinder-volume'
+            self.mysql_sentry: ['status mysql'],
+            self.keystone_sentry: ['status keystone'],
+            self.cinder_sentry: ['status cinder-api', 'status cinder-scheduler',
+                                 'status cinder-volume']
         }
         ret = u.validate_services(commands)
         if ret:

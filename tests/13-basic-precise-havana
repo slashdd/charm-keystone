@@ -6,5 +6,6 @@ from basic_deployment import KeystoneBasicDeployment
 
 if __name__ == '__main__':
     deployment = KeystoneBasicDeployment(series='precise',
-                                         openstack='cloud:precise-havana')
+                                         openstack='cloud:precise-havana',
+                                         source='cloud:precise-updates/havana')
     deployment.run_tests()

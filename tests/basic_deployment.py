@@ -19,9 +19,9 @@ u = OpenStackAmuletUtils(ERROR)
 class KeystoneBasicDeployment(OpenStackAmuletDeployment):
     """Amulet tests on a basic keystone deployment."""
 
-    def __init__(self, series=None, openstack=None):
+    def __init__(self, series=None, openstack=None, source=None):
         """Deploy the entire test environment."""
-        super(KeystoneBasicDeployment, self).__init__(series, openstack)
+        super(KeystoneBasicDeployment, self).__init__(series, openstack, source)
         self._add_services()
         self._add_relations()
         self._configure_services()
@@ -90,11 +90,10 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         """Verify the expected services are running on the corresponding
            service units."""
         commands = {
-            self.mysql_sentry: 'status mysql',
-            self.keystone_sentry: 'status keystone',
-            self.cinder_sentry: 'status cinder-api',
-            self.cinder_sentry: 'status cinder-scheduler',
-            self.cinder_sentry: 'status cinder-volume'
+            self.mysql_sentry: ['status mysql'],
+            self.keystone_sentry: ['status keystone'],
+            self.cinder_sentry: ['status cinder-api', 'status cinder-scheduler',
+                                 'status cinder-volume']
         }
         ret = u.validate_services(commands)
         if ret:

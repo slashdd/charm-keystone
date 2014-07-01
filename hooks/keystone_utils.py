@@ -491,8 +491,7 @@ def ensure_initial_admin(config):
         internal_ip = get_address_in_network(config('os-internal-network'),
                                              unit_private_ip())
         admin_ip = get_address_in_network(config('os-admin-network'),
-                                         unit_private_ip())
-        
+                                          unit_private_ip())
 
     for region in config('region').split():
         create_keystone_endpoint(public_ip=public_ip,
@@ -597,7 +596,7 @@ def get_ca(user='keystone', group='keystone'):
         # SSL_DIR is synchronized via all peers over unison+ssh, need
         # to ensure permissions.
         subprocess.check_output(['chown', '-R', '%s.%s' % (user, group),
-                                '%s' % SSL_DIR])
+                                 '%s' % SSL_DIR])
         subprocess.check_output(['chmod', '-R', 'g+rwx', '%s' % SSL_DIR])
         CA.append(ca)
     return CA[0]

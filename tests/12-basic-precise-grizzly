@@ -6,5 +6,6 @@ from basic_deployment import KeystoneBasicDeployment
 
 if __name__ == '__main__':
     deployment = KeystoneBasicDeployment(series='precise',
-                                         openstack='cloud:precise-grizzly')
+                                         openstack='cloud:precise-grizzly',
+                                         source='cloud:precise-updates/grizzly')
     deployment.run_tests()

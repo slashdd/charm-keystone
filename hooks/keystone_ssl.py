@@ -5,6 +5,7 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+from charmhelpers.contrib.openstack.utils import is_ip
 
 CA_EXPIRY = '365'
 ORG_NAME = 'Ubuntu'
@@ -99,6 +100,7 @@ subjectKeyIdentifier    = hash
 authorityKeyIdentifier  = keyid:always, issuer
 keyUsage                = digitalSignature, keyEncipherment, keyAgreement
 extendedKeyUsage        = serverAuth, clientAuth
+subjectAltName          = $ENV::ALTNAME
 """
 
 
@@ -265,20 +267,29 @@ class JujuCA(object):
         subprocess.check_call(cmd)
         return crt
 
-    def _create_certificate(self, service, common_name):
+    def _create_certificate(self, service, common_name, alt_names=None):
         subj = '/O=%s/OU=%s/CN=%s' % (ORG_NAME, ORG_UNIT, common_name)
         csr = os.path.join(self.ca_dir, 'certs', '%s.csr' % service)
         key = os.path.join(self.ca_dir, 'certs', '%s.key' % service)
         cmd = ['openssl', 'req', '-sha1', '-newkey', 'rsa', '-nodes',
                '-keyout', key, '-out', csr, '-subj', subj]
-        subprocess.check_call(cmd)
+        alt_env = os.environ.copy()
+        if alt_names is not None:
+            processed_names = []
+            for name in alt_names:
+                if is_ip(name):
+                    processed_names.append("IP:{}".format(name))
+                else:
+                    processed_names.append("DNS:{}".format(name))
+            alt_env['ALTNAME'] = ", ".join(processed_names)
+        subprocess.check_call(cmd, env=alt_env)
         crt = self._sign_csr(csr, service, common_name)
         cmd = ['chown', '-R', '%s.%s' % (self.user, self.group), self.ca_dir]
         subprocess.check_call(cmd)
         print 'Signed new CSR, crt @ %s' % crt
         return crt, key
 
-    def get_cert_and_key(self, common_name):
+    def get_cert_and_key(self, common_name, alt_names):
         print 'Getting certificate and key for %s.' % common_name
         key = os.path.join(self.ca_dir, 'certs', '%s.key' % common_name)
         crt = os.path.join(self.ca_dir, 'certs', '%s.crt' % common_name)
@@ -292,7 +303,8 @@ class JujuCA(object):
                     (common_name, key)
                 exit(1)
             return crt, key
-        crt, key = self._create_certificate(common_name, common_name)
+        crt, key = self._create_certificate(common_name, common_name,
+                                            alt_names)
         return open(crt, 'r').read(), open(key, 'r').read()
 
     def get_ca_bundle(self):

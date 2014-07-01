@@ -668,8 +668,12 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
                          adminurl=settings['admin_url'],
                          internalurl=settings['internal_url'])
             service_username = settings['service']
-            https_cn = urlparse.urlparse(settings['internal_url'])
-            https_cn = https_cn.hostname
+            https_cn = {
+                'primary': urlparse.urlparse(settings['public_url']).hostname,
+                'alt': [
+                    urlparse.urlparse(settings['admin_url']).hostname,
+                    urlparse.urlparse(settings['internal_url']).hostname,
+                ]}
     else:
         # assemble multiple endpoints from relation data. service name
         # should be prepended to setting name, ie:
@@ -709,8 +713,12 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
                              internalurl=ep['internal_url'])
                 services.append(ep['service'])
                 if not https_cn:
-                    https_cn = urlparse.urlparse(ep['internal_url'])
-                    https_cn = https_cn.hostname
+                    https_cn = {
+                        'primary': urlparse.urlparse(ep['public_url']).hostname,
+                        'alt': [
+                            urlparse.urlparse(ep['admin_url']).hostname,
+                            urlparse.urlparse(ep['internal_url']).hostname,
+                        ]}
         service_username = '_'.join(services)
 
     if 'None' in [v for k, v in settings.iteritems()]:
@@ -772,7 +780,8 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
     # generate or get a new cert/key for service if set to manage certs.
     if config('https-service-endpoints') in ['True', 'true']:
         ca = get_ca(user=SSH_USER)
-        cert, key = ca.get_cert_and_key(common_name=https_cn)
+        cert, key = ca.get_cert_and_key(common_name=https_cn['primary'],
+                                        alt_names=https_cn['alt'])
         ca_bundle = ca.get_ca_bundle()
         relation_data['ssl_cert'] = b64encode(cert)
         relation_data['ssl_key'] = b64encode(key)

@@ -16,7 +16,10 @@ from charmhelpers.contrib.hahelpers.cluster import(
 )
 
 from charmhelpers.contrib.openstack import context, templating
-from charmhelpers.contrib.network.ip import get_address_in_network
+from charmhelpers.contrib.network.ip import (
+    get_address_in_network,
+    is_ipv6
+)
 
 from charmhelpers.contrib.openstack.utils import (
     configure_installation_source,
@@ -508,6 +511,14 @@ def create_keystone_endpoint(public_ip, service_port,
     if https():
         log("Setting https keystone endpoint")
         proto = 'https'
+
+    if is_ipv6(public_ip):
+        public_ip = "[{}]".format(public_ip)
+    if is_ipv6(internal_ip):
+        internal_ip = "[{}]".format(internal_ip)
+    if is_ipv6(admin_ip):
+        admin_ip = "[{}]".format(admin_ip)
+        
     public_url = "%s://%s:%s/v2.0" % (proto, public_ip, service_port)
     admin_url = "%s://%s:%s/v2.0" % (proto, admin_ip, auth_port)
     internal_url = "%s://%s:%s/v2.0" % (proto, internal_ip, service_port)

@@ -51,6 +51,7 @@ from keystone_utils import (
     CLUSTER_RES,
     KEYSTONE_CONF,
     SSH_USER,
+    STORED_PASSWD,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -162,12 +163,6 @@ def pgsql_db_changed():
                     identity_changed(relation_id=rid, remote_unit=unit)
 
 
-@hooks.hook('identity-service-relation-joined')
-def identity_joined():
-    """ Do nothing until we get information about requested service """
-    pass
-
-
 @hooks.hook('identity-service-relation-changed')
 def identity_changed(relation_id=None, remote_unit=None):
     if eligible_leader(CLUSTER_RES):
@@ -240,6 +235,21 @@ def ha_changed():
             relation_set(relation_id=rid,
                          auth_host=config('vip'),
                          service_host=config('vip'))
+
+
+@hooks.hook('identity-admin-relation-changed')
+def admin_relation_changed():
+    relation_data = {
+        'service_hostname': unit_get('private-address'),
+        'service_port': config('service-port'),
+        'service_username': config('admin-user'),
+        'service_tenant_name': config('admin-role'),
+        'service_region': config('region'),
+    }
+    if os.path.isfile(STORED_PASSWD):
+        with open(STORED_PASSWD) as f:
+            relation_data['service_password'] = f.readline().strip('\n')
+    relation_set(**relation_data)
 
 
 def configure_https():

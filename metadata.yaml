@@ -9,6 +9,8 @@ categories: ["misc"]
 provides:
   identity-service:
     interface: keystone
+  identity-admin:
+    interface: keystone-admin
 requires:
   shared-db:
     interface: mysql-shared

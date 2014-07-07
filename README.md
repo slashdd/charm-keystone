@@ -2,7 +2,7 @@ This charm provides Keystone, the Openstack identity service.  It's target
 platform is Ubuntu Precise + Openstack Essex.  This has not been tested
 using Oneiric + Diablo.
 
-It provides two interfaces.
+It provides three interfaces.
  
     - identity-service:  Openstack API endpoints request an entry in the 
       Keystone service catalog + endpoint template catalog.  When a relation
@@ -20,6 +20,11 @@ It provides two interfaces.
       During a relation, Horizon requests its configured default role and
       Keystone responds with a token and the auth + admin ports on which
       Keystone is listening.
+
+    - identity-admin:  Charms use this relation to obtain the credentials
+      for the admin user.  This is intended for charms that automatically
+      provision users, tenants, etc. or that otherwise automate using the
+      Openstack cluster deployment.
 
 Keystone requires a database.  By default, a local sqlite database is used.
 The charm supports relations to a shared-db via mysql-shared interface.  When

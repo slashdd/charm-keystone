@@ -518,7 +518,7 @@ def create_keystone_endpoint(public_ip, service_port,
         internal_ip = "[{}]".format(internal_ip)
     if is_ipv6(admin_ip):
         admin_ip = "[{}]".format(admin_ip)
-        
+
     public_url = "%s://%s:%s/v2.0" % (proto, public_ip, service_port)
     admin_url = "%s://%s:%s/v2.0" % (proto, admin_ip, auth_port)
     internal_url = "%s://%s:%s/v2.0" % (proto, internal_ip, service_port)
@@ -644,10 +644,12 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
                 relation_data["auth_host"] = config('vip')
                 relation_data["service_host"] = config('vip')
             else:
-                relation_data["auth_host"] = get_address_in_network(config('os-admin-network'),
-                                                                    unit_private_ip())
-                relation_data["service_host"] = get_address_in_network(config('os-public-network'),
-                                                                       unit_private_ip())
+                relation_data["auth_host"] = \
+                    get_address_in_network(config('os-admin-network'),
+                                           unit_private_ip())
+                relation_data["service_host"] = \
+                    get_address_in_network(config('os-public-network'),
+                                           unit_private_ip())
             if https():
                 relation_data["auth_protocol"] = "https"
                 relation_data["service_protocol"] = "https"

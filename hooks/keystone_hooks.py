@@ -55,7 +55,6 @@ from keystone_utils import (
 
 from charmhelpers.contrib.hahelpers.cluster import (
     eligible_leader,
-    get_hacluster_config,
     is_leader,
 )
 
@@ -228,7 +227,7 @@ def ha_joined():
 
     if len(vip_group) > 1:
         relation_set(groups={'grp_glance_vips': ' '.join(vip_group)})
-    
+
     init_services = {
         'res_ks_haproxy': 'haproxy'
     }

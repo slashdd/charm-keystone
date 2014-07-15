@@ -62,7 +62,7 @@ TO_PATCH = [
     'time',
     # ip
     'get_iface_for_address',
-    'get_netmask_for_address',    
+    'get_netmask_for_address',
 ]
 
 

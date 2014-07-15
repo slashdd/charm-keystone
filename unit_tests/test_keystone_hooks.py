@@ -60,6 +60,9 @@ TO_PATCH = [
     'mkdir',
     'os',
     'time',
+    # ip
+    'get_iface_for_address',
+    'get_netmask_for_address',    
 ]
 
 
@@ -298,24 +301,21 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertTrue(configs.write_all.called)
 
     def test_ha_joined(self):
-        self.get_hacluster_config.return_value = {
-            'ha-bindiface': 'em0',
-            'ha-mcastport': '8080',
-            'vip': '10.10.10.10',
-            'vip_iface': 'em1',
-            'vip_cidr': '24'
-        }
+        self.test_config.set('vip', '10.10.10.10')
+        self.test_config.set('ha-bindiface', 'em0')
+        self.test_config.set('ha-mcastport', '8080')
+        self.get_iface_for_address.return_value = 'em1'
+        self.get_netmask_for_address.return_value = '255.255.255.0'
         hooks.ha_joined()
-        self.assertTrue(self.get_hacluster_config.called)
         args = {
             'corosync_bindiface': 'em0',
             'corosync_mcastport': '8080',
             'init_services': {'res_ks_haproxy': 'haproxy'},
-            'resources': {'res_ks_vip': 'ocf:heartbeat:IPaddr2',
+            'resources': {'res_ks_em1_vip': 'ocf:heartbeat:IPaddr2',
                           'res_ks_haproxy': 'lsb:haproxy'},
             'resource_params': {
-                'res_ks_vip': 'params ip="10.10.10.10"'
-                              ' cidr_netmask="24" nic="em1"',
+                'res_ks_em1_vip': 'params ip="10.10.10.10"'
+                                  ' cidr_netmask="255.255.255.0" nic="em1"',
                 'res_ks_haproxy': 'op monitor interval="5s"'},
             'clones': {'cl_ks_haproxy': 'res_ks_haproxy'}
         }

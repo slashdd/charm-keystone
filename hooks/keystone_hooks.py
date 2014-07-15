@@ -61,6 +61,10 @@ from charmhelpers.contrib.hahelpers.cluster import (
 
 from charmhelpers.payload.execd import execd_preinstall
 from charmhelpers.contrib.peerstorage import peer_echo
+from charmhelpers.contrib.network.ip import (
+    get_iface_for_address,
+    get_netmask_for_address
+)
 
 hooks = Hooks()
 CONFIGS = register_configs()
@@ -201,17 +205,30 @@ def cluster_changed():
 
 @hooks.hook('ha-relation-joined')
 def ha_joined():
-    config = get_hacluster_config()
     resources = {
-        'res_ks_vip': 'ocf:heartbeat:IPaddr2',
         'res_ks_haproxy': 'lsb:haproxy',
     }
-    vip_params = 'params ip="%s" cidr_netmask="%s" nic="%s"' % \
-                 (config['vip'], config['vip_cidr'], config['vip_iface'])
     resource_params = {
-        'res_ks_vip': vip_params,
         'res_ks_haproxy': 'op monitor interval="5s"'
     }
+
+    vip_group = []
+    for vip in config('vip').split():
+        iface = get_iface_for_address(vip)
+        if iface is not None:
+            vip_key = 'res_ks_{}_vip'.format(iface)
+            resources[vip_key] = 'ocf:heartbeat:IPaddr2'
+            resource_params[vip_key] = (
+                'params ip="{vip}" cidr_netmask="{netmask}"'
+                ' nic="{iface}"'.format(vip=vip,
+                                        iface=iface,
+                                        netmask=get_netmask_for_address(vip))
+            )
+            vip_group.append(vip_key)
+
+    if len(vip_group) > 1:
+        relation_set(groups={'grp_glance_vips': ' '.join(vip_group)})
+    
     init_services = {
         'res_ks_haproxy': 'haproxy'
     }
@@ -219,8 +236,8 @@ def ha_joined():
         'cl_ks_haproxy': 'res_ks_haproxy'
     }
     relation_set(init_services=init_services,
-                 corosync_bindiface=config['ha-bindiface'],
-                 corosync_mcastport=config['ha-mcastport'],
+                 corosync_bindiface=config('ha-bindiface'),
+                 corosync_mcastport=config('ha-mcastport'),
                  resources=resources,
                  resource_params=resource_params,
                  clones=clones)

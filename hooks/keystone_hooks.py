@@ -56,6 +56,7 @@ from keystone_utils import (
 from charmhelpers.contrib.hahelpers.cluster import (
     eligible_leader,
     is_leader,
+    get_hacluster_config,
 )
 
 from charmhelpers.payload.execd import execd_preinstall
@@ -204,6 +205,8 @@ def cluster_changed():
 
 @hooks.hook('ha-relation-joined')
 def ha_joined():
+    config = get_hacluster_config()
+    
     resources = {
         'res_ks_haproxy': 'lsb:haproxy',
     }
@@ -212,7 +215,7 @@ def ha_joined():
     }
 
     vip_group = []
-    for vip in config('vip').split():
+    for vip in config['vip'].split():
         iface = get_iface_for_address(vip)
         if iface is not None:
             vip_key = 'res_ks_{}_vip'.format(iface)
@@ -235,8 +238,8 @@ def ha_joined():
         'cl_ks_haproxy': 'res_ks_haproxy'
     }
     relation_set(init_services=init_services,
-                 corosync_bindiface=config('ha-bindiface'),
-                 corosync_mcastport=config('ha-mcastport'),
+                 corosync_bindiface=config['ha-bindiface'],
+                 corosync_mcastport=config['ha-mcastport'],
                  resources=resources,
                  resource_params=resource_params,
                  clones=clones)

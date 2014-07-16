@@ -41,7 +41,9 @@ TO_PATCH = [
     # charmhelpers.contrib.openstack.utils
     'configure_installation_source',
     # charmhelpers.contrib.hahelpers.cluster_utils
+    'is_leader',
     'eligible_leader',
+    'get_hacluster_config',
     # keystone_utils
     'restart_map',
     'register_configs',
@@ -52,8 +54,6 @@ TO_PATCH = [
     'ensure_initial_admin',
     'add_service_to_keystone',
     'synchronize_ca',
-    'get_hacluster_config',
-    'is_leader',
     # other
     'check_call',
     'execd_preinstall',
@@ -301,9 +301,11 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertTrue(configs.write_all.called)
 
     def test_ha_joined(self):
-        self.test_config.set('vip', '10.10.10.10')
-        self.test_config.set('ha-bindiface', 'em0')
-        self.test_config.set('ha-mcastport', '8080')
+        self.get_hacluster_config.return_value = {
+            'vip': '10.10.10.10',
+            'ha-bindiface': 'em0',
+            'ha-mcastport': '8080'
+        }
         self.get_iface_for_address.return_value = 'em1'
         self.get_netmask_for_address.return_value = '255.255.255.0'
         hooks.ha_joined()

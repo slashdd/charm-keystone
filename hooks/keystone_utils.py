@@ -95,7 +95,7 @@ APACHE_24_CONF = '/etc/apache2/sites-available/openstack_https_frontend.conf'
 
 SSL_DIR = '/var/lib/keystone/juju_ssl/'
 SSL_CA_NAME = 'Ubuntu Cloud'
-CLUSTER_RES = 'res_ks_vip'
+CLUSTER_RES = 'grp_ks_vips'
 SSH_USER = 'juju_keystone'
 
 BASE_RESOURCE_MAP = OrderedDict([

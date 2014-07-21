@@ -284,7 +284,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         """Verify that keystone is restarted when the config is changed."""
         self.d.configure('keystone', {'verbose': 'True'})
         if not u.service_restarted(self.keystone_sentry, 'keystone-all',
-                                   '/etc/keystone/keystone.conf'):
+                                  '/etc/keystone/keystone.conf', sleep_time=10):
             message = "keystone service didn't restart after config change"
             amulet.raise_status(amulet.FAIL, msg=message)
         self.d.configure('keystone', {'verbose': 'False'})

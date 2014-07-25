@@ -29,3 +29,19 @@ For debugging and test development purposes, all code should be idempotent.
 In other words, the code should have the ability to be re-run without changing
 the results beyond the initial run.  This enables editing and re-running of a
 test module against an already deployed environment, as described above.
+
+Manual debugging tips:
+
+  * Set the following env vars before using the OpenStack CLI as admin:
+      export OS_AUTH_URL=http://`juju-deployer -f keystone 2>&1 | tail -n 1`:5000/v2.0
+      export OS_TENANT_NAME=admin
+      export OS_USERNAME=admin
+      export OS_PASSWORD=openstack
+      export OS_REGION_NAME=RegionOne
+
+  * Set the following env vars before using the OpenStack CLI as demoUser:
+      export OS_AUTH_URL=http://`juju-deployer -f keystone 2>&1 | tail -n 1`:5000/v2.0
+      export OS_TENANT_NAME=demoTenant
+      export OS_USERNAME=demoUser
+      export OS_PASSWORD=password
+      export OS_REGION_NAME=RegionOne

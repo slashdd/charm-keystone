@@ -21,6 +21,13 @@ from charmhelpers.contrib.network.ip import (
     is_ipv6
 )
 
+from charmhelpers.contrib.openstack.ip import (
+    resolve_address,
+    PUBLIC,
+    INTERNAL,
+    ADMIN
+)
+
 from charmhelpers.contrib.openstack.utils import (
     configure_installation_source,
     error_out,
@@ -484,23 +491,11 @@ def ensure_initial_admin(config):
     create_role("KeystoneServiceAdmin", config("admin-user"), 'admin')
     create_service_entry("keystone", "identity", "Keystone Identity Service")
 
-    if is_clustered():
-        log("Creating endpoint for clustered configuration")
-        public_ip = internal_ip = admin_ip = config("vip")
-    else:
-        log("Creating standard endpoint")
-        public_ip = get_address_in_network(config('os-public-network'),
-                                           unit_private_ip())
-        internal_ip = get_address_in_network(config('os-internal-network'),
-                                             unit_private_ip())
-        admin_ip = get_address_in_network(config('os-admin-network'),
-                                          unit_private_ip())
-
     for region in config('region').split():
-        create_keystone_endpoint(public_ip=public_ip,
+        create_keystone_endpoint(public_ip=resolve_address(PUBLIC),
                                  service_port=config("service-port"),
-                                 internal_ip=internal_ip,
-                                 admin_ip=admin_ip,
+                                 internal_ip=resolve_address(INTERNAL),
+                                 admin_ip=resolve_address(ADMIN),
                                  auth_port=config("admin-port"),
                                  region=region)
 
@@ -640,16 +635,8 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
             # hook execution to update auth strategy.
             relation_data = {}
             # Check if clustered and use vip + haproxy ports if so
-            if is_clustered():
-                relation_data["auth_host"] = config('vip')
-                relation_data["service_host"] = config('vip')
-            else:
-                relation_data["auth_host"] = \
-                    get_address_in_network(config('os-admin-network'),
-                                           unit_private_ip())
-                relation_data["service_host"] = \
-                    get_address_in_network(config('os-public-network'),
-                                           unit_private_ip())
+            relation_data["auth_host"] = resolve_address(ADMIN)
+            relation_data["service_host"] = resolve_address(PUBLIC)
             if https():
                 relation_data["auth_protocol"] = "https"
                 relation_data["service_protocol"] = "https"
@@ -756,11 +743,9 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
     service_tenant = config('service-tenant')
     relation_data = {
         "admin_token": token,
-        "service_host": get_address_in_network(config('os-public-network'),
-                                               unit_private_ip()),
+        "service_host": resolve_address(PUBLIC),
         "service_port": config("service-port"),
-        "auth_host": get_address_in_network(config('os-admin-network'),
-                                            unit_private_ip()),
+        "auth_host": resolve_address(ADMIN),
         "auth_port": config("admin-port"),
         "service_username": service_username,
         "service_password": service_password,
@@ -772,10 +757,7 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         "ca_cert": ""
     }
 
-    # Check if clustered and use vip + haproxy ports if so
-    if is_clustered():
-        relation_data["auth_host"] = config('vip')
-        relation_data["service_host"] = config('vip')
+    # Check if https is enabled
     if https():
         relation_data["auth_protocol"] = "https"
         relation_data["service_protocol"] = "https"

@@ -11,3 +11,4 @@ include:
     - contrib.unison
     - payload.execd
     - contrib.peerstorage
+    - contrib.network.ip

@@ -41,7 +41,9 @@ TO_PATCH = [
     # charmhelpers.contrib.openstack.utils
     'configure_installation_source',
     # charmhelpers.contrib.hahelpers.cluster_utils
+    'is_leader',
     'eligible_leader',
+    'get_hacluster_config',
     # keystone_utils
     'restart_map',
     'register_configs',
@@ -52,14 +54,15 @@ TO_PATCH = [
     'ensure_initial_admin',
     'add_service_to_keystone',
     'synchronize_ca',
-    'get_hacluster_config',
-    'is_leader',
     # other
     'check_call',
     'execd_preinstall',
     'mkdir',
     'os',
     'time',
+    # ip
+    'get_iface_for_address',
+    'get_netmask_for_address',
 ]
 
 
@@ -299,23 +302,22 @@ class KeystoneRelationTests(CharmTestCase):
 
     def test_ha_joined(self):
         self.get_hacluster_config.return_value = {
-            'ha-bindiface': 'em0',
-            'ha-mcastport': '8080',
             'vip': '10.10.10.10',
-            'vip_iface': 'em1',
-            'vip_cidr': '24'
+            'ha-bindiface': 'em0',
+            'ha-mcastport': '8080'
         }
+        self.get_iface_for_address.return_value = 'em1'
+        self.get_netmask_for_address.return_value = '255.255.255.0'
         hooks.ha_joined()
-        self.assertTrue(self.get_hacluster_config.called)
         args = {
             'corosync_bindiface': 'em0',
             'corosync_mcastport': '8080',
             'init_services': {'res_ks_haproxy': 'haproxy'},
-            'resources': {'res_ks_vip': 'ocf:heartbeat:IPaddr2',
+            'resources': {'res_ks_em1_vip': 'ocf:heartbeat:IPaddr2',
                           'res_ks_haproxy': 'lsb:haproxy'},
             'resource_params': {
-                'res_ks_vip': 'params ip="10.10.10.10"'
-                              ' cidr_netmask="24" nic="em1"',
+                'res_ks_em1_vip': 'params ip="10.10.10.10"'
+                                  ' cidr_netmask="255.255.255.0" nic="em1"',
                 'res_ks_haproxy': 'op monitor interval="5s"'},
             'clones': {'cl_ks_haproxy': 'res_ks_haproxy'}
         }

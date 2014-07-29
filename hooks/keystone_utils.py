@@ -16,6 +16,16 @@ from charmhelpers.contrib.hahelpers.cluster import(
 )
 
 from charmhelpers.contrib.openstack import context, templating
+from charmhelpers.contrib.network.ip import (
+    is_ipv6
+)
+
+from charmhelpers.contrib.openstack.ip import (
+    resolve_address,
+    PUBLIC,
+    INTERNAL,
+    ADMIN
+)
 
 from charmhelpers.contrib.openstack.utils import (
     configure_installation_source,
@@ -31,7 +41,6 @@ from charmhelpers.core.hookenv import (
     log,
     relation_get,
     relation_set,
-    unit_private_ip,
     INFO,
 )
 
@@ -91,7 +100,7 @@ APACHE_24_CONF = '/etc/apache2/sites-available/openstack_https_frontend.conf'
 
 SSL_DIR = '/var/lib/keystone/juju_ssl/'
 SSL_CA_NAME = 'Ubuntu Cloud'
-CLUSTER_RES = 'res_ks_vip'
+CLUSTER_RES = 'grp_ks_vips'
 SSH_USER = 'juju_keystone'
 
 BASE_RESOURCE_MAP = OrderedDict([
@@ -480,30 +489,32 @@ def ensure_initial_admin(config):
     create_role("KeystoneServiceAdmin", config("admin-user"), 'admin')
     create_service_entry("keystone", "identity", "Keystone Identity Service")
 
-    if is_clustered():
-        log("Creating endpoint for clustered configuration")
-        service_host = auth_host = config("vip")
-    else:
-        log("Creating standard endpoint")
-        service_host = auth_host = unit_private_ip()
-
     for region in config('region').split():
-        create_keystone_endpoint(service_host=service_host,
+        create_keystone_endpoint(public_ip=resolve_address(PUBLIC),
                                  service_port=config("service-port"),
-                                 auth_host=auth_host,
+                                 internal_ip=resolve_address(INTERNAL),
+                                 admin_ip=resolve_address(ADMIN),
                                  auth_port=config("admin-port"),
                                  region=region)
 
 
-def create_keystone_endpoint(service_host, service_port,
-                             auth_host, auth_port, region):
+def create_keystone_endpoint(public_ip, service_port,
+                             internal_ip, admin_ip, auth_port, region):
     proto = 'http'
     if https():
         log("Setting https keystone endpoint")
         proto = 'https'
-    public_url = "%s://%s:%s/v2.0" % (proto, service_host, service_port)
-    admin_url = "%s://%s:%s/v2.0" % (proto, auth_host, auth_port)
-    internal_url = "%s://%s:%s/v2.0" % (proto, service_host, service_port)
+
+    if is_ipv6(public_ip):
+        public_ip = "[{}]".format(public_ip)
+    if is_ipv6(internal_ip):
+        internal_ip = "[{}]".format(internal_ip)
+    if is_ipv6(admin_ip):
+        admin_ip = "[{}]".format(admin_ip)
+
+    public_url = "%s://%s:%s/v2.0" % (proto, public_ip, service_port)
+    admin_url = "%s://%s:%s/v2.0" % (proto, admin_ip, auth_port)
+    internal_url = "%s://%s:%s/v2.0" % (proto, internal_ip, service_port)
     create_endpoint_template(region, "keystone", public_url,
                              admin_url, internal_url)
 
@@ -589,7 +600,7 @@ def get_ca(user='keystone', group='keystone'):
         # SSL_DIR is synchronized via all peers over unison+ssh, need
         # to ensure permissions.
         subprocess.check_output(['chown', '-R', '%s.%s' % (user, group),
-                                '%s' % SSL_DIR])
+                                 '%s' % SSL_DIR])
         subprocess.check_output(['chmod', '-R', 'g+rwx', '%s' % SSL_DIR])
         CA.append(ca)
     return CA[0]
@@ -622,12 +633,8 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
             # hook execution to update auth strategy.
             relation_data = {}
             # Check if clustered and use vip + haproxy ports if so
-            if is_clustered():
-                relation_data["auth_host"] = config('vip')
-                relation_data["service_host"] = config('vip')
-            else:
-                relation_data["auth_host"] = unit_private_ip()
-                relation_data["service_host"] = unit_private_ip()
+            relation_data["auth_host"] = resolve_address(ADMIN)
+            relation_data["service_host"] = resolve_address(PUBLIC)
             if https():
                 relation_data["auth_protocol"] = "https"
                 relation_data["service_protocol"] = "https"
@@ -734,9 +741,9 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
     service_tenant = config('service-tenant')
     relation_data = {
         "admin_token": token,
-        "service_host": unit_private_ip(),
+        "service_host": resolve_address(PUBLIC),
         "service_port": config("service-port"),
-        "auth_host": unit_private_ip(),
+        "auth_host": resolve_address(ADMIN),
         "auth_port": config("admin-port"),
         "service_username": service_username,
         "service_password": service_password,
@@ -748,10 +755,7 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         "ca_cert": ""
     }
 
-    # Check if clustered and use vip + haproxy ports if so
-    if is_clustered():
-        relation_data["auth_host"] = config('vip')
-        relation_data["service_host"] = config('vip')
+    # Check if https is enabled
     if https():
         relation_data["auth_protocol"] = "https"
         relation_data["service_protocol"] = "https"

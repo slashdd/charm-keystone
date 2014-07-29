@@ -201,7 +201,7 @@ def cluster_changed():
 @hooks.hook('ha-relation-joined')
 def ha_joined():
     config = get_hacluster_config()
-    
+
     resources = {
         'res_ks_haproxy': 'lsb:haproxy',
     }

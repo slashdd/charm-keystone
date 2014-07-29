@@ -34,7 +34,6 @@ TO_PATCH = [
     'relation_get',
     'relation_set',
     'https',
-    'unit_private_ip',
     # generic
     'apt_update',
     'apt_upgrade',
@@ -42,6 +41,8 @@ TO_PATCH = [
     'subprocess',
     'time',
     'pwgen',
+    # openstack.ip
+    'resolve_address',
 ]
 
 
@@ -149,7 +150,7 @@ class TestKeystoneUtils(CharmTestCase):
             self, b64encode):
         relation_id = 'identity-service:0'
         remote_unit = 'unit/0'
-        self.is_clustered.return_value = True
+        self.resolve_address.return_value = '10.10.10.10'
         self.https.return_value = True
         self.test_config.set('https-service-endpoints', 'True')
         self.test_config.set('vip', '10.10.10.10')
@@ -167,7 +168,6 @@ class TestKeystoneUtils(CharmTestCase):
         utils.add_service_to_keystone(
             relation_id=relation_id,
             remote_unit=remote_unit)
-        self.assertTrue(self.is_clustered.called)
         self.assertTrue(self.https.called)
         self.assertTrue(self.create_role.called)
 
@@ -195,7 +195,7 @@ class TestKeystoneUtils(CharmTestCase):
         self.test_config.set('service-tenant', 'tenant')
         self.test_config.set('admin-role', 'admin')
         self.get_requested_roles.return_value = ['role1', ]
-        self.unit_private_ip.return_value = '10.0.0.3'
+        self.resolve_address.return_value = '10.0.0.3'
         self.test_config.set('admin-port', 80)
         self.test_config.set('service-port', 81)
         self.is_clustered.return_value = False
@@ -227,7 +227,6 @@ class TestKeystoneUtils(CharmTestCase):
         self.grant_role.assert_called_with('keystone', 'admin', 'tenant')
         self.create_role.assert_called_with('role1', 'keystone', 'tenant')
 
-        self.assertTrue(self.is_clustered.called)
         relation_data = {'admin_token': 'token', 'service_port': 81,
                          'auth_port': 80, 'service_username': 'keystone',
                          'service_password': 'password',

@@ -17,7 +17,6 @@ from charmhelpers.contrib.hahelpers.cluster import(
 
 from charmhelpers.contrib.openstack import context, templating
 from charmhelpers.contrib.network.ip import (
-    get_address_in_network,
     is_ipv6
 )
 
@@ -42,7 +41,6 @@ from charmhelpers.core.hookenv import (
     log,
     relation_get,
     relation_set,
-    unit_private_ip,
     INFO,
 )
 

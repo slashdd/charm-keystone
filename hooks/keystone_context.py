@@ -9,6 +9,10 @@ from charmhelpers.contrib.hahelpers.cluster import (
     is_clustered,
 )
 
+from charmhelpers.contrib.network.ip import(
+    get_ipv6_addr,
+)
+
 from subprocess import (
     check_call
 )
@@ -87,6 +91,15 @@ class HAProxyContext(context.HAProxyContext):
         ctxt['service_ports'] = port_mapping
         # for keystone.conf
         ctxt['listen_ports'] = listen_ports
+
+        if config('prefer-ipv6'):
+            ctxt['local_host'] = 'ip6-localhost'
+            ctxt['haproxy_host'] = '::'
+            ctxt['stat_port'] = ':::8888'
+        else:
+            ctxt['local_host'] = '127.0.0.1'
+            ctxt['haproxy_host'] = '0.0.0.0'
+            ctxt['stat_port'] = ':8888'
         return ctxt
 
 
@@ -103,4 +116,17 @@ class KeystoneContext(context.OSContextGenerator):
         ctxt['verbose'] = config('verbose') in ['yes', 'true', 'True']
         if config('enable-pki') not in ['false', 'False', 'no', 'No']:
             ctxt['signing'] = True
+        return ctxt
+
+
+class KeystoneIPv6Context(context.OSContextGenerator):
+    interfaces = []
+
+    def __call__(self):
+        ctxt = {}
+        if config('prefer-ipv6'):
+                host = get_ipv6_addr()
+                ctxt['bind_host'] = host
+	else:
+ 	    ctxt['bind_host'] = '0.0.0.0'
         return ctxt

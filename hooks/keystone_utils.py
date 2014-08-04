@@ -17,7 +17,8 @@ from charmhelpers.contrib.hahelpers.cluster import(
 
 from charmhelpers.contrib.openstack import context, templating
 from charmhelpers.contrib.network.ip import (
-    is_ipv6
+    is_ipv6,
+    get_ipv6_addr,
 )
 
 from charmhelpers.contrib.openstack.ip import (
@@ -110,7 +111,8 @@ BASE_RESOURCE_MAP = OrderedDict([
                      context.SharedDBContext(ssl_dir=KEYSTONE_CONF_DIR),
                      context.PostgresqlDBContext(),
                      context.SyslogContext(),
-                     keystone_context.HAProxyContext()],
+                     keystone_context.HAProxyContext(),
+                     keystone_context.KeystoneIPv6Context()],
     }),
     (HAPROXY_CONF, {
         'contexts': [context.HAProxyContext(),
@@ -281,7 +283,13 @@ def migrate_database():
 
 def get_local_endpoint():
     """ Returns the URL for the local end-point bypassing haproxy/ssl """
-    local_endpoint = 'http://localhost:{}/v2.0/'.format(
+    if config('prefer-ipv6'):
+        endpoint_url = 'http://[%s]:{}/v2.0/' % get_ipv6_addr()
+        local_endpoint = endpoint_url.format(
+            determine_api_port(api_port('keystone-admin'))
+    )
+    else:
+        local_endpoint = 'http://localhost:{}/v2.0/'.format(
         determine_api_port(api_port('keystone-admin'))
     )
     return local_endpoint

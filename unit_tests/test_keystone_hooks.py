@@ -323,6 +323,30 @@ class KeystoneRelationTests(CharmTestCase):
         }
         self.relation_set.assert_called_with(**args)
 
+    def test_ha_joined_with_ipv6(self):
+        self.test_config.set('prefer-ipv6', True)
+        self.get_hacluster_config.return_value = {
+            'vip': '2001:db8:1::1',
+            'ha-bindiface': 'em0',
+            'ha-mcastport': '8080'
+        }
+        self.get_iface_for_address.return_value = 'em1'
+        self.get_netmask_for_address.return_value = '64'
+        hooks.ha_joined()
+        args = {
+            'corosync_bindiface': 'em0',
+            'corosync_mcastport': '8080',
+            'init_services': {'res_ks_haproxy': 'haproxy'},
+            'resources': {'res_ks_em1_vip': 'ocf:heartbeat:IPv6addr',
+                          'res_ks_haproxy': 'lsb:haproxy'},
+            'resource_params': {
+                'res_ks_em1_vip': 'params ipv6addr="2001:db8:1::1"'
+                                  ' cidr_netmask="64" nic="em1"',
+                'res_ks_haproxy': 'op monitor interval="5s"'},
+            'clones': {'cl_ks_haproxy': 'res_ks_haproxy'}
+        }
+        self.relation_set.assert_called_with(**args)
+
     @patch.object(hooks, 'CONFIGS')
     def test_ha_relation_changed_not_clustered_not_leader(self, configs):
         self.relation_get.return_value = False
@@ -346,6 +370,23 @@ class KeystoneRelationTests(CharmTestCase):
         self.relation_set.assert_called_with(relation_id='identity-service:0',
                                              auth_host='10.10.10.10',
                                              service_host='10.10.10.10')
+
+    @patch.object(hooks, 'CONFIGS')
+    def test_ha_relation_changed_with_ipv6(self, configs):
+        self.test_config.set('prefer-ipv6', True)
+        self.relation_get.return_value = True
+        self.is_leader.return_value = True
+        self.relation_ids.return_value = ['identity-service:0']
+        self.test_config.set('vip', '2001:db8:1::1')
+
+        hooks.ha_changed()
+        self.assertTrue(configs.write_all.called)
+        self.log.assert_called_with(
+            'Cluster configured, notifying other services and updating '
+            'keystone endpoint configuration')
+        self.relation_set.assert_called_with(relation_id='identity-service:0',
+                                             auth_host='[2001:db8:1::1]',
+                                             service_host='[2001:db8:1::1]')
 
     @patch.object(hooks, 'CONFIGS')
     def test_configure_https_enable(self, configs):

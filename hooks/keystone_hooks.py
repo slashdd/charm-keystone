@@ -78,8 +78,10 @@ def install():
     execd_preinstall()
     configure_installation_source(config('openstack-origin'))
     if config('prefer-ipv6'):
-        add_source('deb http://archive.ubuntu.com/ubuntu trusty-backports main')
-        add_source('deb-src http://archive.ubuntu.com/ubuntu trusty-backports main')
+        add_source('deb http://archive.ubuntu.com/ubuntu trusty-backports'
+                   'main')
+        add_source('deb-src http://archive.ubuntu.com/ubuntu trusty-backports'
+                   ' main')
     apt_update()
     apt_install(determine_packages(), fatal=True)
     if config('prefer-ipv6'):
@@ -195,9 +197,9 @@ def cluster_joined():
                                 peer_interface='cluster',
                                 ensure_local_user=True)
 
-    
     if config('prefer-ipv6'):
         peer_store('private-address', get_ipv6_addr())
+
 
 @hooks.hook('cluster-relation-changed',
             'cluster-relation-departed')
@@ -231,7 +233,7 @@ def ha_joined():
     }
 
     vip_group = []
-    for vip in config('vip').split():
+    for vip in cluster_config['vip'].split():
         iface = get_iface_for_address(vip)
         if iface is not None:
             vip_key = 'res_ks_{}_vip'.format(iface)

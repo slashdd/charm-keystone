@@ -286,12 +286,10 @@ def get_local_endpoint():
     if config('prefer-ipv6'):
         endpoint_url = 'http://[%s]:{}/v2.0/' % get_ipv6_addr()
         local_endpoint = endpoint_url.format(
-            determine_api_port(api_port('keystone-admin'))
-    )
+            determine_api_port(api_port('keystone-admin')))
     else:
         local_endpoint = 'http://localhost:{}/v2.0/'.format(
-        determine_api_port(api_port('keystone-admin'))
-    )
+            determine_api_port(api_port('keystone-admin')))
     return local_endpoint
 
 

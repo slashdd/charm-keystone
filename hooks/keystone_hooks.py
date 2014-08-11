@@ -79,7 +79,7 @@ def install():
     configure_installation_source(config('openstack-origin'))
     if config('prefer-ipv6'):
         add_source('deb http://archive.ubuntu.com/ubuntu trusty-backports'
-                   'main')
+                   ' main')
         add_source('deb-src http://archive.ubuntu.com/ubuntu trusty-backports'
                    ' main')
     apt_update()

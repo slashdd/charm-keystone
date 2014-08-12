@@ -108,6 +108,7 @@ class KeystoneContext(context.OSContextGenerator):
             ctxt['ldap_user'] = config('ldap-user')
             ctxt['ldap_password'] = config('ldap-password')
             ctxt['ldap_suffix'] = config('ldap-suffix')
+            ctxt['ldap_readonly'] = config('ldap-readonly')
             ldap_flags = config('ldap-config-flags')
             if ldap_flags:
                 flags = context.config_flags_parser(ldap_flags)

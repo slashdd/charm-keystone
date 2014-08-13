@@ -25,6 +25,7 @@ from charmhelpers.core.hookenv import (
 from charmhelpers.core.host import (
     mkdir,
     restart_on_change,
+    lsb_release,
 )
 
 from charmhelpers.fetch import (
@@ -77,14 +78,20 @@ CONFIGS = register_configs()
 def install():
     execd_preinstall()
     configure_installation_source(config('openstack-origin'))
-    if config('prefer-ipv6'):
+
+    # Note(xianghui): Need to install haproxy(1.5.3) from trusty-backports
+    # to support ipv6 address, so check is required to make sure not
+    # breaking other versions.
+    trusty = lsb_release()['DISTRIB_CODENAME'] == 'trusty'
+    if config('prefer-ipv6') and trusty:
         add_source('deb http://archive.ubuntu.com/ubuntu trusty-backports'
                    ' main')
         add_source('deb-src http://archive.ubuntu.com/ubuntu trusty-backports'
                    ' main')
     apt_update()
     apt_install(determine_packages(), fatal=True)
-    if config('prefer-ipv6'):
+
+    if config('prefer-ipv6') and trusty:
         apt_install('haproxy/trusty-backports', fatal=True)
 
 

@@ -101,6 +101,19 @@ class KeystoneContext(context.OSContextGenerator):
         ctxt['public_port'] = determine_api_port(api_port('keystone-public'))
         ctxt['debug'] = config('debug') in ['yes', 'true', 'True']
         ctxt['verbose'] = config('verbose') in ['yes', 'true', 'True']
+        ctxt['identity_backend'] = config('identity-backend')
+        ctxt['assignment_backend'] = config('assignment-backend')
+        if config('identity-backend') == 'ldap':
+            ctxt['ldap_server'] = config('ldap-server')
+            ctxt['ldap_user'] = config('ldap-user')
+            ctxt['ldap_password'] = config('ldap-password')
+            ctxt['ldap_suffix'] = config('ldap-suffix')
+            ctxt['ldap_readonly'] = config('ldap-readonly')
+            ldap_flags = config('ldap-config-flags')
+            if ldap_flags:
+                flags = context.config_flags_parser(ldap_flags)
+                ctxt['ldap_config_flags'] = flags
+
         if config('enable-pki') not in ['false', 'False', 'no', 'No']:
             ctxt['signing'] = True
         return ctxt

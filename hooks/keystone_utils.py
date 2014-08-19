@@ -57,6 +57,7 @@ from charmhelpers.core.host import (
 )
 
 from charmhelpers.contrib.peerstorage import (
+    peer_store_and_set,
     peer_store,
     peer_retrieve,
 )
@@ -655,8 +656,8 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
             for role in get_requested_roles(settings):
                 log("Creating requested role: %s" % role)
                 create_role(role)
-            relation_set(relation_id=relation_id,
-                         **relation_data)
+            peer_store_and_set(relation_id=relation_id,
+                               **relation_data)
             return
         else:
             ensure_valid_service(settings['service'])
@@ -771,8 +772,8 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         relation_data['ssl_key'] = b64encode(key)
         relation_data['ca_cert'] = b64encode(ca_bundle)
         relation_data['https_keystone'] = 'True'
-    relation_set(relation_id=relation_id,
-                 **relation_data)
+    peer_store_and_set(relation_id=relation_id,
+                       **relation_data)
 
 
 def ensure_valid_service(service):

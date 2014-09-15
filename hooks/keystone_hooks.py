@@ -63,7 +63,7 @@ from charmhelpers.contrib.hahelpers.cluster import (
 )
 
 from charmhelpers.payload.execd import execd_preinstall
-from charmhelpers.contrib.peerstorage import peer_echo, peer_store
+from charmhelpers.contrib.peerstorage import peer_echo
 from charmhelpers.contrib.network.ip import (
     get_iface_for_address,
     get_netmask_for_address,
@@ -205,7 +205,10 @@ def cluster_joined():
                                 ensure_local_user=True)
 
     if config('prefer-ipv6'):
-        peer_store('private-address', get_ipv6_addr())
+        for rid in relation_ids('cluster'):
+            relation_set(relation_id=rid,
+                         relation_settings={'private-address':
+                                            get_ipv6_addr()})
 
 
 @hooks.hook('cluster-relation-changed',
@@ -280,15 +283,10 @@ def ha_changed():
         ensure_initial_admin(config)
         log('Cluster configured, notifying other services and updating '
             'keystone endpoint configuration')
-        if config('prefer-ipv6'):
-            vip = "[{}]".format(config('vip'))
-        else:
-            vip = config('vip')
 
-        for rid in relation_ids('identity-service'):
-            relation_set(relation_id=rid,
-                         auth_host=vip,
-                         service_host=vip)
+    for rid in relation_ids('identity-service'):
+        for unit in related_units(rid):
+            identity_changed(relation_id=rid, remote_unit=unit)
 
 
 @hooks.hook('identity-admin-relation-changed')

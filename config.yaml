@@ -89,6 +89,38 @@ options:
     description: |
       By default, all services will log into their corresponding log files.
       Setting this to True will force all services to log to the syslog.
+  identity-backend:
+    type: string
+    default: "sql"    
+    description: "Keystone identity backend, valid options are：sql,ldap,kvs,pam"
+  assignment-backend:
+    type: string
+    default: "sql"
+    description: "Keystone assignment backend, valid options are sql,ldap,kvs"
+  ldap-server:
+    type: string
+    default: None
+    description: "Ldap server address for keystone identity backend"
+  ldap-user:
+    type: string
+    default: None
+    description: "Username of the ldap identity server"
+  ldap-password:
+    type: string
+    default: None
+    description: "Password of the ldap identity server"
+  ldap-suffix:
+    type: string
+    default: None
+    description: "Ldap server suffix to be used by keystone"
+  ldap-config-flags:
+    type: string
+    default: None
+    description: "comma sperated options for ldap configuration"
+  ldap-readonly:
+    type: boolean
+    default: True
+    description: "Ldap identity server backend readonly to keystone"
   # HA configuration settings
   vip:
     type: string

@@ -26,6 +26,7 @@ TO_PATCH = [
     'config',
     'is_relation_made',
     'log',
+    'local_unit',
     'filter_installed_packages',
     'relation_ids',
     'relation_list',
@@ -138,7 +139,9 @@ class KeystoneRelationTests(CharmTestCase):
             'pgsql-db relation incomplete. Peer not ready?'
         )
 
-    def _shared_db_test(self, configs):
+    def _shared_db_test(self, configs, unit_name):
+        self.relation_get.return_value = 'keystone/0 keystone/3'
+        self.local_unit.return_value = unit_name
         configs.complete_contexts = MagicMock()
         configs.complete_contexts.return_value = ['shared-db']
         configs.write = MagicMock()
@@ -152,11 +155,11 @@ class KeystoneRelationTests(CharmTestCase):
 
     @patch.object(hooks, 'CONFIGS')
     @patch.object(hooks, 'identity_changed')
-    def test_db_changed(self, identity_changed, configs):
+    def test_db_changed_allowed(self, identity_changed, configs):
         self.relation_ids.return_value = ['identity-service:0']
         self.related_units.return_value = ['unit/0']
 
-        self._shared_db_test(configs)
+        self._shared_db_test(configs, 'keystone/3')
         self.assertEquals([call('/etc/keystone/keystone.conf')],
                           configs.write.call_args_list)
         self.migrate_database.assert_called_with()
@@ -164,6 +167,19 @@ class KeystoneRelationTests(CharmTestCase):
         identity_changed.assert_called_with(
             relation_id='identity-service:0',
             remote_unit='unit/0')
+
+    @patch.object(hooks, 'CONFIGS')
+    @patch.object(hooks, 'identity_changed')
+    def test_db_changed_not_allowed(self, identity_changed, configs):
+        self.relation_ids.return_value = ['identity-service:0']
+        self.related_units.return_value = ['unit/0']
+
+        self._shared_db_test(configs, 'keystone/2')
+        self.assertEquals([call('/etc/keystone/keystone.conf')],
+                          configs.write.call_args_list)
+        self.assertFalse(self.migrate_database.called)
+        self.assertFalse(self.ensure_initial_admin.called)
+        self.assertFalse(identity_changed.called)
 
     @patch.object(hooks, 'CONFIGS')
     @patch.object(hooks, 'identity_changed')
@@ -355,38 +371,22 @@ class KeystoneRelationTests(CharmTestCase):
         hooks.ha_changed()
         self.assertTrue(configs.write_all.called)
 
+    @patch.object(hooks, 'identity_changed')
     @patch.object(hooks, 'CONFIGS')
-    def test_ha_relation_changed_clustered_leader(self, configs):
+    def test_ha_relation_changed_clustered_leader(self, configs, identity_changed):
         self.relation_get.return_value = True
         self.is_leader.return_value = True
         self.relation_ids.return_value = ['identity-service:0']
-        self.test_config.set('vip', '10.10.10.10')
+        self.related_units.return_value = ['unit/0']
 
         hooks.ha_changed()
         self.assertTrue(configs.write_all.called)
         self.log.assert_called_with(
             'Cluster configured, notifying other services and updating '
             'keystone endpoint configuration')
-        self.relation_set.assert_called_with(relation_id='identity-service:0',
-                                             auth_host='10.10.10.10',
-                                             service_host='10.10.10.10')
-
-    @patch.object(hooks, 'CONFIGS')
-    def test_ha_relation_changed_with_ipv6(self, configs):
-        self.test_config.set('prefer-ipv6', True)
-        self.relation_get.return_value = True
-        self.is_leader.return_value = True
-        self.relation_ids.return_value = ['identity-service:0']
-        self.test_config.set('vip', '2001:db8:1::1')
-
-        hooks.ha_changed()
-        self.assertTrue(configs.write_all.called)
-        self.log.assert_called_with(
-            'Cluster configured, notifying other services and updating '
-            'keystone endpoint configuration')
-        self.relation_set.assert_called_with(relation_id='identity-service:0',
-                                             auth_host='[2001:db8:1::1]',
-                                             service_host='[2001:db8:1::1]')
+        identity_changed.assert_called_with(
+            relation_id='identity-service:0',
+            remote_unit='unit/0')
 
     @patch.object(hooks, 'CONFIGS')
     def test_configure_https_enable(self, configs):

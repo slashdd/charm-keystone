@@ -373,7 +373,8 @@ class KeystoneRelationTests(CharmTestCase):
 
     @patch.object(hooks, 'identity_changed')
     @patch.object(hooks, 'CONFIGS')
-    def test_ha_relation_changed_clustered_leader(self, configs, identity_changed):
+    def test_ha_relation_changed_clustered_leader(
+            self, configs, identity_changed):
         self.relation_get.return_value = True
         self.is_leader.return_value = True
         self.relation_ids.return_value = ['identity-service:0']

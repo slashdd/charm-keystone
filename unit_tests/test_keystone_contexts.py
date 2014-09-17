@@ -115,16 +115,27 @@ class TestKeystoneContexts(CharmTestCase):
             unit='unit/0')
         mock_open.assert_called_with('/etc/default/haproxy', 'w')
 
+    @patch('keystone_context.relation_ids')
+    @patch('keystone_context.related_units')
+    @patch('keystone_context.relation_get')
     @patch('keystone_context.get_ipv6_addr')
     @patch('keystone_context.config')
     @patch('__builtin__.open')
     def test_keystone_ipv6_context_service_enabled(self, mock_open,
                                                    mock_config,
-                                                   mock_get_ipv6_addr):
+                                                   mock_get_ipv6_addr,
+                                                   mock_relation_get,
+                                                   mock_related_units,
+                                                   mock_relation_ids):
         mock_config.return_value = True
         mock_get_ipv6_addr.return_value = '2001:db8:1::1'
+        mock_relation_get.return_value = {'db_host': '2001:db8:1::2'}
+        mock_related_units.return_value = ['unit/0', ]
+        mock_relation_ids.return_value = ['shared-db:0', ]
+
         ctxt = context.KeystoneIPv6Context()
-        self.assertEquals(ctxt(), {'bind_host': '2001:db8:1::1'})
+        self.assertEquals(ctxt(), {'bind_host': '2001:db8:1::1',
+                                   'database_host': '[2001:db8:1::2]'})
         mock_get_ipv6_addr.assert_called_once()
 
     @patch('keystone_context.config')

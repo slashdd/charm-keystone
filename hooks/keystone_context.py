@@ -1,5 +1,8 @@
 from charmhelpers.core.hookenv import (
-    config, unit_private_ip)
+    config, unit_private_ip,
+    relation_get,
+    relation_ids,
+    related_units,)
 
 from charmhelpers.contrib.openstack import context
 
@@ -11,6 +14,7 @@ from charmhelpers.contrib.hahelpers.cluster import (
 
 from charmhelpers.contrib.network.ip import(
     get_ipv6_addr,
+    format_ipv6_addr,
 )
 
 from subprocess import (
@@ -130,6 +134,12 @@ class KeystoneIPv6Context(context.OSContextGenerator):
         ctxt = {}
         if config('prefer-ipv6'):
             ctxt['bind_host'] = get_ipv6_addr()
+            for rid in relation_ids('shared-db'):
+                for unit in related_units(rid):
+                    rdata = relation_get(rid=rid, unit=unit)
+                    db_host = format_ipv6_addr(rdata.get('db_host'))
+                    if db_host is not None:
+                        ctxt['database_host'] = db_host
         else:
             ctxt['bind_host'] = '0.0.0.0'
         return ctxt

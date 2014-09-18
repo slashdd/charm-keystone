@@ -18,7 +18,7 @@ from charmhelpers.contrib.hahelpers.cluster import(
 from charmhelpers.contrib.openstack import context, templating
 from charmhelpers.contrib.network.ip import (
     is_ipv6,
-    get_ipv6_addr,
+    get_ipv6_addr
 )
 
 from charmhelpers.contrib.openstack.ip import (
@@ -56,7 +56,7 @@ from charmhelpers.core.host import (
     service_stop,
     service_start,
     pwgen,
-    lsb_release,
+    lsb_release
 )
 
 from charmhelpers.contrib.peerstorage import (
@@ -292,6 +292,7 @@ def get_local_endpoint():
     else:
         local_endpoint = 'http://localhost:{}/v2.0/'.format(
             determine_api_port(api_port('keystone-admin')))
+
     return local_endpoint
 
 

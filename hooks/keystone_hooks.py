@@ -30,7 +30,7 @@ from charmhelpers.core.host import (
 
 from charmhelpers.fetch import (
     apt_install, apt_update,
-    filter_installed_packages,
+    filter_installed_packages
 )
 
 from charmhelpers.contrib.openstack.utils import (
@@ -53,7 +53,7 @@ from keystone_utils import (
     KEYSTONE_CONF,
     SSH_USER,
     STORED_PASSWD,
-    setup_ipv6,
+    setup_ipv6
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -67,7 +67,7 @@ from charmhelpers.contrib.peerstorage import peer_echo
 from charmhelpers.contrib.network.ip import (
     get_iface_for_address,
     get_netmask_for_address,
-    get_ipv6_addr,
+    get_ipv6_addr
 )
 
 hooks = Hooks()
@@ -81,6 +81,7 @@ def install():
 
     if config('prefer-ipv6'):
         setup_ipv6()
+
     apt_update()
     apt_install(determine_packages(), fatal=True)
 
@@ -90,6 +91,7 @@ def install():
 def config_changed():
     if config('prefer-ipv6'):
         setup_ipv6()
+
     unison.ensure_user(user=SSH_USER, group='keystone')
     homedir = unison.get_homedir(SSH_USER)
     if not os.path.isdir(homedir):

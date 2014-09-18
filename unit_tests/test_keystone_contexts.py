@@ -134,8 +134,7 @@ class TestKeystoneContexts(CharmTestCase):
         mock_relation_ids.return_value = ['shared-db:0', ]
 
         ctxt = context.KeystoneIPv6Context()
-        self.assertEquals(ctxt(), {'bind_host': '2001:db8:1::1',
-                                   'database_host': '[2001:db8:1::2]'})
+        self.assertEquals(ctxt(), {'bind_host': '2001:db8:1::1'})
         mock_get_ipv6_addr.assert_called_once()
 
     @patch('keystone_context.config')

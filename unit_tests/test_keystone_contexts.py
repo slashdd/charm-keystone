@@ -115,7 +115,7 @@ class TestKeystoneContexts(CharmTestCase):
             unit='unit/0')
         mock_open.assert_called_with('/etc/default/haproxy', 'w')
 
-    @patch('keystone_context.get_ipv6_addr')
+    @patch('keystone_utils.private_ipv6_address')
     @patch('keystone_context.config')
     @patch('__builtin__.open')
     def test_keystone_ipv6_context_service_enabled(self, mock_open,

@@ -53,7 +53,8 @@ from keystone_utils import (
     KEYSTONE_CONF,
     SSH_USER,
     STORED_PASSWD,
-    setup_ipv6
+    setup_ipv6,
+    private_ipv6_address
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -66,8 +67,7 @@ from charmhelpers.payload.execd import execd_preinstall
 from charmhelpers.contrib.peerstorage import peer_echo
 from charmhelpers.contrib.network.ip import (
     get_iface_for_address,
-    get_netmask_for_address,
-    get_ipv6_addr
+    get_netmask_for_address
 )
 
 hooks = Hooks()
@@ -127,7 +127,7 @@ def db_joined():
         raise Exception(e)
 
     if config('prefer-ipv6'):
-        host = get_ipv6_addr()
+        host = private_ipv6_address()
     else:
         host = unit_get('private-address')
 
@@ -210,7 +210,7 @@ def cluster_joined():
         for rid in relation_ids('cluster'):
             relation_set(relation_id=rid,
                          relation_settings={'private-address':
-                                            get_ipv6_addr()})
+                                            private_ipv6_address()})
 
 
 @hooks.hook('cluster-relation-changed',

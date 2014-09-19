@@ -286,7 +286,7 @@ def migrate_database():
 def get_local_endpoint():
     """ Returns the URL for the local end-point bypassing haproxy/ssl """
     if config('prefer-ipv6'):
-        endpoint_url = 'http://[%s]:{}/v2.0/' % get_ipv6_addr()
+        endpoint_url = 'http://[%s]:{}/v2.0/' % private_ipv6_address()
         local_endpoint = endpoint_url.format(
             determine_api_port(api_port('keystone-admin')))
     else:
@@ -822,3 +822,11 @@ def setup_ipv6():
                    ' main')
         apt_update()
         apt_install('haproxy/trusty-backports', fatal=True)
+
+
+def private_ipv6_address():
+    ex_list = []
+    if config('vip'):
+        ex_list.append(config('vip'))
+
+    return get_ipv6_addr(ex_list)[0]

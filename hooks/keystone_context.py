@@ -10,6 +10,10 @@ from charmhelpers.contrib.hahelpers.cluster import (
     is_clustered,
 )
 
+from charmhelpers.contrib.network.ip import (
+    get_ipv6_addr
+)
+
 from subprocess import (
     check_call
 )
@@ -124,11 +128,10 @@ class KeystoneIPv6Context(context.OSContextGenerator):
     interfaces = []
 
     def __call__(self):
-        from keystone_utils import private_ipv6_address
         ctxt = {}
 
         if config('prefer-ipv6'):
-            ctxt['bind_host'] = private_ipv6_address()
+            ctxt['bind_host'] = get_ipv6_addr()[0]
         else:
             ctxt['bind_host'] = '0.0.0.0'
 

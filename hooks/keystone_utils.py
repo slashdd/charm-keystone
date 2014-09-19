@@ -825,8 +825,4 @@ def setup_ipv6():
 
 
 def private_ipv6_address():
-    ex_list = []
-    if config('vip'):
-        ex_list.append(config('vip'))
-
-    return get_ipv6_addr(ex_list)[0]
+    return get_ipv6_addr()[0]

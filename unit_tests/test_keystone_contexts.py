@@ -94,7 +94,7 @@ class TestKeystoneContexts(CharmTestCase):
         mock_related_units.return_value = ['unit/0', ]
         mock_config.side_effect = [True, None, True]
         mock_relation_ids.return_value = ['identity-service:0', ]
-        mock_get_ipv6_addr.return_value = '2001:db8:1::1'
+        mock_get_ipv6_addr.return_value = ['2001:db8:1::1']
         self.determine_apache_port.return_value = '34'
 
         ctxt = context.HAProxyContext()

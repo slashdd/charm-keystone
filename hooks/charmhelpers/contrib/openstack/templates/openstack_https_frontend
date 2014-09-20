@@ -10,6 +10,7 @@ NameVirtualHost *:{{ ext }}
     ProxyPass / http://localhost:{{ int }}/
     ProxyPassReverse / http://localhost:{{ int }}/
     ProxyPreserveHost on
+    RequestHeader add X-Forwarded-Schema "https"
 </VirtualHost>
 <Proxy *>
     Order deny,allow

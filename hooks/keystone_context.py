@@ -10,10 +10,6 @@ from charmhelpers.contrib.hahelpers.cluster import (
     is_clustered,
 )
 
-from charmhelpers.contrib.network.ip import (
-    get_ipv6_addr
-)
-
 from subprocess import (
     check_call
 )
@@ -131,7 +127,7 @@ class KeystoneIPv6Context(context.OSContextGenerator):
         ctxt = {}
 
         if config('prefer-ipv6'):
-            ctxt['bind_host'] = get_ipv6_addr()[0]
+            ctxt['bind_host'] = '::'
         else:
             ctxt['bind_host'] = '0.0.0.0'
 

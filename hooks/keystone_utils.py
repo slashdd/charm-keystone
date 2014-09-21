@@ -495,26 +495,21 @@ def ensure_initial_admin(config):
                                  auth_port=config("admin-port"),
                                  region=region)
 
+def endpoint_url(ip, port):
+    proto = 'http'
+    if https():
+        proto = 'https'
+    if is_ipv6(ip):
+        ip = "[{}]".format(ip)
+    return "%s://%s:%s/v2.0" % (proto, ip, port)
+
 
 def create_keystone_endpoint(public_ip, service_port,
                              internal_ip, admin_ip, auth_port, region):
-    proto = 'http'
-    if https():
-        log("Setting https keystone endpoint")
-        proto = 'https'
-
-    if is_ipv6(public_ip):
-        public_ip = "[{}]".format(public_ip)
-    if is_ipv6(internal_ip):
-        internal_ip = "[{}]".format(internal_ip)
-    if is_ipv6(admin_ip):
-        admin_ip = "[{}]".format(admin_ip)
-
-    public_url = "%s://%s:%s/v2.0" % (proto, public_ip, service_port)
-    admin_url = "%s://%s:%s/v2.0" % (proto, admin_ip, auth_port)
-    internal_url = "%s://%s:%s/v2.0" % (proto, internal_ip, service_port)
-    create_endpoint_template(region, "keystone", public_url,
-                             admin_url, internal_url)
+    create_endpoint_template(region, "keystone",
+                             endpoint_url(public_ip, service_port),
+                             endpoint_url(admin_ip, auth_port),
+                             endpoint_url(internal_ip, service_port))
 
 
 def update_user_password(username, password):

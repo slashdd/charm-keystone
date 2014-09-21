@@ -94,7 +94,11 @@ class KeystoneContext(context.OSContextGenerator):
     interfaces = []
 
     def __call__(self):
-        from keystone_utils import api_port, set_admin_token
+        from keystone_utils import (
+            api_port, set_admin_token,
+            endpoint_url, resolve_address,
+            PUBLIC, ADMIN
+        )
         ctxt = {}
         ctxt['token'] = set_admin_token(config('admin-token'))
         ctxt['admin_port'] = determine_api_port(api_port('keystone-admin'))
@@ -116,4 +120,9 @@ class KeystoneContext(context.OSContextGenerator):
 
         if config('enable-pki') not in ['false', 'False', 'no', 'No']:
             ctxt['signing'] = True
+
+        ctxt['public_endpoint'] = endpoint_url(resolve_address(PUBLIC),
+                                               api_port('keystone-public'))
+        ctxt['admin_endpoint'] = endpoint_url(resolve_address(ADMIN),
+                                              api_port('keystone-admin'))
         return ctxt

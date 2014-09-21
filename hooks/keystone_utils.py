@@ -286,7 +286,8 @@ def migrate_database():
 def get_local_endpoint():
     """ Returns the URL for the local end-point bypassing haproxy/ssl """
     if config('prefer-ipv6'):
-        endpoint_url = 'http://[%s]:{}/v2.0/' % get_ipv6_addr()[0]
+        ipv6_addr = get_ipv6_addr(exc_list=[config('vip')])[0]
+        endpoint_url = 'http://[%s]:{}/v2.0/' % ipv6_addr
         local_endpoint = endpoint_url.format(
             determine_api_port(api_port('keystone-admin')))
     else:

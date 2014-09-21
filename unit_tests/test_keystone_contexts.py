@@ -92,7 +92,7 @@ class TestKeystoneContexts(CharmTestCase):
             mock_get_ipv6_addr):
         mock_relation_get.return_value = '2001:db8:1::2'
         mock_related_units.return_value = ['unit/0', ]
-        mock_config.side_effect = [True, None, True]
+        mock_config.side_effect = ['demmy_vip', True, None, True]
         mock_relation_ids.return_value = ['identity-service:0', ]
         mock_get_ipv6_addr.return_value = ['2001:db8:1::1']
         self.determine_apache_port.return_value = '34'

@@ -1,5 +1,5 @@
 import keystone_context as context
-from mock import patch
+from mock import patch, MagicMock
 
 from test_utils import (
     CharmTestCase
@@ -16,6 +16,7 @@ class TestKeystoneContexts(CharmTestCase):
     def setUp(self):
         super(TestKeystoneContexts, self).setUp(context, TO_PATCH)
 
+    @patch('charmhelpers.contrib.openstack.context.config')
     @patch('charmhelpers.contrib.openstack.context.is_clustered')
     @patch('charmhelpers.contrib.openstack.context.determine_apache_port')
     @patch('charmhelpers.contrib.openstack.context.determine_api_port')
@@ -25,21 +26,24 @@ class TestKeystoneContexts(CharmTestCase):
                                                 mock_unit_get,
                                                 mock_determine_api_port,
                                                 mock_determine_apache_port,
-                                                mock_is_clustered):
+                                                mock_is_clustered,
+                                                mock_config):
         mock_https.return_value = True
         mock_unit_get.return_value = '1.2.3.4'
         mock_determine_api_port.return_value = '12'
         mock_determine_apache_port.return_value = '34'
         mock_is_clustered.return_value = False
+        mock_config.return_value = None
 
         ctxt = context.ApacheSSLContext()
-        with patch.object(ctxt, 'enable_modules'):
-            with patch.object(ctxt, 'configure_cert'):
-                self.assertEquals(ctxt(), {'endpoints': [(34, 12)],
-                                           'private_address': '1.2.3.4',
-                                           'namespace': 'keystone'})
-                self.assertTrue(mock_https.called)
-                mock_unit_get.assert_called_with('private-address')
+        ctxt.enable_modules = MagicMock()
+        ctxt.configure_cert = MagicMock()
+        ctxt.configure_ca = MagicMock()
+        ctxt.canonical_names = MagicMock()
+        self.assertEquals(ctxt(), {'endpoints': [('1.2.3.4', '1.2.3.4', 34, 12)],
+                                   'namespace': 'keystone'})
+        self.assertTrue(mock_https.called)
+        mock_unit_get.assert_called_with('private-address')
 
     @patch('charmhelpers.contrib.openstack.context.config')
     @patch('charmhelpers.contrib.openstack.context.relation_ids')

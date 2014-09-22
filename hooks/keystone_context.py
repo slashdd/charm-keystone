@@ -1,17 +1,19 @@
-from charmhelpers.core.hookenv import (
-    config, unit_private_ip)
+from charmhelpers.core.hookenv import config, unit_get
+
+from charmhelpers.core.host import mkdir, write_file
 
 from charmhelpers.contrib.openstack import context
 
 from charmhelpers.contrib.hahelpers.cluster import (
     determine_apache_port,
     determine_api_port,
-    is_clustered,
+    is_clustered
 )
 
-from subprocess import (
-    check_call
-)
+from charmhelpers.contrib.hahelpers.apache import install_ca_cert
+
+from charmhelpers.contrib.network.ip import (
+    get_address_in_network, is_address_in_network)
 
 import os
 
@@ -24,34 +26,50 @@ class ApacheSSLContext(context.ApacheSSLContext):
     external_ports = []
     service_namespace = 'keystone'
 
+
     def __call__(self):
         # late import to work around circular dependency
         from keystone_utils import determine_ports
         self.external_ports = determine_ports()
         return super(ApacheSSLContext, self).__call__()
 
-    def configure_cert(self):
-        # import keystone_ssl as ssl
+    def configure_cert(self, cn):
         from keystone_utils import SSH_USER, get_ca
-        if not os.path.isdir('/etc/apache2/ssl'):
-            os.mkdir('/etc/apache2/ssl')
         ssl_dir = os.path.join('/etc/apache2/ssl/', self.service_namespace)
-        if not os.path.isdir(ssl_dir):
-            os.mkdir(ssl_dir)
-        if is_clustered():
-            https_cn = config('vip')
-        else:
-            https_cn = unit_private_ip()
+        mkdir(path=ssl_dir)
         ca = get_ca(user=SSH_USER)
-        cert, key = ca.get_cert_and_key(common_name=https_cn)
-        with open(os.path.join(ssl_dir, 'cert'), 'w') as cert_out:
-            cert_out.write(cert)
-        with open(os.path.join(ssl_dir, 'key'), 'w') as key_out:
-            key_out.write(key)
-        if ca:
-            with open(CA_CERT_PATH, 'w') as ca_out:
-                ca_out.write(ca.get_ca_bundle())
-            check_call(['update-ca-certificates'])
+        cert, key = ca.get_cert_and_key(common_name=cn)
+        write_file(path=os.path.join(ssl_dir, 'cert_{}'.format(cn)),
+                   content=cert)
+        write_file(path=os.path.join(ssl_dir, 'key_{}'.format(cn)),
+                   content=key)
+
+    def configure_ca(self):
+        from keystone_utils import SSH_USER, get_ca
+        ca = get_ca(user=SSH_USER)
+        install_ca_cert(ca.get_ca_bundle())
+
+    def canonical_names(self):
+        addresses = []
+        vips = []
+        if config('vip'):
+            vips = config('vip').split()
+        for network_type in ['os-internal-network',
+                             'os-admin-network',
+                             'os-public-network']:
+            address = get_address_in_network(config(network_type),
+                                             unit_get('private-address'))
+            if len(vips) > 0 and is_clustered():
+                for vip in vips:
+                    if is_address_in_network(config(network_type),
+                                             vip):
+                        addresses.append(vip)
+                        break
+            elif is_clustered():
+                addresses.append(config('vip'))
+            else:
+                addresses.append(address)
+        return list(set(addresses))
 
 
 class HAProxyContext(context.HAProxyContext):

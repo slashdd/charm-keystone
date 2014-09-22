@@ -121,8 +121,13 @@ class KeystoneContext(context.OSContextGenerator):
         if config('enable-pki') not in ['false', 'False', 'no', 'No']:
             ctxt['signing'] = True
 
-        ctxt['public_endpoint'] = endpoint_url(resolve_address(PUBLIC),
-                                               api_port('keystone-public'))
-        ctxt['admin_endpoint'] = endpoint_url(resolve_address(ADMIN),
-                                              api_port('keystone-admin'))
+        # Base endpoint URL's which are used in keystone responses
+        # to unauthenticated requests to redirect clients to the
+        # correct auth URL.
+        ctxt['public_endpoint'] = endpoint_url(
+            resolve_address(PUBLIC),
+            api_port('keystone-public')).rstrip('v2.0')
+        ctxt['admin_endpoint'] = endpoint_url(
+            resolve_address(ADMIN),
+            api_port('keystone-admin')).rstrip('v2.0')
         return ctxt

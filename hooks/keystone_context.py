@@ -126,8 +126,8 @@ class KeystoneContext(context.OSContextGenerator):
         # correct auth URL.
         ctxt['public_endpoint'] = endpoint_url(
             resolve_address(PUBLIC),
-            api_port('keystone-public')).rstrip('/v2.0')
+            api_port('keystone-public')).rstrip('v2.0')
         ctxt['admin_endpoint'] = endpoint_url(
             resolve_address(ADMIN),
-            api_port('keystone-admin')).rstrip('/v2.0')
+            api_port('keystone-admin')).rstrip('v2.0')
         return ctxt

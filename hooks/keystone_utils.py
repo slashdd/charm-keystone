@@ -660,8 +660,9 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
                          adminurl=settings['admin_url'],
                          internalurl=settings['internal_url'])
             service_username = settings['service']
-            https_cn = urlparse.urlparse(settings['internal_url'])
-            https_cns.append(https_cn.hostname)
+            https_cns.append(urlparse.urlparse(settings['internal_url']).hostname)
+            https_cns.append(urlparse.urlparse(settings['public_url']).hostname)
+            https_cns.append(urlparse.urlparse(settings['admin_url']).hostname)
     else:
         # assemble multiple endpoints from relation data. service name
         # should be prepended to setting name, ie:
@@ -700,9 +701,9 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
                              adminurl=ep['admin_url'],
                              internalurl=ep['internal_url'])
                 services.append(ep['service'])
-                if not https_cn:
-                    https_cn = urlparse.urlparse(ep['internal_url'])
-                    https_cns.append(https_cn.hostname)
+                https_cns.append(urlparse.urlparse(ep['internal_url']).hostname)
+                https_cns.append(urlparse.urlparse(ep['public_url']).hostname)
+                https_cns.append(urlparse.urlparse(ep['admin_url']).hostname)
         service_username = '_'.join(services)
 
     if 'None' in [v for k, v in settings.iteritems()]:

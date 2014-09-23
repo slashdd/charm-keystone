@@ -40,8 +40,11 @@ class TestKeystoneContexts(CharmTestCase):
         ctxt.configure_cert = MagicMock()
         ctxt.configure_ca = MagicMock()
         ctxt.canonical_names = MagicMock()
-        self.assertEquals(ctxt(), {'endpoints': [('1.2.3.4', '1.2.3.4', 34, 12)],
-                                   'namespace': 'keystone'})
+        self.assertEquals(ctxt(), {'endpoints': [('1.2.3.4',
+                                                  '1.2.3.4',
+                                                  34, 12)],
+                                   'namespace': 'keystone',
+                                   'ext_ports': [34]})
         self.assertTrue(mock_https.called)
         mock_unit_get.assert_called_with('private-address')
 

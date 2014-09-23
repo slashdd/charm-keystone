@@ -26,7 +26,6 @@ class ApacheSSLContext(context.ApacheSSLContext):
     external_ports = []
     service_namespace = 'keystone'
 
-
     def __call__(self):
         # late import to work around circular dependency
         from keystone_utils import determine_ports

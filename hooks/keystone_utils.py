@@ -495,6 +495,7 @@ def ensure_initial_admin(config):
                                  auth_port=config("admin-port"),
                                  region=region)
 
+
 def endpoint_url(ip, port):
     proto = 'http'
     if https():
@@ -660,9 +661,13 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
                          adminurl=settings['admin_url'],
                          internalurl=settings['internal_url'])
             service_username = settings['service']
-            https_cns.append(urlparse.urlparse(settings['internal_url']).hostname)
-            https_cns.append(urlparse.urlparse(settings['public_url']).hostname)
+            # NOTE(jamespage) internal IP for backwards compat for SSL certs
+            internal_cn = urlparse.urlparse(settings['internal_url']).hostname
+            https_cns.append(internal_cn)
+            https_cns.append(
+                urlparse.urlparse(settings['public_url']).hostname)
             https_cns.append(urlparse.urlparse(settings['admin_url']).hostname)
+            internal_cn
     else:
         # assemble multiple endpoints from relation data. service name
         # should be prepended to setting name, ie:
@@ -701,7 +706,10 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
                              adminurl=ep['admin_url'],
                              internalurl=ep['internal_url'])
                 services.append(ep['service'])
-                https_cns.append(urlparse.urlparse(ep['internal_url']).hostname)
+                # NOTE(jamespage) internal IP for backwards compat for
+                # SSL certs
+                internal_cn = urlparse.urlparse(ep['internal_url']).hostname
+                https_cns.append(internal_cn)
                 https_cns.append(urlparse.urlparse(ep['public_url']).hostname)
                 https_cns.append(urlparse.urlparse(ep['admin_url']).hostname)
         service_username = '_'.join(services)
@@ -766,6 +774,10 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
             cert, key = ca.get_cert_and_key(common_name=https_cn)
             relation_data['ssl_cert_{}'.format(https_cn)] = b64encode(cert)
             relation_data['ssl_key_{}'.format(https_cn)] = b64encode(key)
+        # NOTE(jamespage) for backwards compatibility
+        cert, key = ca.get_cert_and_key(common_name=internal_cn)
+        relation_data['ssl_cert'] = b64encode(cert)
+        relation_data['ssl_key'] = b64encode(key)
         ca_bundle = ca.get_ca_bundle()
         relation_data['ca_cert'] = b64encode(ca_bundle)
         relation_data['https_keystone'] = 'True'

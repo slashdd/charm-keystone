@@ -117,7 +117,8 @@ BASE_RESOURCE_MAP = OrderedDict([
                      context.BindHostContext()],
     }),
     (HAPROXY_CONF, {
-        'contexts': [context.HAProxyContext()],
+        'contexts': [context.HAProxyContext(),
+                     keystone_context.HAProxyContext()],
         'services': ['haproxy'],
     }),
     (APACHE_CONF, {

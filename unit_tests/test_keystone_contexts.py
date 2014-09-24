@@ -6,6 +6,7 @@ from test_utils import (
 )
 
 TO_PATCH = [
+    'determine_apache_port',
     'determine_api_port',
 ]
 
@@ -55,6 +56,7 @@ class TestKeystoneContexts(CharmTestCase):
         mock_relation_get.return_value = '10.0.0.0'
         mock_related_units.return_value = ['unit/0', ]
         mock_config.side_effect = [False, None, False]
+        self.determine_apache_port.return_value = '34'
 
         ctxt = context.HAProxyContext()
 
@@ -66,7 +68,10 @@ class TestKeystoneContexts(CharmTestCase):
              'units': {'keystone': '1.2.3.4', 'unit-0': '10.0.0.0'},
              'local_host': '127.0.0.1',
              'haproxy_host': '0.0.0.0',
-             'stat_port': ':8888'})
+             'stat_port': ':8888',
+             'service_ports': {'admin-port': ['keystone', '34'],
+                               'public-port': ['keystone', '34']},
+             'units': {'keystone': '1.2.3.4', 'unit-0': '10.0.0.0'}})
 #        mock_unit_get.assert_called_with('private-address')
 #        mock_relation_get.assert_called_with(
 #            'private-address',

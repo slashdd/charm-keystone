@@ -1,10 +1,10 @@
 from charmhelpers.core.hookenv import (
-    config, unit_private_ip,
-)
+    config, unit_private_ip)
 
 from charmhelpers.contrib.openstack import context
 
 from charmhelpers.contrib.hahelpers.cluster import (
+    determine_apache_port,
     determine_api_port,
     is_clustered,
 )
@@ -72,6 +72,19 @@ class HAProxyContext(context.HAProxyContext):
         listen_ports['admin_port'] = api_port('keystone-admin')
         listen_ports['public_port'] = api_port('keystone-public')
 
+        # Apache ports
+        a_admin_port = determine_apache_port(api_port('keystone-admin'))
+        a_public_port = determine_apache_port(api_port('keystone-public'))
+
+        port_mapping = {
+            'admin-port': [
+                api_port('keystone-admin'), a_admin_port],
+            'public-port': [
+                api_port('keystone-public'), a_public_port],
+        }
+
+        # for haproxy.conf
+        ctxt['service_ports'] = port_mapping
         # for keystone.conf
         ctxt['listen_ports'] = listen_ports
         return ctxt

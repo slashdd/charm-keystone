@@ -14,6 +14,7 @@ from charmhelpers.core.hookenv import (
     config,
     is_relation_made,
     log,
+    local_unit,
     ERROR,
     relation_get,
     relation_ids,
@@ -144,6 +145,14 @@ def db_changed():
     else:
         CONFIGS.write(KEYSTONE_CONF)
         if eligible_leader(CLUSTER_RES):
+            # Bugs 1353135 & 1187508. Dbs can appear to be ready before the
+            # units acl entry has been added. So, if the db supports passing
+            # a list of permitted units then check if we're in the list.
+            allowed_units = relation_get('allowed_units')
+            print "allowed_units:" + str(allowed_units)
+            if allowed_units and local_unit() not in allowed_units.split():
+                log('Allowed_units list provided and this unit not present')
+                return
             migrate_database()
             ensure_initial_admin(config)
             # Ensure any existing service entries are updated in the
@@ -236,7 +245,7 @@ def ha_joined():
             )
             vip_group.append(vip_key)
 
-    if len(vip_group) > 1:
+    if len(vip_group) >= 1:
         relation_set(groups={'grp_ks_vips': ' '.join(vip_group)})
 
     init_services = {

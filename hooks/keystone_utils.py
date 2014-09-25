@@ -481,13 +481,11 @@ def ensure_initial_admin(config):
         cmd = ['pwgen', '-c', '16', '1']
         passwd = str(subprocess.check_output(cmd)).strip()
         open(STORED_PASSWD, 'w+').writelines("%s\n" % passwd)
-
-    create_user(config('admin-user'), passwd, tenant='admin')
-    update_user_password(config('admin-user'), passwd)
-    create_role(config('admin-role'), config('admin-user'), 'admin')
-    # TODO(adam_g): The following roles are likely not needed since redux merge
-    create_role("KeystoneAdmin", config("admin-user"), 'admin')
-    create_role("KeystoneServiceAdmin", config("admin-user"), 'admin')
+    # User is managed by ldap backend when using ldap identity
+    if not (config('identity-backend') == 'ldap' and config('ldap-readonly')):
+        create_user(config('admin-user'), passwd, tenant='admin')
+        update_user_password(config('admin-user'), passwd)
+        create_role(config('admin-role'), config('admin-user'), 'admin')
     create_service_entry("keystone", "identity", "Keystone Identity Service")
 
     for region in config('region').split():

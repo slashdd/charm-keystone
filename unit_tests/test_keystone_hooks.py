@@ -309,7 +309,8 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(hooks, 'CONFIGS')
     def test_cluster_changed(self, configs, ssh_authorized_peers):
         hooks.cluster_changed()
-        self.peer_echo.assert_called_with(includes=['_passwd'])
+        self.peer_echo.assert_called_with(includes=['_passwd',
+                                          'identity-service:'])
         ssh_authorized_peers.assert_called_with(
             user=self.ssh_user, group='keystone',
             peer_interface='cluster', ensure_local_user=True)

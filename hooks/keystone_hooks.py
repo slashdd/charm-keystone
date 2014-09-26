@@ -91,6 +91,7 @@ def install():
 def config_changed():
     if config('prefer-ipv6'):
         setup_ipv6()
+        sync_db_with_multi_ipv6_addresses()
 
     unison.ensure_user(user=SSH_USER, group='keystone')
     homedir = unison.get_homedir(SSH_USER)
@@ -131,9 +132,7 @@ def db_joined():
     else:
         host = unit_get('private-address')
 
-    relation_set(database=config('database'),
-                 username=config('database-user'),
-                 hostname=host)
+    sync_db_with_multi_ipv6_addresses()
 
 
 @hooks.hook('pgsql-db-relation-joined')

@@ -64,6 +64,7 @@ TO_PATCH = [
     # ip
     'get_iface_for_address',
     'get_netmask_for_address',
+    'get_address_in_network',
 ]
 
 
@@ -196,6 +197,7 @@ class KeystoneRelationTests(CharmTestCase):
             relation_id='identity-service:0',
             remote_unit='unit/0')
 
+    @patch.object(hooks, 'cluster_joined')
     @patch.object(unison, 'ensure_user')
     @patch.object(unison, 'get_homedir')
     @patch.object(hooks, 'CONFIGS')
@@ -203,7 +205,7 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(hooks, 'configure_https')
     def test_config_changed_no_openstack_upgrade_leader(
             self, configure_https, identity_changed,
-            configs, get_homedir, ensure_user):
+            configs, get_homedir, ensure_user, cluster_joined):
         self.openstack_upgrade_available.return_value = False
         self.eligible_leader.return_value = True
         self.relation_ids.return_value = ['identity-service:0']
@@ -225,6 +227,7 @@ class KeystoneRelationTests(CharmTestCase):
             relation_id='identity-service:0',
             remote_unit='unit/0')
 
+    @patch.object(hooks, 'cluster_joined')
     @patch.object(unison, 'ensure_user')
     @patch.object(unison, 'get_homedir')
     @patch.object(hooks, 'CONFIGS')
@@ -232,7 +235,7 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(hooks, 'configure_https')
     def test_config_changed_no_openstack_upgrade_not_leader(
             self, configure_https, identity_changed,
-            configs, get_homedir, ensure_user):
+            configs, get_homedir, ensure_user, cluster_joined):
         self.openstack_upgrade_available.return_value = False
         self.eligible_leader.return_value = False
 
@@ -248,6 +251,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertFalse(self.ensure_initial_admin.called)
         self.assertFalse(identity_changed.called)
 
+    @patch.object(hooks, 'cluster_joined')
     @patch.object(unison, 'ensure_user')
     @patch.object(unison, 'get_homedir')
     @patch.object(hooks, 'CONFIGS')
@@ -255,7 +259,7 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(hooks, 'configure_https')
     def test_config_changed_with_openstack_upgrade(
             self, configure_https, identity_changed,
-            configs, get_homedir, ensure_user):
+            configs, get_homedir, ensure_user, cluster_joined):
         self.openstack_upgrade_available.return_value = True
         self.eligible_leader.return_value = True
         self.relation_ids.return_value = ['identity-service:0']

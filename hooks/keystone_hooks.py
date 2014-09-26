@@ -65,7 +65,8 @@ from charmhelpers.payload.execd import execd_preinstall
 from charmhelpers.contrib.peerstorage import peer_echo
 from charmhelpers.contrib.network.ip import (
     get_iface_for_address,
-    get_netmask_for_address
+    get_netmask_for_address,
+    get_address_in_network
 )
 
 hooks = Hooks()
@@ -106,6 +107,8 @@ def config_changed():
             for unit in relation_list(r_id):
                 identity_changed(relation_id=r_id,
                                  remote_unit=unit)
+
+    [cluster_joined(rid) for rid in relation_ids('cluster')]
 
 
 @hooks.hook('shared-db-relation-joined')
@@ -186,11 +189,15 @@ def identity_changed(relation_id=None, remote_unit=None):
 
 
 @hooks.hook('cluster-relation-joined')
-def cluster_joined():
+def cluster_joined(relation_id=None):
     unison.ssh_authorized_peers(user=SSH_USER,
                                 group='juju_keystone',
                                 peer_interface='cluster',
                                 ensure_local_user=True)
+    address = get_address_in_network(config('os-internal-network'),
+                                     unit_get('private-address'))
+    relation_set(relation_id=relation_id,
+                 relation_settings={'private-address': address})
 
 
 @hooks.hook('cluster-relation-changed',

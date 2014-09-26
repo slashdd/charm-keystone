@@ -36,6 +36,7 @@ from charmhelpers.fetch import (
 from charmhelpers.contrib.openstack.utils import (
     configure_installation_source,
     openstack_upgrade_available,
+    sync_db_with_multi_ipv6_addresses
 )
 
 from keystone_utils import (
@@ -128,11 +129,11 @@ def db_joined():
         raise Exception(e)
 
     if config('prefer-ipv6'):
-        host = get_ipv6_addr(exc_list=[config('vip')])[0]
+        sync_db_with_multi_ipv6_addresses()
     else:
-        host = unit_get('private-address')
-
-    sync_db_with_multi_ipv6_addresses()
+        relation_set(database=config('database'),
+                     username=config('database-user'),
+                     hostname=unit_get('private-address'))
 
 
 @hooks.hook('pgsql-db-relation-joined')

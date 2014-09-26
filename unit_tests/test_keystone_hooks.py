@@ -86,14 +86,48 @@ class KeystoneRelationTests(CharmTestCase):
              'pwgen', 'keystone', 'python-psycopg2'], fatal=True)
         self.assertTrue(self.execd_preinstall.called)
 
-    def test_db_joined(self):
-        self.unit_get.return_value = 'keystone.foohost.com'
+    mod_ch_openstack_utils = 'charmhelpers.contrib.openstack.utils'
+
+    @patch.object(hooks, 'config')
+    @patch('%s.config' % (mod_ch_openstack_utils))
+    @patch('%s.relation_set' % (mod_ch_openstack_utils))
+    @patch('%s.relation_ids' % (mod_ch_openstack_utils))
+    @patch('%s.get_ipv6_addr' % (mod_ch_openstack_utils))
+    @patch('%s.sync_db_with_multi_ipv6_addresses' % (mod_ch_openstack_utils))
+    def test_db_joined(self, mock_sync_db_with_multi, mock_get_ipv6_addr,
+                       mock_relation_ids, mock_relation_set, mock_config,
+                       mock_hooks_config):
+
+        cfg_dict = {'prefer-ipv6': False,
+                    'database': 'keystone',
+                    'database-user': 'keystone'}
+
+        class mock_cls_config():
+            def __call__(self, key):
+                return cfg_dict[key]
+
+        cfg = mock_cls_config()
+        mock_hooks_config.side_effect = cfg
+        mock_config.side_effect = cfg
+
         self.is_relation_made.return_value = False
+        self.unit_get.return_value = 'keystone.foohost.com'
         hooks.db_joined()
         self.relation_set.assert_called_with(database='keystone',
                                              username='keystone',
                                              hostname='keystone.foohost.com')
         self.unit_get.assert_called_with('private-address')
+
+        cfg_dict['prefer-ipv6'] = True
+        mock_hooks_config.side_effect = mock_cls_config()
+        mock_relation_ids.return_value = ['shared-db']
+        mock_get_ipv6_addr.return_value = ['keystone.foohost.com']
+        self.is_relation_made.return_value = False
+        hooks.db_joined()
+        mock_relation_set.assert_called_with(relation_id='shared-db',
+                                             database='keystone',
+                                             username='keystone',
+                                             hostname=['keystone.foohost.com'])
 
     def test_postgresql_db_joined(self):
         self.unit_get.return_value = 'keystone.foohost.com'

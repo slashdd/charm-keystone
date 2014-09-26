@@ -259,6 +259,7 @@ def ha_changed():
         ensure_initial_admin(config)
         log('Cluster configured, notifying other services and updating '
             'keystone endpoint configuration')
+        # TODO: fixup
         for rid in relation_ids('identity-service'):
             relation_set(relation_id=rid,
                          auth_host=config('vip'),
@@ -267,6 +268,7 @@ def ha_changed():
 
 @hooks.hook('identity-admin-relation-changed')
 def admin_relation_changed():
+    # TODO: fixup
     relation_data = {
         'service_hostname': unit_get('private-address'),
         'service_port': config('service-port'),

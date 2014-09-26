@@ -1,5 +1,6 @@
 from mock import call, patch, MagicMock
 import os
+import json
 
 from test_utils import CharmTestCase
 
@@ -124,10 +125,12 @@ class KeystoneRelationTests(CharmTestCase):
         mock_get_ipv6_addr.return_value = ['keystone.foohost.com']
         self.is_relation_made.return_value = False
         hooks.db_joined()
+
+        hosts = json.dumps(['keystone.foohost.com'])
         mock_relation_set.assert_called_with(relation_id='shared-db',
                                              database='keystone',
                                              username='keystone',
-                                             hostname=['keystone.foohost.com'])
+                                             hostname=hosts)
 
     def test_postgresql_db_joined(self):
         self.unit_get.return_value = 'keystone.foohost.com'

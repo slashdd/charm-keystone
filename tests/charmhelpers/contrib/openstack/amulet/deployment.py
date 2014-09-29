@@ -16,7 +16,8 @@ class OpenStackAmuletDeployment(AmuletDeployment):
         self.openstack = openstack
         self.source = source
         self.stable = stable
-        # Note(coreycb): this needs to be changed when new next branches come out.
+        # Note(coreycb): this needs to be changed when new next branches come
+        # out.
         self.current_next = "trusty"
 
     def _determine_branch_locations(self, other_services):

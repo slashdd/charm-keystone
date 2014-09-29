@@ -64,7 +64,11 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         self.keystone_sentry = self.d.sentry.unit['keystone/0']
         self.cinder_sentry = self.d.sentry.unit['cinder/0']
 
-        self._authenticate_keystone_admin()
+        # Authenticate keystone admin
+        self.keystone = u.authenticate_keystone_admin(self.keystone_sentry,
+                                                      user='admin',
+                                                      password='openstack',
+                                                      tenant='admin')
 
         # Create a demo tenant/role/user
         self.demo_tenant = 'demoTenant'
@@ -79,26 +83,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
                                        tenant_id=tenant.id,
                                        email='demo@demo.com')
 
-    def _authenticate_keystone_admin(self):
-        """Authenticate admin with keystone
-
-           Note: A side-effect of test_restart_on_config_change() is that it
-           restarts keystone services, so all tests that use self.keystone
-           will require re-authentication.
-           """
-        self.keystone = u.authenticate_keystone_admin(self.keystone_sentry,
-                                                      user='admin',
-                                                      password='openstack',
-                                                      tenant='admin')
-
-    def _authenticate_keystone_demo(self):
-        """Authenticate demo user with keystone
-
-           Note: A side-effect of test_restart_on_config_change() is that it
-           restarts keystone services, so all tests that use
-           self.keystone_demo will require re-authentication.
-           """
-        self._authenticate_keystone_admin()
+        # Authenticate keystone demo
         self.keystone_demo = u.authenticate_keystone_user(self.keystone,
                                                         user=self.demo_user,
                                                         password='password',
@@ -132,7 +117,6 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
                    'name': 'admin',
                    'id': u.not_null}
         expected = [tenant1, tenant2, tenant3]
-        self._authenticate_keystone_admin()
         actual = self.keystone.tenants.list()
 
         ret = u.validate_tenant_data(expected, actual)
@@ -144,7 +128,6 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         role1 = {'name': 'demoRole', 'id': u.not_null}
         role2 = {'name': 'Admin', 'id': u.not_null}
         expected = [role1, role2]
-        self._authenticate_keystone_admin()
         actual = self.keystone.roles.list()
 
         ret = u.validate_role_data(expected, actual)
@@ -169,7 +152,6 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
                  'id': u.not_null,
                  'email': u'juju@localhost'}
         expected = [user1, user2, user3]
-        self._authenticate_keystone_admin()
         actual = self.keystone.users.list()
 
         ret = u.validate_user_data(expected, actual)
@@ -190,7 +172,6 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             endpoint_vol['id'] = u.not_null
             endpoint_id['id'] = u.not_null
         expected = {'volume': [endpoint_vol], 'identity': [endpoint_id]}
-        self._authenticate_keystone_demo()
         actual = self.keystone_demo.service_catalog.get_endpoints()
 
         ret = u.validate_svc_catalog_endpoint_data(expected, actual)
@@ -199,7 +180,6 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
 
     def test_keystone_endpoint(self):
         """Verify the keystone endpoint data."""
-        self._authenticate_keystone_admin()
         endpoints = self.keystone.endpoints.list()
         admin_port = '35357'
         internal_port = public_port = '5000'
@@ -217,7 +197,6 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
 
     def test_cinder_endpoint(self):
         """Verify the cinder endpoint data."""
-        self._authenticate_keystone_admin()
         endpoints = self.keystone.endpoints.list()
         admin_port = internal_port = public_port = '8776'
         expected = {'id': u.not_null,
@@ -302,8 +281,13 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             message = u.relation_error('cinder identity-service', ret)
             amulet.raise_status(amulet.FAIL, msg=message)
 
-    def test_restart_on_config_change(self):
-        """Verify that keystone is restarted when the config is changed."""
+    def test_z_restart_on_config_change(self):
+        """Verify that keystone is restarted when the config is changed.
+
+            Note(coreycb): The method name with the _z_ is a little odd
+            but it forces the test to run last.  It just makes things
+            easier because restarting services requires re-authorization.
+            """
         self.d.configure('keystone', {'verbose': 'True'})
         if not u.service_restarted(self.keystone_sentry, 'keystone-all',
                                   '/etc/keystone/keystone.conf',

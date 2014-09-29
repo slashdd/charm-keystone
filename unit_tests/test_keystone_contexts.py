@@ -48,6 +48,8 @@ class TestKeystoneContexts(CharmTestCase):
         self.assertTrue(mock_https.called)
         mock_unit_get.assert_called_with('private-address')
 
+
+    @patch('charmhelpers.contrib.openstack.context.get_address_in_network')
     @patch('charmhelpers.contrib.openstack.context.config')
     @patch('charmhelpers.contrib.openstack.context.relation_ids')
     @patch('charmhelpers.contrib.openstack.context.unit_get')
@@ -57,12 +59,14 @@ class TestKeystoneContexts(CharmTestCase):
     @patch('__builtin__.open')
     def test_haproxy_context_service_enabled(
         self, mock_open, mock_log, mock_relation_get, mock_related_units,
-            mock_unit_get, mock_relation_ids, mock_config):
+            mock_unit_get, mock_relation_ids, mock_config,
+            mock_get_address_in_network):
         mock_relation_ids.return_value = ['identity-service:0', ]
         mock_unit_get.return_value = '1.2.3.4'
         mock_relation_get.return_value = '10.0.0.0'
         mock_related_units.return_value = ['unit/0', ]
         mock_config.return_value = None
+        mock_get_address_in_network.return_value = None
         self.determine_apache_port.return_value = '34'
 
         ctxt = context.HAProxyContext()
@@ -77,7 +81,12 @@ class TestKeystoneContexts(CharmTestCase):
                               'public_port': 'keystone'},
              'service_ports': {'admin-port': ['keystone', '34'],
                                'public-port': ['keystone', '34']},
-             'units': {'keystone': '1.2.3.4', 'unit-0': '10.0.0.0'}})
+             'frontends': {'1.2.3.4': {
+                 'keystone': '1.2.3.4',
+                 'unit-0': '10.0.0.0'
+                 }}
+            }
+        )
 #        mock_unit_get.assert_called_with('private-address')
 #        mock_relation_get.assert_called_with(
 #            'private-address',

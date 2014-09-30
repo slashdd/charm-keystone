@@ -69,7 +69,8 @@ from charmhelpers.contrib.network.ip import (
     get_iface_for_address,
     get_netmask_for_address,
     get_address_in_network,
-    get_ipv6_addr
+    get_ipv6_addr,
+    is_ipv6
 )
 
 hooks = Hooks()
@@ -242,7 +243,7 @@ def ha_joined():
 
     vip_group = []
     for vip in cluster_config['vip'].split():
-        if config('prefer-ipv6'):
+        if is_ipv6(vip):
             res_ks_vip = 'ocf:heartbeat:IPv6addr'
             vip_params = 'ipv6addr'
         else:

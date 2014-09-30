@@ -68,6 +68,7 @@ from charmhelpers.contrib.peerstorage import peer_echo
 from charmhelpers.contrib.network.ip import (
     get_iface_for_address,
     get_netmask_for_address,
+    get_address_in_network,
     get_ipv6_addr
 )
 
@@ -79,10 +80,6 @@ CONFIGS = register_configs()
 def install():
     execd_preinstall()
     configure_installation_source(config('openstack-origin'))
-
-    if config('prefer-ipv6'):
-        setup_ipv6()
-
     apt_update()
     apt_install(determine_packages(), fatal=True)
 
@@ -202,17 +199,21 @@ def identity_changed(relation_id=None, remote_unit=None):
 
 
 @hooks.hook('cluster-relation-joined')
-def cluster_joined():
+def cluster_joined(relation_id=None):
     unison.ssh_authorized_peers(user=SSH_USER,
                                 group='juju_keystone',
                                 peer_interface='cluster',
                                 ensure_local_user=True)
 
     if config('prefer-ipv6'):
-        for rid in relation_ids('cluster'):
-            addr = get_ipv6_addr(exc_list=[config('vip')])[0]
-            relation_set(relation_id=rid,
-                         relation_settings={'private-address': addr})
+        private_addr = get_ipv6_addr(exc_list=[config('vip')])[0]
+    else:
+        private_addr = unit_get('private-address')
+
+    address = get_address_in_network(config('os-internal-network'),
+                                     private_addr)
+    relation_set(relation_id=relation_id,
+                 relation_settings={'private-address': address})
 
 
 @hooks.hook('cluster-relation-changed',
@@ -232,13 +233,6 @@ def cluster_changed():
 @hooks.hook('ha-relation-joined')
 def ha_joined():
     cluster_config = get_hacluster_config()
-    if config('prefer-ipv6'):
-        res_ks_vip = 'ocf:heartbeat:IPv6addr'
-        vip_params = 'ipv6addr'
-    else:
-        res_ks_vip = 'ocf:heartbeat:IPaddr2'
-        vip_params = 'ip'
-
     resources = {
         'res_ks_haproxy': 'lsb:haproxy',
     }
@@ -248,6 +242,13 @@ def ha_joined():
 
     vip_group = []
     for vip in cluster_config['vip'].split():
+        if config('prefer-ipv6'):
+            res_ks_vip = 'ocf:heartbeat:IPv6addr'
+            vip_params = 'ipv6addr'
+        else:
+            res_ks_vip = 'ocf:heartbeat:IPaddr2'
+            vip_params = 'ip'
+
         iface = get_iface_for_address(vip)
         if iface is not None:
             vip_key = 'res_ks_{}_vip'.format(iface)
@@ -261,7 +262,8 @@ def ha_joined():
             )
             vip_group.append(vip_key)
 
-    relation_set(groups={'grp_ks_vips': ' '.join(vip_group)})
+    if len(vip_group) >= 1:
+        relation_set(groups={'grp_ks_vips': ' '.join(vip_group)})
 
     init_services = {
         'res_ks_haproxy': 'haproxy'

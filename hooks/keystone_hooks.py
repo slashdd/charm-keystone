@@ -36,6 +36,7 @@ from charmhelpers.fetch import (
 from charmhelpers.contrib.openstack.utils import (
     configure_installation_source,
     openstack_upgrade_available,
+    sync_db_with_multi_ipv6_addresses
 )
 
 from keystone_utils import (
@@ -53,6 +54,7 @@ from keystone_utils import (
     KEYSTONE_CONF,
     SSH_USER,
     STORED_PASSWD,
+    setup_ipv6
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -65,7 +67,10 @@ from charmhelpers.payload.execd import execd_preinstall
 from charmhelpers.contrib.peerstorage import peer_echo
 from charmhelpers.contrib.network.ip import (
     get_iface_for_address,
-    get_netmask_for_address
+    get_netmask_for_address,
+    get_address_in_network,
+    get_ipv6_addr,
+    is_ipv6
 )
 
 hooks = Hooks()
@@ -83,6 +88,11 @@ def install():
 @hooks.hook('config-changed')
 @restart_on_change(restart_map())
 def config_changed():
+    if config('prefer-ipv6'):
+        setup_ipv6()
+        sync_db_with_multi_ipv6_addresses(config('database'),
+                                          config('database-user'))
+
     unison.ensure_user(user=SSH_USER, group='keystone')
     homedir = unison.get_homedir(SSH_USER)
     if not os.path.isdir(homedir):
@@ -117,9 +127,13 @@ def db_joined():
         log(e, level=ERROR)
         raise Exception(e)
 
-    relation_set(database=config('database'),
-                 username=config('database-user'),
-                 hostname=unit_get('private-address'))
+    if config('prefer-ipv6'):
+        sync_db_with_multi_ipv6_addresses(config('database'),
+                                          config('database-user'))
+    else:
+        relation_set(database=config('database'),
+                     username=config('database-user'),
+                     hostname=unit_get('private-address'))
 
 
 @hooks.hook('pgsql-db-relation-joined')
@@ -186,11 +200,21 @@ def identity_changed(relation_id=None, remote_unit=None):
 
 
 @hooks.hook('cluster-relation-joined')
-def cluster_joined():
+def cluster_joined(relation_id=None):
     unison.ssh_authorized_peers(user=SSH_USER,
                                 group='juju_keystone',
                                 peer_interface='cluster',
                                 ensure_local_user=True)
+
+    if config('prefer-ipv6'):
+        private_addr = get_ipv6_addr(exc_list=[config('vip')])[0]
+    else:
+        private_addr = unit_get('private-address')
+
+    address = get_address_in_network(config('os-internal-network'),
+                                     private_addr)
+    relation_set(relation_id=relation_id,
+                 relation_settings={'private-address': address})
 
 
 @hooks.hook('cluster-relation-changed',
@@ -209,8 +233,7 @@ def cluster_changed():
 
 @hooks.hook('ha-relation-joined')
 def ha_joined():
-    config = get_hacluster_config()
-
+    cluster_config = get_hacluster_config()
     resources = {
         'res_ks_haproxy': 'lsb:haproxy',
     }
@@ -219,14 +242,22 @@ def ha_joined():
     }
 
     vip_group = []
-    for vip in config['vip'].split():
+    for vip in cluster_config['vip'].split():
+        if is_ipv6(vip):
+            res_ks_vip = 'ocf:heartbeat:IPv6addr'
+            vip_params = 'ipv6addr'
+        else:
+            res_ks_vip = 'ocf:heartbeat:IPaddr2'
+            vip_params = 'ip'
+
         iface = get_iface_for_address(vip)
         if iface is not None:
             vip_key = 'res_ks_{}_vip'.format(iface)
-            resources[vip_key] = 'ocf:heartbeat:IPaddr2'
+            resources[vip_key] = res_ks_vip
             resource_params[vip_key] = (
-                'params ip="{vip}" cidr_netmask="{netmask}"'
-                ' nic="{iface}"'.format(vip=vip,
+                'params {ip}="{vip}" cidr_netmask="{netmask}"'
+                ' nic="{iface}"'.format(ip=vip_params,
+                                        vip=vip,
                                         iface=iface,
                                         netmask=get_netmask_for_address(vip))
             )
@@ -242,8 +273,8 @@ def ha_joined():
         'cl_ks_haproxy': 'res_ks_haproxy'
     }
     relation_set(init_services=init_services,
-                 corosync_bindiface=config['ha-bindiface'],
-                 corosync_mcastport=config['ha-mcastport'],
+                 corosync_bindiface=cluster_config['ha-bindiface'],
+                 corosync_mcastport=cluster_config['ha-mcastport'],
                  resources=resources,
                  resource_params=resource_params,
                  clones=clones)
@@ -259,10 +290,10 @@ def ha_changed():
         ensure_initial_admin(config)
         log('Cluster configured, notifying other services and updating '
             'keystone endpoint configuration')
-        for rid in relation_ids('identity-service'):
-            relation_set(relation_id=rid,
-                         auth_host=config('vip'),
-                         service_host=config('vip'))
+
+    for rid in relation_ids('identity-service'):
+        for unit in related_units(rid):
+            identity_changed(relation_id=rid, remote_unit=unit)
 
 
 @hooks.hook('identity-admin-relation-changed')

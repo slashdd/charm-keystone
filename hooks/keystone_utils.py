@@ -17,7 +17,8 @@ from charmhelpers.contrib.hahelpers.cluster import(
 
 from charmhelpers.contrib.openstack import context, templating
 from charmhelpers.contrib.network.ip import (
-    is_ipv6
+    is_ipv6,
+    get_ipv6_addr
 )
 
 from charmhelpers.contrib.openstack.ip import (
@@ -48,12 +49,14 @@ from charmhelpers.fetch import (
     apt_install,
     apt_update,
     apt_upgrade,
+    add_source
 )
 
 from charmhelpers.core.host import (
     service_stop,
     service_start,
-    pwgen
+    pwgen,
+    lsb_release
 )
 
 from charmhelpers.contrib.peerstorage import (
@@ -110,7 +113,8 @@ BASE_RESOURCE_MAP = OrderedDict([
                      context.SharedDBContext(ssl_dir=KEYSTONE_CONF_DIR),
                      context.PostgresqlDBContext(),
                      context.SyslogContext(),
-                     keystone_context.HAProxyContext()],
+                     keystone_context.HAProxyContext(),
+                     context.BindHostContext()],
     }),
     (HAPROXY_CONF, {
         'contexts': [context.HAProxyContext(),
@@ -281,9 +285,15 @@ def migrate_database():
 
 def get_local_endpoint():
     """ Returns the URL for the local end-point bypassing haproxy/ssl """
-    local_endpoint = 'http://localhost:{}/v2.0/'.format(
-        determine_api_port(api_port('keystone-admin'))
-    )
+    if config('prefer-ipv6'):
+        ipv6_addr = get_ipv6_addr(exc_list=[config('vip')])[0]
+        endpoint_url = 'http://[%s]:{}/v2.0/' % ipv6_addr
+        local_endpoint = endpoint_url.format(
+            determine_api_port(api_port('keystone-admin')))
+    else:
+        local_endpoint = 'http://localhost:{}/v2.0/'.format(
+            determine_api_port(api_port('keystone-admin')))
+
     return local_endpoint
 
 
@@ -797,3 +807,19 @@ def get_requested_roles(settings):
         return settings['requested_roles'].split(',')
     else:
         return []
+
+
+def setup_ipv6():
+    ubuntu_rel = lsb_release()['DISTRIB_CODENAME'].lower()
+    if ubuntu_rel < "trusty":
+        raise Exception("IPv6 is not supported in the charms for Ubuntu "
+                        "versions less than Trusty 14.04")
+
+    # NOTE(xianghui): Need to install haproxy(1.5.3) from trusty-backports
+    # to support ipv6 address, so check is required to make sure not
+    # breaking other versions, IPv6 only support for >= Trusty
+    if ubuntu_rel == 'trusty':
+        add_source('deb http://archive.ubuntu.com/ubuntu trusty-backports'
+                   ' main')
+        apt_update()
+        apt_install('haproxy/trusty-backports', fatal=True)

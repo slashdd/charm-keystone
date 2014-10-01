@@ -1,5 +1,6 @@
 from mock import call, patch, MagicMock
 import os
+import json
 
 from test_utils import CharmTestCase
 
@@ -86,14 +87,50 @@ class KeystoneRelationTests(CharmTestCase):
              'pwgen', 'keystone', 'python-psycopg2'], fatal=True)
         self.assertTrue(self.execd_preinstall.called)
 
-    def test_db_joined(self):
-        self.unit_get.return_value = 'keystone.foohost.com'
+    mod_ch_openstack_utils = 'charmhelpers.contrib.openstack.utils'
+
+    @patch.object(hooks, 'config')
+    @patch('%s.config' % (mod_ch_openstack_utils))
+    @patch('%s.relation_set' % (mod_ch_openstack_utils))
+    @patch('%s.relation_ids' % (mod_ch_openstack_utils))
+    @patch('%s.get_ipv6_addr' % (mod_ch_openstack_utils))
+    @patch('%s.sync_db_with_multi_ipv6_addresses' % (mod_ch_openstack_utils))
+    def test_db_joined(self, mock_sync_db_with_multi, mock_get_ipv6_addr,
+                       mock_relation_ids, mock_relation_set, mock_config,
+                       mock_hooks_config):
+
+        cfg_dict = {'prefer-ipv6': False,
+                    'database': 'keystone',
+                    'database-user': 'keystone'}
+
+        class mock_cls_config():
+            def __call__(self, key):
+                return cfg_dict[key]
+
+        cfg = mock_cls_config()
+        mock_hooks_config.side_effect = cfg
+        mock_config.side_effect = cfg
+
         self.is_relation_made.return_value = False
+        self.unit_get.return_value = 'keystone.foohost.com'
         hooks.db_joined()
         self.relation_set.assert_called_with(database='keystone',
                                              username='keystone',
                                              hostname='keystone.foohost.com')
         self.unit_get.assert_called_with('private-address')
+
+        cfg_dict['prefer-ipv6'] = True
+        mock_hooks_config.side_effect = mock_cls_config()
+        mock_relation_ids.return_value = ['shared-db']
+        mock_get_ipv6_addr.return_value = ['keystone.foohost.com']
+        self.is_relation_made.return_value = False
+        hooks.db_joined()
+
+        hosts = json.dumps(['keystone.foohost.com'])
+        mock_relation_set.assert_called_with(relation_id='shared-db',
+                                             database='keystone',
+                                             username='keystone',
+                                             hostname=hosts)
 
     def test_postgresql_db_joined(self):
         self.unit_get.return_value = 'keystone.foohost.com'
@@ -339,6 +376,30 @@ class KeystoneRelationTests(CharmTestCase):
         }
         self.relation_set.assert_called_with(**args)
 
+    def test_ha_joined_with_ipv6(self):
+        self.test_config.set('prefer-ipv6', True)
+        self.get_hacluster_config.return_value = {
+            'vip': '2001:db8:1::1',
+            'ha-bindiface': 'em0',
+            'ha-mcastport': '8080'
+        }
+        self.get_iface_for_address.return_value = 'em1'
+        self.get_netmask_for_address.return_value = '64'
+        hooks.ha_joined()
+        args = {
+            'corosync_bindiface': 'em0',
+            'corosync_mcastport': '8080',
+            'init_services': {'res_ks_haproxy': 'haproxy'},
+            'resources': {'res_ks_em1_vip': 'ocf:heartbeat:IPv6addr',
+                          'res_ks_haproxy': 'lsb:haproxy'},
+            'resource_params': {
+                'res_ks_em1_vip': 'params ipv6addr="2001:db8:1::1"'
+                                  ' cidr_netmask="64" nic="em1"',
+                'res_ks_haproxy': 'op monitor interval="5s"'},
+            'clones': {'cl_ks_haproxy': 'res_ks_haproxy'}
+        }
+        self.relation_set.assert_called_with(**args)
+
     @patch.object(hooks, 'CONFIGS')
     def test_ha_relation_changed_not_clustered_not_leader(self, configs):
         self.relation_get.return_value = False
@@ -347,21 +408,23 @@ class KeystoneRelationTests(CharmTestCase):
         hooks.ha_changed()
         self.assertTrue(configs.write_all.called)
 
+    @patch.object(hooks, 'identity_changed')
     @patch.object(hooks, 'CONFIGS')
-    def test_ha_relation_changed_clustered_leader(self, configs):
+    def test_ha_relation_changed_clustered_leader(
+            self, configs, identity_changed):
         self.relation_get.return_value = True
         self.is_leader.return_value = True
         self.relation_ids.return_value = ['identity-service:0']
-        self.test_config.set('vip', '10.10.10.10')
+        self.related_units.return_value = ['unit/0']
 
         hooks.ha_changed()
         self.assertTrue(configs.write_all.called)
         self.log.assert_called_with(
             'Cluster configured, notifying other services and updating '
             'keystone endpoint configuration')
-        self.relation_set.assert_called_with(relation_id='identity-service:0',
-                                             auth_host='10.10.10.10',
-                                             service_host='10.10.10.10')
+        identity_changed.assert_called_with(
+            relation_id='identity-service:0',
+            remote_unit='unit/0')
 
     @patch.object(hooks, 'CONFIGS')
     def test_configure_https_enable(self, configs):

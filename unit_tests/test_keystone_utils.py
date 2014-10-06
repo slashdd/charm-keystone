@@ -29,6 +29,7 @@ TO_PATCH = [
     'eligible_leader',
     'https',
     'is_clustered',
+    'peer_store_and_set',
     'service_stop',
     'service_start',
     'relation_get',
@@ -179,7 +180,7 @@ class TestKeystoneUtils(CharmTestCase):
                          'service_port': 81,
                          'https_keystone': 'True',
                          'ca_cert': 'certificate'}
-        self.relation_set.assert_called_with(
+        self.peer_store_and_set.assert_called_with(
             relation_id=relation_id,
             **relation_data)
 
@@ -237,7 +238,7 @@ class TestKeystoneUtils(CharmTestCase):
                          'service_host': '10.0.0.3',
                          'auth_protocol': 'http', 'service_protocol': 'http',
                          'service_tenant_id': 'tenant_id'}
-        self.relation_set.assert_called_with(
+        self.peer_store_and_set.assert_called_with(
             relation_id=relation_id,
             **relation_data)
 

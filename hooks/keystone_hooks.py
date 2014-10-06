@@ -64,7 +64,10 @@ from charmhelpers.contrib.hahelpers.cluster import (
 )
 
 from charmhelpers.payload.execd import execd_preinstall
-from charmhelpers.contrib.peerstorage import peer_echo
+from charmhelpers.contrib.peerstorage import (
+    peer_retrieve_by_prefix,
+    peer_echo,
+)
 from charmhelpers.contrib.network.ip import (
     get_iface_for_address,
     get_netmask_for_address,
@@ -199,6 +202,12 @@ def identity_changed(relation_id=None, remote_unit=None):
         add_service_to_keystone(relation_id, remote_unit)
         synchronize_ca()
     else:
+        # Each unit needs to set the db information otherwise if the unit
+        # with the info dies the settings die with it Bug# 1355848
+        for rel_id in relation_ids('identity-service'):
+            peerdb_settings = peer_retrieve_by_prefix(rel_id)
+            if 'service_password' in peerdb_settings:
+                relation_set(relation_id=rel_id, **peerdb_settings)
         log('Deferring identity_changed() to service leader.')
 
 
@@ -229,13 +238,17 @@ def cluster_joined(relation_id=None):
 @restart_on_change(restart_map(), stopstart=True)
 def cluster_changed():
     # NOTE(jamespage) re-echo passwords for peer storage
-    peer_echo(includes=['_passwd'])
+    peer_echo(includes=['_passwd', 'identity-service:'])
     unison.ssh_authorized_peers(user=SSH_USER,
                                 group='keystone',
                                 peer_interface='cluster',
                                 ensure_local_user=True)
     synchronize_ca()
     CONFIGS.write_all()
+    for r_id in relation_ids('identity-service'):
+        for unit in relation_list(r_id):
+            identity_changed(relation_id=r_id,
+                             remote_unit=unit)
 
 
 @hooks.hook('ha-relation-joined')

@@ -72,6 +72,7 @@ from charmhelpers.contrib.network.ip import (
     get_ipv6_addr,
     is_ipv6
 )
+from charmhelpers.contrib.openstack.context import ADDRESS_TYPES
 
 hooks = Hooks()
 CONFIGS = register_configs()
@@ -116,6 +117,8 @@ def config_changed():
             for unit in relation_list(r_id):
                 identity_changed(relation_id=r_id,
                                  remote_unit=unit)
+
+    [cluster_joined(rid) for rid in relation_ids('cluster')]
 
 
 @hooks.hook('shared-db-relation-joined')
@@ -205,16 +208,20 @@ def cluster_joined(relation_id=None):
                                 group='juju_keystone',
                                 peer_interface='cluster',
                                 ensure_local_user=True)
+    for addr_type in ADDRESS_TYPES:
+        address = get_address_in_network(
+            config('os-{}-network'.format(addr_type))
+        )
+        if address:
+            relation_set(
+                relation_id=relation_id,
+                relation_settings={'{}-address'.format(addr_type): address}
+            )
 
     if config('prefer-ipv6'):
         private_addr = get_ipv6_addr(exc_list=[config('vip')])[0]
-    else:
-        private_addr = unit_get('private-address')
-
-    address = get_address_in_network(config('os-internal-network'),
-                                     private_addr)
-    relation_set(relation_id=relation_id,
-                 relation_settings={'private-address': address})
+        relation_set(relation_id=relation_id,
+                     relation_settings={'private-address': private_addr})
 
 
 @hooks.hook('cluster-relation-changed',
@@ -290,7 +297,6 @@ def ha_changed():
         ensure_initial_admin(config)
         log('Cluster configured, notifying other services and updating '
             'keystone endpoint configuration')
-
     for rid in relation_ids('identity-service'):
         for unit in related_units(rid):
             identity_changed(relation_id=rid, remote_unit=unit)
@@ -298,6 +304,7 @@ def ha_changed():
 
 @hooks.hook('identity-admin-relation-changed')
 def admin_relation_changed():
+    # TODO: fixup
     relation_data = {
         'service_hostname': unit_get('private-address'),
         'service_port': config('service-port'),

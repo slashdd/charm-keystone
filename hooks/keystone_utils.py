@@ -506,25 +506,21 @@ def ensure_initial_admin(config):
                                  region=region)
 
 
-def create_keystone_endpoint(public_ip, service_port,
-                             internal_ip, admin_ip, auth_port, region):
+def endpoint_url(ip, port):
     proto = 'http'
     if https():
-        log("Setting https keystone endpoint")
         proto = 'https'
+    if is_ipv6(ip):
+        ip = "[{}]".format(ip)
+    return "%s://%s:%s/v2.0" % (proto, ip, port)
 
-    if is_ipv6(public_ip):
-        public_ip = "[{}]".format(public_ip)
-    if is_ipv6(internal_ip):
-        internal_ip = "[{}]".format(internal_ip)
-    if is_ipv6(admin_ip):
-        admin_ip = "[{}]".format(admin_ip)
 
-    public_url = "%s://%s:%s/v2.0" % (proto, public_ip, service_port)
-    admin_url = "%s://%s:%s/v2.0" % (proto, admin_ip, auth_port)
-    internal_url = "%s://%s:%s/v2.0" % (proto, internal_ip, service_port)
-    create_endpoint_template(region, "keystone", public_url,
-                             admin_url, internal_url)
+def create_keystone_endpoint(public_ip, service_port,
+                             internal_ip, admin_ip, auth_port, region):
+    create_endpoint_template(region, "keystone",
+                             endpoint_url(public_ip, service_port),
+                             endpoint_url(admin_ip, auth_port),
+                             endpoint_url(internal_ip, service_port))
 
 
 def update_user_password(username, password):
@@ -634,6 +630,7 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
     # the minimum settings needed per endpoint
     single = set(['service', 'region', 'public_url', 'admin_url',
                   'internal_url'])
+    https_cns = []
     if single.issubset(settings):
         # other end of relation advertised only one endpoint
         if 'None' in [v for k, v in settings.iteritems()]:
@@ -674,8 +671,12 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
                          adminurl=settings['admin_url'],
                          internalurl=settings['internal_url'])
             service_username = settings['service']
-            https_cn = urlparse.urlparse(settings['internal_url'])
-            https_cn = https_cn.hostname
+            # NOTE(jamespage) internal IP for backwards compat for SSL certs
+            internal_cn = urlparse.urlparse(settings['internal_url']).hostname
+            https_cns.append(internal_cn)
+            https_cns.append(
+                urlparse.urlparse(settings['public_url']).hostname)
+            https_cns.append(urlparse.urlparse(settings['admin_url']).hostname)
     else:
         # assemble multiple endpoints from relation data. service name
         # should be prepended to setting name, ie:
@@ -714,9 +715,12 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
                              adminurl=ep['admin_url'],
                              internalurl=ep['internal_url'])
                 services.append(ep['service'])
-                if not https_cn:
-                    https_cn = urlparse.urlparse(ep['internal_url'])
-                    https_cn = https_cn.hostname
+                # NOTE(jamespage) internal IP for backwards compat for
+                # SSL certs
+                internal_cn = urlparse.urlparse(ep['internal_url']).hostname
+                https_cns.append(internal_cn)
+                https_cns.append(urlparse.urlparse(ep['public_url']).hostname)
+                https_cns.append(urlparse.urlparse(ep['admin_url']).hostname)
         service_username = '_'.join(services)
 
     if 'None' in [v for k, v in settings.iteritems()]:
@@ -773,10 +777,17 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
     # generate or get a new cert/key for service if set to manage certs.
     if config('https-service-endpoints') in ['True', 'true']:
         ca = get_ca(user=SSH_USER)
-        cert, key = ca.get_cert_and_key(common_name=https_cn)
-        ca_bundle = ca.get_ca_bundle()
+        # NOTE(jamespage) may have multiple cns to deal with to iterate
+        https_cns = set(https_cns)
+        for https_cn in https_cns:
+            cert, key = ca.get_cert_and_key(common_name=https_cn)
+            relation_data['ssl_cert_{}'.format(https_cn)] = b64encode(cert)
+            relation_data['ssl_key_{}'.format(https_cn)] = b64encode(key)
+        # NOTE(jamespage) for backwards compatibility
+        cert, key = ca.get_cert_and_key(common_name=internal_cn)
         relation_data['ssl_cert'] = b64encode(cert)
         relation_data['ssl_key'] = b64encode(key)
+        ca_bundle = ca.get_ca_bundle()
         relation_data['ca_cert'] = b64encode(ca_bundle)
         relation_data['https_keystone'] = 'True'
     relation_set(relation_id=relation_id,

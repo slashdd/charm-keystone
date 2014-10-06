@@ -677,7 +677,6 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
             https_cns.append(
                 urlparse.urlparse(settings['public_url']).hostname)
             https_cns.append(urlparse.urlparse(settings['admin_url']).hostname)
-            internal_cn
     else:
         # assemble multiple endpoints from relation data. service name
         # should be prepended to setting name, ie:

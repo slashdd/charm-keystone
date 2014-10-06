@@ -89,5 +89,5 @@ class TestKeystoneContexts(CharmTestCase):
                      'unit-0': '10.0.0.0'
                  }
              }}
-            }
+             }
         )

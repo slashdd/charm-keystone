@@ -19,9 +19,9 @@ u = OpenStackAmuletUtils(ERROR)
 class KeystoneBasicDeployment(OpenStackAmuletDeployment):
     """Amulet tests on a basic keystone deployment."""
 
-    def __init__(self, series=None, openstack=None, source=None):
+    def __init__(self, series=None, openstack=None, source=None, stable=False):
         """Deploy the entire test environment."""
-        super(KeystoneBasicDeployment, self).__init__(series, openstack, source)
+        super(KeystoneBasicDeployment, self).__init__(series, openstack, source, stable)
         self._add_services()
         self._add_relations()
         self._configure_services()
@@ -29,11 +29,14 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         self._initialize_tests()
 
     def _add_services(self):
-        """Add the services that we're testing, including the number of units,
-           where keystone is local, and mysql and cinder are from the charm
-           store."""
-        this_service = ('keystone', 1)
-        other_services = [('mysql', 1), ('cinder', 1)]
+        """Add services
+
+           Add the services that we're testing, where keystone is local,
+           and the rest of the service are from lp branches that are
+           compatible with the local charm (e.g. stable or next).
+           """
+        this_service = {'name': 'keystone'}
+        other_services = [{'name': 'mysql'}, {'name': 'cinder'}]
         super(KeystoneBasicDeployment, self)._add_services(this_service,
                                                            other_services)
 
@@ -61,7 +64,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         self.keystone_sentry = self.d.sentry.unit['keystone/0']
         self.cinder_sentry = self.d.sentry.unit['cinder/0']
 
-        # Authenticate admin with keystone
+        # Authenticate keystone admin
         self.keystone = u.authenticate_keystone_admin(self.keystone_sentry,
                                                       user='admin',
                                                       password='openstack',
@@ -80,7 +83,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
                                        tenant_id=tenant.id,
                                        email='demo@demo.com')
 
-        # Authenticate demo user with keystone
+        # Authenticate keystone demo
         self.keystone_demo = u.authenticate_keystone_user(self.keystone,
                                                         user=self.demo_user,
                                                         password='password',
@@ -123,10 +126,8 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
     def test_roles(self):
         """Verify all existing roles."""
         role1 = {'name': 'demoRole', 'id': u.not_null}
-        role2 = {'name': 'KeystoneAdmin', 'id': u.not_null}
-        role3 = {'name': 'KeystoneServiceAdmin', 'id': u.not_null}
-        role4 = {'name': 'Admin', 'id': u.not_null}
-        expected = [role1, role2, role3, role4]
+        role2 = {'name': 'Admin', 'id': u.not_null}
+        expected = [role1, role2]
         actual = self.keystone.roles.list()
 
         ret = u.validate_role_data(expected, actual)
@@ -280,11 +281,18 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             message = u.relation_error('cinder identity-service', ret)
             amulet.raise_status(amulet.FAIL, msg=message)
 
-    def test_restart_on_config_change(self):
-        """Verify that keystone is restarted when the config is changed."""
+    def test_z_restart_on_config_change(self):
+        """Verify that keystone is restarted when the config is changed.
+
+            Note(coreycb): The method name with the _z_ is a little odd
+            but it forces the test to run last.  It just makes things
+            easier because restarting services requires re-authorization.
+            """
         self.d.configure('keystone', {'verbose': 'True'})
         if not u.service_restarted(self.keystone_sentry, 'keystone-all',
-                                  '/etc/keystone/keystone.conf', sleep_time=10):
+                                  '/etc/keystone/keystone.conf',
+                                  sleep_time=30):
+            self.d.configure('keystone', {'verbose': 'False'})
             message = "keystone service didn't restart after config change"
             amulet.raise_status(amulet.FAIL, msg=message)
         self.d.configure('keystone', {'verbose': 'False'})

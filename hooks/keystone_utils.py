@@ -115,7 +115,8 @@ BASE_RESOURCE_MAP = OrderedDict([
                      context.PostgresqlDBContext(),
                      context.SyslogContext(),
                      keystone_context.HAProxyContext(),
-                     context.BindHostContext()],
+                     context.BindHostContext(),
+                     context.WorkerConfigContext()],
     }),
     (HAPROXY_CONF, {
         'contexts': [context.HAProxyContext(),

@@ -8,7 +8,6 @@ from functools import partial
 from charmhelpers.core.hookenv import unit_get
 from charmhelpers.fetch import apt_install
 from charmhelpers.core.hookenv import (
-    WARNING,
     ERROR,
     log
 )
@@ -175,7 +174,6 @@ def format_ipv6_addr(address):
     if is_ipv6(address):
         address = "[%s]" % address
     else:
-        log("Not a valid ipv6 address: %s" % address, level=WARNING)
         address = None
 
     return address
@@ -347,3 +345,39 @@ def is_bridge_member(nic):
         if nic in get_bridge_nics(bridge):
             return True
     return False
+
+
+def get_ifaces_cidr(expected_ifaces=None, excludes_ifaces=None):
+    """Return a set of cidrs from interfaces except local ipv4 and ipv6.
+
+    :param expected_ifaces (list): ifaces, For example, ['eth0', 'br0'].
+    :param excludes_ifaces (list): ifaces for the physical interfaces want to
+     be excluded.
+    :returns set: cidrs.
+    """
+    if expected_ifaces:
+        ifaces = expected_ifaces
+    elif excludes_ifaces:
+        interfaces = netifaces.interfaces()
+        ifaces = [i for i in interfaces if i not in excludes_ifaces]
+    else:
+        ifaces = netifaces.interfaces()
+
+    network = []
+    for iface in ifaces:
+        addresses = netifaces.ifaddresses(iface)
+        if netifaces.AF_INET in addresses:
+            for addr in addresses[netifaces.AF_INET]:
+                if addr['addr'] != '127.0.0.1':
+                    ipnetwork = netaddr.IPNetwork("%s/%s" % (addr['addr'],
+                                                             addr['netmask']))
+                    network.append(ipnetwork.cidr)
+        if netifaces.AF_INET6 in addresses:
+            for addr in addresses[netifaces.AF_INET6]:
+                if not addr['addr'].startswith('fe80') and \
+                        not addr['addr'].startswith('::1'):
+                    ipnetwork = netaddr.IPNetwork("%s/%s" % (addr['addr'],
+                                                             addr['netmask']))
+                    network.append(ipnetwork.cidr)
+
+    return set(network)

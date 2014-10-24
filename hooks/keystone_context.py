@@ -13,7 +13,9 @@ from charmhelpers.contrib.hahelpers.cluster import (
 from charmhelpers.contrib.hahelpers.apache import install_ca_cert
 
 from charmhelpers.contrib.network.ip import (
-    get_address_in_network, is_address_in_network)
+    get_address_in_network,
+    is_address_in_network,
+    get_ifaces_cidr)
 
 import os
 
@@ -58,12 +60,19 @@ class ApacheSSLContext(context.ApacheSSLContext):
                              'os-public-network']:
             address = get_address_in_network(config(network_type),
                                              unit_get('private-address'))
-            if len(vips) > 0 and is_clustered():
+            if len(vips) > 1 and is_clustered():
                 for vip in vips:
-                    if is_address_in_network(config(network_type),
-                                             vip):
+                    if config(network_type) and \
+                            is_address_in_network(config(network_type), vip):
                         addresses.append(vip)
-                        break
+                    else:
+                        cidrs = get_ifaces_cidr()
+                        for cidr in cidrs:
+                            if is_address_in_network(cidr, vip):
+                                addresses.append(vip)
+                                break
+                        if addresses:
+                            break
             elif is_clustered():
                 addresses.append(config('vip'))
             else:

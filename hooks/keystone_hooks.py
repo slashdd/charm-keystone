@@ -44,6 +44,7 @@ from keystone_utils import (
     determine_packages,
     do_openstack_upgrade,
     ensure_initial_admin,
+    get_admin_passwd,
     migrate_database,
     save_script_rc,
     synchronize_ca,
@@ -53,7 +54,6 @@ from keystone_utils import (
     CLUSTER_RES,
     KEYSTONE_CONF,
     SSH_USER,
-    STORED_PASSWD,
     setup_ipv6
 )
 
@@ -120,6 +120,9 @@ def config_changed():
             for unit in relation_list(r_id):
                 identity_changed(relation_id=r_id,
                                  remote_unit=unit)
+        for r_id in relation_ids('identity-admin'):
+            for unit in relation_list(r_id):
+                admin_relation_changed(relation_id=r_id)
 
     [cluster_joined(rid) for rid in relation_ids('cluster')]
 
@@ -316,7 +319,7 @@ def ha_changed():
 
 
 @hooks.hook('identity-admin-relation-changed')
-def admin_relation_changed():
+def admin_relation_changed(relation_id=None):
     # TODO: fixup
     relation_data = {
         'service_hostname': unit_get('private-address'),
@@ -325,10 +328,8 @@ def admin_relation_changed():
         'service_tenant_name': config('admin-role'),
         'service_region': config('region'),
     }
-    if os.path.isfile(STORED_PASSWD):
-        with open(STORED_PASSWD) as f:
-            relation_data['service_password'] = f.readline().strip('\n')
-    relation_set(**relation_data)
+    relation_data['service_password'] = get_admin_passwd()
+    relation_set(relation_id=relation_id, **relation_data)
 
 
 def configure_https():

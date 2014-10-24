@@ -467,19 +467,7 @@ def grant_role(user, role, tenant):
             (user, role, tenant))
 
 
-def ensure_initial_admin(config):
-    """ Ensures the minimum admin stuff exists in whatever database we're
-        using.
-        This and the helper functions it calls are meant to be idempotent and
-        run during install as well as during db-changed.  This will maintain
-        the admin tenant, user, role, service entry and endpoint across every
-        datastore we might use.
-        TODO: Possibly migrate data from one backend to another after it
-        changes?
-    """
-    create_tenant("admin")
-    create_tenant(config("service-tenant"))
-
+def get_admin_passwd():
     passwd = ""
     if config("admin-password") != "None":
         passwd = config("admin-password")
@@ -492,6 +480,22 @@ def ensure_initial_admin(config):
         cmd = ['pwgen', '-c', '16', '1']
         passwd = str(subprocess.check_output(cmd)).strip()
         open(STORED_PASSWD, 'w+').writelines("%s\n" % passwd)
+    return passwd
+
+
+def ensure_initial_admin(config):
+    """ Ensures the minimum admin stuff exists in whatever database we're
+        using.
+        This and the helper functions it calls are meant to be idempotent and
+        run during install as well as during db-changed.  This will maintain
+        the admin tenant, user, role, service entry and endpoint across every
+        datastore we might use.
+        TODO: Possibly migrate data from one backend to another after it
+        changes?
+    """
+    create_tenant("admin")
+    create_tenant(config("service-tenant"))
+    passwd = get_admin_passwd()
     # User is managed by ldap backend when using ldap identity
     if not (config('identity-backend') == 'ldap' and config('ldap-readonly')):
         create_user(config('admin-user'), passwd, tenant='admin')

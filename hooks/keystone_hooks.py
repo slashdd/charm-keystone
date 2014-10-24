@@ -120,10 +120,8 @@ def config_changed():
             for unit in relation_list(r_id):
                 identity_changed(relation_id=r_id,
                                  remote_unit=unit)
-        for r_id in relation_ids('identity-admin'):
-            for unit in relation_list(r_id):
-                admin_relation_changed(relation_id=r_id)
 
+    [admin_relation_changed(rid) for rid in relation_ids('identity-admin')]
     [cluster_joined(rid) for rid in relation_ids('cluster')]
 
 

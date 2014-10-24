@@ -39,6 +39,7 @@ import charmhelpers.contrib.unison as unison
 
 from charmhelpers.core.hookenv import (
     config,
+    is_relation_made,
     log,
     relation_get,
     relation_set,
@@ -467,20 +468,33 @@ def grant_role(user, role, tenant):
             (user, role, tenant))
 
 
+def store_admin_passwd(passwd):
+    open(STORED_PASSWD, 'w+').writelines("%s\n" % passwd)
+
+
 def get_admin_passwd():
+    if config("admin-password") not in ["None", ""]:
+        return config("admin-password")
     passwd = ""
-    if config("admin-password") != "None":
-        passwd = config("admin-password")
-    elif os.path.isfile(STORED_PASSWD):
-        log("Loading stored passwd from %s" % STORED_PASSWD)
-        passwd = open(STORED_PASSWD, 'r').readline().strip('\n')
-    if passwd == "":
-        log("Generating new passwd for user: %s" %
-            config("admin-user"))
-        cmd = ['pwgen', '-c', '16', '1']
-        passwd = str(subprocess.check_output(cmd)).strip()
-        open(STORED_PASSWD, 'w+').writelines("%s\n" % passwd)
-    return passwd
+    if eligible_leader(CLUSTER_RES):
+        if os.path.isfile(STORED_PASSWD):
+            log("Loading stored passwd from %s" % STORED_PASSWD)
+            passwd = open(STORED_PASSWD, 'r').readline().strip('\n')
+        if passwd == "":
+            log("Generating new passwd for user: %s" %
+                config("admin-user"))
+            cmd = ['pwgen', '-c', '16', '1']
+            passwd = str(subprocess.check_output(cmd)).strip()
+            store_admin_passwd(passwd)
+        if is_relation_made("cluster"):
+            peer_store("admin_passwd", passwd)
+        return passwd
+    else:
+        if is_relation_made("cluster"):
+            passwd = peer_retrieve('admin_passwd')
+            if passwd:
+                store_admin_passwd(passwd)
+        return passwd
 
 
 def ensure_initial_admin(config):
@@ -495,12 +509,13 @@ def ensure_initial_admin(config):
     """
     create_tenant("admin")
     create_tenant(config("service-tenant"))
-    passwd = get_admin_passwd()
     # User is managed by ldap backend when using ldap identity
     if not (config('identity-backend') == 'ldap' and config('ldap-readonly')):
-        create_user(config('admin-user'), passwd, tenant='admin')
-        update_user_password(config('admin-user'), passwd)
-        create_role(config('admin-role'), config('admin-user'), 'admin')
+        passwd = get_admin_passwd()
+        if passwd:
+            create_user(config('admin-user'), passwd, tenant='admin')
+            update_user_password(config('admin-user'), passwd)
+            create_role(config('admin-role'), config('admin-user'), 'admin')
     create_service_entry("keystone", "identity", "Keystone Identity Service")
 
     for region in config('region').split():

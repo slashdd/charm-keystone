@@ -253,6 +253,7 @@ def cluster_changed():
         for unit in relation_list(r_id):
             identity_changed(relation_id=r_id,
                              remote_unit=unit)
+    [admin_relation_changed(rid) for rid in relation_ids('identity-admin')]
 
 
 @hooks.hook('ha-relation-joined')

@@ -5,8 +5,6 @@ from test_utils import (
     CharmTestCase
 )
 
-from netaddr import IPNetwork
-
 TO_PATCH = [
     'determine_apache_port',
     'determine_api_port',
@@ -94,17 +92,17 @@ class TestKeystoneContexts(CharmTestCase):
              }
         )
 
+    @patch('keystone_context.log')
     @patch('keystone_context.config')
     @patch('keystone_context.unit_get')
     @patch('keystone_context.is_clustered')
-    @patch('charmhelpers.contrib.network.ip.get_ifaces_cidr')
     @patch('charmhelpers.contrib.network.ip.get_address_in_network')
     def test_canonical_names_without_network_splits(self,
                                                     mock_get_address,
                                                     mock_is_clustered,
-                                                    mock_get_ifaces_cidr,
                                                     mock_unit_get,
-                                                    mock_config):
+                                                    mock_config,
+                                                    mock_log):
         cfg_dict = {'vip': '10.0.3.1 10.0.3.2',
                     'os-internal-network': None,
                     'os-admin-network': None,
@@ -114,9 +112,5 @@ class TestKeystoneContexts(CharmTestCase):
             def __call__(self, key):
                 return cfg_dict[key]
         mock_unit_get.return_value = '10.0.3.10'
-        mock_is_clustered.return_value = True
-        mock_config.side_effect = mock_cls_config()
-        mock_get_address.return_value = '10.0.3.10'
-        mock_get_ifaces_cidr.return_value = set(IPNetwork('10.0.3.0/24'))
-        ctxt = context.ApacheSSLContext()
-        self.assertEqual(['10.0.3.1'], ctxt.canonical_names())
+        context.ApacheSSLContext().canonical_names()
+        mock_log.assert_called_once()

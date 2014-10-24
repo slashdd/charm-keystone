@@ -614,10 +614,13 @@ class ApacheSSLContext(OSContextGenerator):
                              'os-public-network']:
             address = get_address_in_network(config(network_type),
                                              unit_get('private-address'))
-            if len(vips) > 0 and is_clustered():
+            if len(vips) > 1 and is_clustered():
+                if not config(network_type):
+                    log("Multinet is used, but network_type (%s) is None."
+                        % network_type, level='WARNING')
+                    continue
                 for vip in vips:
-                    if is_address_in_network(config(network_type),
-                                             vip):
+                    if is_address_in_network(config(network_type), vip):
                         addresses.append((address, vip))
                         break
             elif is_clustered():

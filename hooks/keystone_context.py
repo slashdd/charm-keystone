@@ -1,4 +1,4 @@
-from charmhelpers.core.hookenv import config, unit_get
+from charmhelpers.core.hookenv import config, unit_get, log
 
 from charmhelpers.core.host import mkdir, write_file
 
@@ -14,8 +14,7 @@ from charmhelpers.contrib.hahelpers.apache import install_ca_cert
 
 from charmhelpers.contrib.network.ip import (
     get_address_in_network,
-    is_address_in_network,
-    get_ifaces_cidr)
+    is_address_in_network)
 
 import os
 
@@ -61,18 +60,14 @@ class ApacheSSLContext(context.ApacheSSLContext):
             address = get_address_in_network(config(network_type),
                                              unit_get('private-address'))
             if len(vips) > 1 and is_clustered():
+                if not config(network_type):
+                    log("Multinet is used, but network_type (%s) is None."
+                        % network_type, level='WARNING')
+                    continue
                 for vip in vips:
-                    if config(network_type) and \
-                            is_address_in_network(config(network_type), vip):
+                    if is_address_in_network(config(network_type), vip):
                         addresses.append(vip)
-                    else:
-                        cidrs = get_ifaces_cidr()
-                        for cidr in cidrs:
-                            if is_address_in_network(cidr, vip):
-                                addresses.append(vip)
-                                break
-                        if addresses:
-                            break
+                        break
             elif is_clustered():
                 addresses.append(config('vip'))
             else:

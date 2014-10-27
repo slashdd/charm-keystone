@@ -13,7 +13,8 @@ from charmhelpers.contrib.hahelpers.cluster import (
 from charmhelpers.contrib.hahelpers.apache import install_ca_cert
 
 from charmhelpers.contrib.network.ip import (
-    get_address_in_network, is_address_in_network)
+    get_address_in_network,
+    is_address_in_network)
 
 import os
 
@@ -49,7 +50,6 @@ class ApacheSSLContext(context.ApacheSSLContext):
         install_ca_cert(ca.get_ca_bundle())
 
     def canonical_names(self):
-        print "canonical"
         addresses = []
         vips = []
         if config('vip'):
@@ -59,8 +59,6 @@ class ApacheSSLContext(context.ApacheSSLContext):
                              'os-public-network']:
             address = get_address_in_network(config(network_type),
                                              unit_get('private-address'))
-            print "lenvip:%s" % len(vips)
-            print is_clustered()
             if len(vips) > 1 and is_clustered():
                 if not config(network_type):
                     log("Multinet is used, but network_type (%s) is None."

@@ -13,8 +13,7 @@ from charmhelpers.contrib.hahelpers.cluster import (
 from charmhelpers.contrib.hahelpers.apache import install_ca_cert
 
 from charmhelpers.contrib.network.ip import (
-    get_address_in_network,
-    is_address_in_network)
+    get_address_in_network, is_address_in_network)
 
 import os
 

@@ -103,14 +103,17 @@ class TestKeystoneContexts(CharmTestCase):
                                                     mock_unit_get,
                                                     mock_config,
                                                     mock_log):
-        cfg_dict = {'vip': '10.0.3.1 10.0.3.2',
-                    'os-internal-network': None,
-                    'os-admin-network': None,
-                    'os-public-network': None}
+        NET_CONFIG = {'vip': '10.0.3.1 10.0.3.2',
+                      'os-internal-network': None,
+                      'os-admin-network': None,
+                      'os-public-network': None}
 
-        class mock_cls_config():
-            def __call__(self, key):
-                return cfg_dict[key]
         mock_unit_get.return_value = '10.0.3.10'
-        context.ApacheSSLContext().canonical_names()
-        mock_log.assert_called_once()
+        mock_is_clustered.return_value = True
+        config = {}
+        config.update(NET_CONFIG)
+        mock_config.side_effect = lambda key: config[key]
+        apache = context.ApacheSSLContext()
+        apache.canonical_names()
+        msg = "Multinet is used, but network_type (os-public-network) is None."
+        mock_log.assert_called_with(msg, level="WARNING")

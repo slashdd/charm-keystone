@@ -12,3 +12,4 @@ include:
     - payload.execd
     - contrib.peerstorage
     - contrib.network.ip
+    - contrib.charmsupport

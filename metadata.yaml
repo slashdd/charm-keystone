@@ -7,6 +7,9 @@ description: |
  implements OpenStack’s Identity API.
 categories: ["misc"]
 provides:
+  nrpe-external-master:
+    interface: nrpe-external-master
+    scope: container
   identity-service:
     interface: keystone
   identity-admin:

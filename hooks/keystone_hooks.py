@@ -19,6 +19,7 @@ from charmhelpers.core.hookenv import (
     relation_get,
     relation_ids,
     relation_set,
+    relations_of_type,
     related_units,
     unit_get,
 )
@@ -375,7 +376,13 @@ def upgrade_charm():
 
 @hooks.hook('nrpe-external-master-relation-joined', 'nrpe-external-master-relation-changed')
 def update_nrpe_config():
-    nrpe = NRPE()
+    # Find out if nrpe set nagios_hostname
+    hostname = None
+    for rel in relations_of_type('nrpe-external-master'):
+        if 'nagios_hostname' in rel:
+            hostname = rel['nagios_hostname']
+            break
+    nrpe = NRPE(hostname=hostname)
     apt_install('python-dbus')
     
     nrpe.add_check(

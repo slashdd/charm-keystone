@@ -616,8 +616,8 @@ class ApacheSSLContext(OSContextGenerator):
                                              unit_get('private-address'))
             if len(vips) > 1 and is_clustered():
                 if not config(network_type):
-                    log("Multinet is used, but network_type (%s) is None."
-                        % network_type, level='WARNING')
+                    log("Multiple networks configured but network_type"
+                        "(%s) is None." % network_type, level='WARNING')
                     continue
                 for vip in vips:
                     if is_address_in_network(config(network_type), vip):
@@ -705,6 +705,7 @@ class NeutronContext(OSContextGenerator):
                                           self.network_manager)
         n1kv_config = neutron_plugin_attribute(self.plugin, 'config',
                                                self.network_manager)
+        n1kv_user_config_flags = config('n1kv-config-flags')
         n1kv_ctxt = {
             'core_plugin': driver,
             'neutron_plugin': 'n1kv',
@@ -715,10 +716,28 @@ class NeutronContext(OSContextGenerator):
             'vsm_username': config('n1kv-vsm-username'),
             'vsm_password': config('n1kv-vsm-password'),
             'restrict_policy_profiles': config(
-                'n1kv_restrict_policy_profiles'),
+                'n1kv-restrict-policy-profiles'),
         }
+        if n1kv_user_config_flags:
+            flags = config_flags_parser(n1kv_user_config_flags)
+            n1kv_ctxt['user_config_flags'] = flags
 
         return n1kv_ctxt
+
+    def calico_ctxt(self):
+        driver = neutron_plugin_attribute(self.plugin, 'driver',
+                                          self.network_manager)
+        config = neutron_plugin_attribute(self.plugin, 'config',
+                                          self.network_manager)
+        calico_ctxt = {
+            'core_plugin': driver,
+            'neutron_plugin': 'Calico',
+            'neutron_security_groups': self.neutron_security_groups,
+            'local_ip': unit_private_ip(),
+            'config': config
+        }
+
+        return calico_ctxt
 
     def neutron_ctxt(self):
         if https():
@@ -753,6 +772,8 @@ class NeutronContext(OSContextGenerator):
             ctxt.update(self.nvp_ctxt())
         elif self.plugin == 'n1kv':
             ctxt.update(self.n1kv_ctxt())
+        elif self.plugin == 'Calico':
+            ctxt.update(self.calico_ctxt())
 
         alchemy_flags = config('neutron-alchemy-flags')
         if alchemy_flags:
@@ -766,21 +787,39 @@ class NeutronContext(OSContextGenerator):
 class OSConfigFlagContext(OSContextGenerator):
 
     """
-    Responsible for adding user-defined config-flags in charm config to a
-    template context.
+    Provides support for user-defined config flags.
+
+    Users can define a comma-seperated list of key=value pairs
+    in the charm configuration and apply them at any point in
+    any file by using a template flag.
+
+    Sometimes users might want config flags inserted within a
+    specific section so this class allows users to specify the
+    template flag name, allowing for multiple template flags
+    (sections) within the same context.
 
     NOTE: the value of config-flags may be a comma-separated list of
           key=value pairs and some Openstack config files support
           comma-separated lists as values.
     """
 
+    def __init__(self, charm_flag='config-flags',
+                 template_flag='user_config_flags'):
+        """
+        charm_flag: config flags in charm configuration.
+        template_flag: insert point for user-defined flags template file.
+        """
+        super(OSConfigFlagContext, self).__init__()
+        self._charm_flag = charm_flag
+        self._template_flag = template_flag
+
     def __call__(self):
-        config_flags = config('config-flags')
+        config_flags = config(self._charm_flag)
         if not config_flags:
             return {}
 
-        flags = config_flags_parser(config_flags)
-        return {'user_config_flags': flags}
+        return {self._template_flag:
+                config_flags_parser(config_flags)}
 
 
 class SubordinateConfigContext(OSContextGenerator):

@@ -92,10 +92,10 @@ class TestKeystoneContexts(CharmTestCase):
              }
         )
 
-    @patch('keystone_context.log')
-    @patch('keystone_context.config')
-    @patch('keystone_context.unit_get')
-    @patch('keystone_context.is_clustered')
+    @patch('charmhelpers.contrib.openstack.context.log')
+    @patch('charmhelpers.contrib.openstack.context.config')
+    @patch('charmhelpers.contrib.openstack.context.unit_get')
+    @patch('charmhelpers.contrib.openstack.context.is_clustered')
     @patch('charmhelpers.contrib.network.ip.get_address_in_network')
     def test_canonical_names_without_network_splits(self,
                                                     mock_get_address,
@@ -115,5 +115,6 @@ class TestKeystoneContexts(CharmTestCase):
         mock_config.side_effect = lambda key: config[key]
         apache = context.ApacheSSLContext()
         apache.canonical_names()
-        msg = "Multinet is used, but network_type (os-public-network) is None."
+        msg = "Multiple networks configured but network_type" \
+              "(os-public-network) is None."
         mock_log.assert_called_with(msg, level="WARNING")

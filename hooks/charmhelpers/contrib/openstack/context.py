@@ -586,29 +586,11 @@ class ApacheSSLContext(OSContextGenerator):
                         cns.append(k.lstrip('ssl_key_'))
         return list(set(cns))
 
-    def __call__(self):
-        if isinstance(self.external_ports, basestring):
-            self.external_ports = [self.external_ports]
-        if (not self.external_ports or not https()):
-            return {}
-
-        self.configure_ca()
-        self.enable_modules()
-
-        ctxt = {
-            'namespace': self.service_namespace,
-            'endpoints': [],
-            'ext_ports': []
-        }
-
-        for cn in self.canonical_names():
-            self.configure_cert(cn)
-
+    def get_addresses(self):
         addresses = []
         vips = []
         if config('vip'):
             vips = config('vip').split()
-
         for network_type in ['os-internal-network',
                              'os-admin-network',
                              'os-public-network']:
@@ -627,7 +609,27 @@ class ApacheSSLContext(OSContextGenerator):
                 addresses.append((address, config('vip')))
             else:
                 addresses.append((address, address))
+        return addresses
 
+    def __call__(self):
+        if isinstance(self.external_ports, basestring):
+            self.external_ports = [self.external_ports]
+        if (not self.external_ports or not https()):
+            return {}
+
+        self.configure_ca()
+        self.enable_modules()
+
+        ctxt = {
+            'namespace': self.service_namespace,
+            'endpoints': [],
+            'ext_ports': []
+        }
+
+        for cn in self.canonical_names():
+            self.configure_cert(cn)
+
+        addresses = self.get_addresses()
         for address, endpoint in set(addresses):
             for api_port in self.external_ports:
                 ext_port = determine_apache_port(api_port)

@@ -1,4 +1,4 @@
-from charmhelpers.core.hookenv import config, unit_get, log
+from charmhelpers.core.hookenv import config
 
 from charmhelpers.core.host import mkdir, write_file
 
@@ -6,14 +6,10 @@ from charmhelpers.contrib.openstack import context
 
 from charmhelpers.contrib.hahelpers.cluster import (
     determine_apache_port,
-    determine_api_port,
-    is_clustered
+    determine_api_port
 )
 
 from charmhelpers.contrib.hahelpers.apache import install_ca_cert
-
-from charmhelpers.contrib.network.ip import (
-    get_address_in_network, is_address_in_network)
 
 import os
 
@@ -49,29 +45,12 @@ class ApacheSSLContext(context.ApacheSSLContext):
         install_ca_cert(ca.get_ca_bundle())
 
     def canonical_names(self):
-        addresses = []
-        vips = []
-        if config('vip'):
-            vips = config('vip').split()
-        for network_type in ['os-internal-network',
-                             'os-admin-network',
-                             'os-public-network']:
-            address = get_address_in_network(config(network_type),
-                                             unit_get('private-address'))
-            if len(vips) > 1 and is_clustered():
-                if not config(network_type):
-                    log("Multinet is used, but network_type (%s) is None."
-                        % network_type, level='WARNING')
-                    continue
-                for vip in vips:
-                    if is_address_in_network(config(network_type), vip):
-                        addresses.append(vip)
-                        break
-            elif is_clustered():
-                addresses.append(config('vip'))
-            else:
-                addresses.append(address)
-        return list(set(addresses))
+        addresses = self.get_addresses()
+        addrs = []
+        for address, endpoint in addresses:
+            addrs.append(endpoint)
+
+        return list(set(addrs))
 
 
 class HAProxyContext(context.HAProxyContext):

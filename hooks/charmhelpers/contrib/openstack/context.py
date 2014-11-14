@@ -586,29 +586,47 @@ class ApacheSSLContext(OSContextGenerator):
                         cns.append(k.lstrip('ssl_key_'))
         return list(set(cns))
 
-    def get_addresses(self):
+    def get_network_addresses(self):
+        """For each network configured, return corresponding address and vip
+           (if available).
+
+        Returns a list of tuples of the form:
+
+            [(address_in_net_a, vip_in_net_a),
+             (address_in_net_b, vip_in_net_b),
+             ...]
+
+            or, if no vip(s) available:
+
+            [(address_in_net_a, address_in_net_a),
+             (address_in_net_b, address_in_net_b),
+             ...]
+        """
         addresses = []
         vips = []
         if config('vip'):
             vips = config('vip').split()
-        for network_type in ['os-internal-network',
-                             'os-admin-network',
-                             'os-public-network']:
-            address = get_address_in_network(config(network_type),
-                                             unit_get('private-address'))
+
+        for net_type in ['os-internal-network', 'os-admin-network',
+                         'os-public-network']:
+            addr = get_address_in_network(config(net_type),
+                                          unit_get('private-address'))
             if len(vips) > 1 and is_clustered():
-                if not config(network_type):
-                    log("Multiple networks configured but network_type"
-                        "(%s) is None." % network_type, level='WARNING')
+                if not config(net_type):
+                    log("Multiple networks configured but net_type "
+                        "is None (%s)." % net_type, level='WARNING')
                     continue
+
                 for vip in vips:
-                    if is_address_in_network(config(network_type), vip):
-                        addresses.append((address, vip))
+                    if is_address_in_network(config(net_type), vip):
+                        addresses.append((addr, vip))
                         break
-            elif is_clustered():
-                addresses.append((address, config('vip')))
+
+            elif is_clustered() and config('vip'):
+                addresses.append((addr, config('vip')))
             else:
-                addresses.append((address, address))
+                addresses.append((addr, addr))
+
         return addresses
 
     def __call__(self):
@@ -629,7 +647,7 @@ class ApacheSSLContext(OSContextGenerator):
         for cn in self.canonical_names():
             self.configure_cert(cn)
 
-        addresses = self.get_addresses()
+        addresses = self.get_network_addresses()
         for address, endpoint in set(addresses):
             for api_port in self.external_ports:
                 ext_port = determine_apache_port(api_port)

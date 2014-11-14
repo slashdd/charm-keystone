@@ -45,7 +45,7 @@ class ApacheSSLContext(context.ApacheSSLContext):
         install_ca_cert(ca.get_ca_bundle())
 
     def canonical_names(self):
-        addresses = self.get_addresses()
+        addresses = self.get_network_addresses()
         addrs = []
         for address, endpoint in addresses:
             addrs.append(endpoint)

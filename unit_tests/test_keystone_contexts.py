@@ -115,6 +115,6 @@ class TestKeystoneContexts(CharmTestCase):
         mock_config.side_effect = lambda key: config[key]
         apache = context.ApacheSSLContext()
         apache.canonical_names()
-        msg = "Multiple networks configured but network_type" \
-              "(os-public-network) is None."
+        msg = "Multiple networks configured but net_type" \
+              " is None (os-public-network)."
         mock_log.assert_called_with(msg, level="WARNING")

@@ -1,4 +1,5 @@
 #!/usr/bin/python
+import shutil
 import subprocess
 import os
 import urlparse
@@ -32,12 +33,15 @@ from charmhelpers.contrib.openstack.utils import (
     configure_installation_source,
     error_out,
     get_os_codename_install_source,
+    git_install_requested,
+    git_clone_and_install,
     os_release,
     save_script_rc as _save_script_rc)
 
 import charmhelpers.contrib.unison as unison
 
 from charmhelpers.core.hookenv import (
+    charm_dir,
     config,
     log,
     relation_get,
@@ -49,14 +53,19 @@ from charmhelpers.fetch import (
     apt_install,
     apt_update,
     apt_upgrade,
-    add_source
+    add_source,
 )
 
 from charmhelpers.core.host import (
+    adduser,
+    add_group,
+    add_user_to_group,
+    mkdir,
     service_stop,
     service_start,
     pwgen,
-    lsb_release
+    lsb_release,
+    write_file,
 )
 
 from charmhelpers.contrib.peerstorage import (
@@ -83,8 +92,23 @@ BASE_PACKAGES = [
     'uuid',
 ]
 
+BASE_GIT_PACKAGES = [
+    'libxml2-dev',
+    'libxslt1-dev',
+    'python-dev',
+    'python-pip',
+    'python-setuptools',
+    'zlib1g-dev',
+]
+
 BASE_SERVICES = [
     'keystone',
+]
+
+# ubuntu packages that should not be installed when deploying from git
+GIT_PACKAGE_BLACKLIST = [
+    'keystone',
+    'python-keystoneclient',
 ]
 
 API_PORTS = {
@@ -215,6 +239,10 @@ def register_configs():
 
 
 def restart_map():
+    #TODO(coreycb): For deploy from git support, add function pointer restart
+    #               support to charm-helpers in restart_on_change(). Then we
+    #               can pass git_restart_keystone() to restart keystone, since
+    #               upstart script isn't available.
     return OrderedDict([(cfg, v['services'])
                         for cfg, v in resource_map().iteritems()
                         if v['services']])
@@ -235,6 +263,13 @@ def determine_packages():
     packages = [] + BASE_PACKAGES
     for k, v in resource_map().iteritems():
         packages.extend(v['services'])
+
+    if git_install_requested():
+        packages.extend(BASE_GIT_PACKAGES)
+        # don't include packages that will be installed from git
+        for p in GIT_PACKAGE_BLACKLIST:
+            packages.remove(p)
+
     return list(set(packages))
 
 
@@ -273,13 +308,19 @@ def do_openstack_upgrade(configs):
 def migrate_database():
     '''Runs keystone-manage to initialize a new database or migrate existing'''
     log('Migrating the keystone database.', level=INFO)
-    service_stop('keystone')
+    if git_install_requested():
+        git_stop_keystone()
+    else:
+        service_stop('keystone')
     # NOTE(jamespage) > icehouse creates a log file as root so use
     # sudo to execute as keystone otherwise keystone won't start
     # afterwards.
     cmd = ['sudo', '-u', 'keystone', 'keystone-manage', 'db_sync']
     subprocess.check_output(cmd)
-    service_start('keystone')
+    if git_install_requested():
+        git_start_keystone()
+    else:
+        service_start('keystone')
     time.sleep(10)
 
 
@@ -836,3 +877,87 @@ def setup_ipv6():
                    ' main')
         apt_update()
         apt_install('haproxy/trusty-backports', fatal=True)
+
+
+def git_install(file_name):
+    """Perform setup, and install git repos specified in yaml config file."""
+    if git_install_requested():
+        git_pre_install()
+        git_clone_and_install(file_name, core_project='keystone')
+        git_post_install()
+
+
+def git_pre_install():
+    """Perform pre keystone installation setup."""
+    dirs = [
+        '/var/lib/keystone',
+        '/var/lib/keystone/cache',
+        '/var/log/keystone',
+        '/etc/keystone',
+    ]
+
+    # TODO(coreycb): Revisit this.  'keystone-manage db_sync' fails without
+    # the error/access logs having been created. might have been a permission
+    # denied so perhaps chmod is enough?
+    logs = [
+        '/var/log/keystone/keystone.log',
+        '/home/ubuntu/error.log',
+        '/home/ubuntu/access.log',
+        os.path.join(charm_dir(), 'error.log'),
+        os.path.join(charm_dir(), 'access.log'),
+    ]
+
+    adduser('keystone', shell='/bin/bash', system_user=True)
+    add_group('keystone', system_group=True)
+    add_user_to_group('keystone', 'keystone')
+
+    for d in dirs:
+        mkdir(d, owner='keystone', group='keystone', perms=0700, force=False)
+
+    for l in logs:
+        write_file(l, '', owner='keystone', group='keystone', perms=0600)
+
+
+def git_post_install():
+    """Perform post keystone installation setup."""
+    src_etc = os.path.join(charm_dir(), '/mnt/openstack-git/keystone.git/etc/')
+    configs = {
+        'keystone': {
+            'src': os.path.join(src_etc, 'keystone.conf.sample'),
+            'dest': '/etc/keystone/keystone.conf',
+        },
+        'policy': {
+            'src': os.path.join(src_etc, 'policy.json'),
+            'dest': '/etc/keystone/policy.json',
+        },
+        'keystone-paste': {
+            'src': os.path.join(src_etc, 'keystone-paste.ini'),
+            'dest': '/etc/keystone/keystone-paste.ini',
+        },
+        'logging': {
+            'src': os.path.join(src_etc, 'logging.conf.sample'),
+            'dest': '/etc/keystone/logging.conf',
+        },
+    }
+
+    for conf, files in configs.iteritems():
+        shutil.copyfile(files['src'], files['dest'])
+
+    git_start_keystone()
+
+
+def git_start_keystone():
+    """Start keystone-all service."""
+    subprocess.check_call(['start-stop-daemon', '--start',
+                           '--name', 'keystone',
+                           '--background',
+                           '--chuid', 'keystone',
+                           '--chdir', '/var/lib/keystone',
+                           '--name', 'keystone',
+                           '--exec', '/usr/local/bin/keystone-all'])
+
+
+def git_stop_keystone():
+    """Stop keystone-all service."""
+    subprocess.check_call(['start-stop-daemon', '--stop',
+                           '--name', 'keystone-all'])

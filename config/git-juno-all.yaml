@@ -1,0 +1,36 @@
+keystone:
+  repository: git://git.openstack.org/openstack/keystone.git
+  branch: stable/juno
+keystonemiddleware:
+  repository: git://git.openstack.org/openstack/keystonemiddleware.git
+  branch: 1.2.0
+oslo-config:
+  repository: git://git.openstack.org/openstack/oslo.config.git
+  branch: 1.4.0
+oslo-db:
+  repository: git://git.openstack.org/openstack/oslo.db.git
+  branch: 1.1.0
+oslo-i18n:
+  repository: git://git.openstack.org/openstack/oslo.i18n.git
+  branch: 1.0.0
+oslo-messaging:
+  repository: git://git.openstack.org/openstack/oslo.messaging.git
+  branch: 1.4.1
+oslo-serialization:
+  repository: git://git.openstack.org/openstack/oslo.serialization.git
+  branch: 1.0.0
+oslo-utils:
+  repository: git://git.openstack.org/openstack/oslo.utils.git
+  branch: 1.0.0
+pbr:
+  repository: git://git.openstack.org/openstack-dev/pbr.git
+  branch: 0.10.0
+pycadf:
+  repository: git://git.openstack.org/openstack/pycadf.git
+  branch: 0.6.0
+python-keystoneclient:
+  repository: git://git.openstack.org/openstack/python-keystoneclient.git
+  branch: 0.11.2
+requirements:
+  repository: git://git.openstack.org/openstack/requirements.git
+  branch: stable/juno

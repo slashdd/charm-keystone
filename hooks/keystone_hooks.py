@@ -35,6 +35,7 @@ from charmhelpers.fetch import (
 
 from charmhelpers.contrib.openstack.utils import (
     configure_installation_source,
+    git_install_requested,
     openstack_upgrade_available,
     sync_db_with_multi_ipv6_addresses
 )
@@ -44,6 +45,7 @@ from keystone_utils import (
     determine_packages,
     do_openstack_upgrade,
     ensure_initial_admin,
+    git_install,
     migrate_database,
     save_script_rc,
     synchronize_ca,
@@ -87,6 +89,7 @@ def install():
     configure_installation_source(config('openstack-origin'))
     apt_update()
     apt_install(determine_packages(), fatal=True)
+    git_install(config('openstack-origin-git'))
 
 
 @hooks.hook('config-changed')
@@ -102,8 +105,9 @@ def config_changed():
     if not os.path.isdir(homedir):
         mkdir(homedir, SSH_USER, 'keystone', 0o775)
 
-    if openstack_upgrade_available('keystone'):
-        do_openstack_upgrade(configs=CONFIGS)
+    if not git_install_requested():
+        if openstack_upgrade_available('keystone'):
+            do_openstack_upgrade(configs=CONFIGS)
 
     check_call(['chmod', '-R', 'g+wrx', '/var/lib/keystone/'])
 
@@ -122,6 +126,12 @@ def config_changed():
                                  remote_unit=unit)
 
     [cluster_joined(rid) for rid in relation_ids('cluster')]
+
+
+#TODO(coreycb): For deploy from git support, need to implement action-set
+#               and action-get to trigger re-install of git-installed
+#               services.  IIUC they'd be triggered via:
+#               juju do <action> <parameters>
 
 
 @hooks.hook('shared-db-relation-joined')

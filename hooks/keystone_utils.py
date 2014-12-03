@@ -672,7 +672,14 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
                          publicurl=settings['public_url'],
                          adminurl=settings['admin_url'],
                          internalurl=settings['internal_url'])
+
+            # If an admin username prefix is provided ensure all services use
+            # it.
             service_username = settings['service']
+            prefix = config('service-admin-prefix')
+            if prefix:
+                service_username = "%s%s" % (prefix, service_username)
+
             # NOTE(jamespage) internal IP for backwards compat for SSL certs
             internal_cn = urlparse.urlparse(settings['internal_url']).hostname
             https_cns.append(internal_cn)

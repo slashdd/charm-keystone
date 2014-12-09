@@ -284,6 +284,25 @@ def restart_on_change(restart_map, stopstart=False):
     In this example, the cinder-api and cinder-volume services
     would be restarted if /etc/ceph/ceph.conf is changed by the
     ceph_client_changed function.
+
+    An alternative to passing a service name string is to pass a function
+    pointer that manually restarts a process. This is useful when a charm
+    deploys software from source and init scripts are unavailable. For example:
+
+        @restart_on_change({
+            '/etc/ceph/ceph.conf': [ start_stop_cinder_api,
+                                     start_stop_cinder_volume ]
+            })
+        def ceph_client_changed():
+            pass  # your code here
+
+        def start_stop_cinder_api(action):
+            if action == 'start':
+                pass  # your start code here...
+            elif action == 'stop':
+                pass  # your stop code here...
+            elif action == 'restart':
+                pass  # your restart code here...
     """
     def wrap(f):
         def wrapped_f(*args):
@@ -297,12 +316,18 @@ def restart_on_change(restart_map, stopstart=False):
                     restarts += restart_map[path]
             services_list = list(OrderedDict.fromkeys(restarts))
             if not stopstart:
-                for service_name in services_list:
-                    service('restart', service_name)
+                for service_object in services_list:
+                    if callable(service_object):
+                        service_object('restart')
+                    else:
+                        service('restart', service_object)
             else:
                 for action in ['stop', 'start']:
-                    for service_name in services_list:
-                        service(action, service_name)
+                    for service_object in services_list:
+                        if callable(service_object):
+                            service_object(action)
+                        else:
+                            service(action, service_object)
         return wrapped_f
     return wrap
 
@@ -388,8 +413,8 @@ def cmp_pkgrevno(package, revno, pkgcache=None):
 
     '''
     import apt_pkg
-    from charmhelpers.fetch import apt_cache
     if not pkgcache:
+        from charmhelpers.fetch import apt_cache
         pkgcache = apt_cache()
     pkg = pkgcache[package]
     return apt_pkg.version_compare(pkg.current_ver.ver_str, revno)

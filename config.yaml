@@ -72,7 +72,7 @@ options:
     description: "Name of tenant to associate service credentials."
   service-admin-prefix:
     type: string
-    default: ''
+    default: 
     description: |
       When service relations are joined they provide a name used to create a
       service admin_username in keystone. The name used may be too crude for

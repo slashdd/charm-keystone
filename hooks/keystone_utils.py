@@ -898,9 +898,15 @@ def send_identity_service_notifications(service, notifications,
     # Broadcast
     log("Sending identity-service notifications to service '%s' (trigger=%s)" %
         (service, use_trigger), level=DEBUG)
+    sent = False
     for rid in rel_ids:
         for unit in related_units(relid=rid):
             if service == relation_get(attribute='service', unit=unit,
                                        rid=rid):
                 relation_set(relation_id=rid, relation_settings=_notifications)
+                sent = True
                 break
+
+    if not sent:
+        log("No notifications sent - is service '%s' registered for "
+            "notifications" % (service), level=DEBUG)

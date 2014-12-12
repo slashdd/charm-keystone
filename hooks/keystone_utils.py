@@ -42,6 +42,7 @@ import charmhelpers.contrib.unison as unison
 from charmhelpers.core.hookenv import (
     config,
     log,
+    local_unit,
     relation_get,
     relation_set,
     relation_ids,
@@ -873,15 +874,15 @@ def send_identity_notifications(notifications, use_trigger=False):
     rel_ids = []
     keys = []
 
-    # Get all settings
+    # Get all settings previously sent
     for rid in relation_ids('identity-service-notify'):
         rel_ids.append(rid)
-        for unit in relation_list(rid):
-            rs = relation_get(unit=unit, rid=rid)
-            keys += rs.keys()
+        rs = relation_get(unit=local_unit(), rid=rid)
+        keys += rs.keys()
 
     # Set all to None
     _notifications = {k: None for k in set(keys)}
+
     # Set new values
     for k, v in notifications.iteritems():
         _notifications[k] = v

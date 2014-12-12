@@ -208,7 +208,7 @@ def identity_changed(relation_id=None, remote_unit=None):
         # has completed.
         settings = relation_get(rid=relation_id, unit=remote_unit,
                                 attribute='service')
-        notifications['%s-endpoint-changed'] = settings['service']
+        notifications['%s-endpoint-changed' % (settings['service'])] = 1
     else:
         # Each unit needs to set the db information otherwise if the unit
         # with the info dies the settings die with it Bug# 1355848

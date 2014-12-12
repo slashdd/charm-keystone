@@ -290,3 +290,22 @@ class TestKeystoneUtils(CharmTestCase):
             region='RegionOne', service='nova',
             publicurl=publicurl, adminurl=adminurl,
             internalurl=internalurl)
+
+    @patch.object(utils, 'relation_set')
+    @patch.object(utils, 'relation_get')
+    @patch.object(utils, 'relation_ids')
+    @patch.object(utils, 'is_elected_leader')
+    def testsend_identity_notifications(self, mock_is_elected_leader,
+                                        mock_relation_ids, mock_relation_get,
+                                        mock_relation_set):
+        mock_relation_ids.side_effect = ['testrel:0']
+        mock_is_elected_leader.return_value = False
+        utils.send_identity_notifications({'foo-endpoint-changed': 1})
+        self.assertFalse(mock_relation_set.called)
+
+        mock_is_elected_leader.return_value = True
+        utils.send_identity_notifications({})
+        self.assertFalse(mock_relation_set.called)
+
+        utils.send_identity_notifications({'foo-endpoint-changed': 1})
+        self.assertTrue(mock_relation_set.called)

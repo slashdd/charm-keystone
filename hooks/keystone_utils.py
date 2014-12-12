@@ -1,6 +1,7 @@
 #!/usr/bin/python
 import subprocess
 import os
+import uuid
 import urlparse
 import time
 
@@ -12,7 +13,8 @@ from charmhelpers.contrib.hahelpers.cluster import(
     eligible_leader,
     determine_api_port,
     https,
-    is_clustered
+    is_clustered,
+    is_elected_leader,
 )
 
 from charmhelpers.contrib.openstack import context, templating
@@ -42,6 +44,7 @@ from charmhelpers.core.hookenv import (
     log,
     relation_get,
     relation_set,
+    relation_ids,
     INFO,
 )
 
@@ -848,3 +851,22 @@ def setup_ipv6():
                    ' main')
         apt_update()
         apt_install('haproxy/trusty-backports', fatal=True)
+
+
+def send_identity_notifications(notifications):
+    """Send notifications to all units listening on the identity-service-notify
+    interface.
+
+    Units are expected to ignore notifications that they don't expect.
+
+    NOTE: settings that are not required/inuse must always be set to None
+          so that they are removed from the relation.
+    """
+    if not notifications or not is_elected_leader(CLUSTER_RES):
+        return
+
+    notifications = deepcopy(notifications)
+    notifications['trigger'] = str(uuid.uuid4())
+
+    for rid in relation_ids('identity-service-notify'):
+        relation_set(relation_id=rid, relation_settings=notifications)

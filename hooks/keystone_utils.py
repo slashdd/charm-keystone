@@ -45,6 +45,7 @@ from charmhelpers.core.hookenv import (
     relation_get,
     relation_set,
     relation_ids,
+    DEBUG,
     INFO,
 )
 
@@ -865,8 +866,25 @@ def send_identity_notifications(notifications):
     if not notifications or not is_elected_leader(CLUSTER_RES):
         return
 
-    notifications = deepcopy(notifications)
-    notifications['trigger'] = str(uuid.uuid4())
+    rel_ids = []
+    keys = []
 
+    # Get all settings
     for rid in relation_ids('identity-service-notify'):
-        relation_set(relation_id=rid, relation_settings=notifications)
+        rel_ids.append(rid)
+        for unit in relation_list(rid):
+            rs = relation_get(unit=unit, rid=rid)
+            keys += rs.keys()
+
+    # Set all to None
+    _notifications = {k: None for k in set(keys)}
+    for k, v in notifications.iteritems():
+        _notifications[k] = v
+
+    # Set new values
+    _notifications['trigger'] = str(uuid.uuid4())
+
+    # Broadcast
+    log("Sending notifications", level=DEBUG)
+    for rid in rel_ids:
+        relation_set(relation_id=rid, relation_settings=_notifications)

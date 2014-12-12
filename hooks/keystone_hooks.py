@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+import hashlib
 import os
 import sys
 import time
@@ -206,9 +207,16 @@ def identity_changed(relation_id=None, remote_unit=None):
 
         # Service endpoint updated so send notification to service that this
         # has completed.
-        service_name = relation_get(rid=relation_id, unit=remote_unit,
-                                    attribute='service')
-        notifications['%s-endpoint-changed' % (service_name)] = 1
+        settings = relation_get(rid=relation_id, unit=remote_unit)
+        csum = hashlib.sha256()
+        # We base the decision to notify on whether these parameters have
+        # changed (if csum is unchanged from previous notify, relation will not
+        # fire).
+        csum.update(settings['public_url'])
+        csum.update(settings['admin_url'])
+        csum.update(settings['internal_url'])
+        notifications['%s-endpoint-changed' % (settings['service'])] = \
+            csum.hexdigest()
     else:
         # Each unit needs to set the db information otherwise if the unit
         # with the info dies the settings die with it Bug# 1355848

@@ -854,7 +854,7 @@ def setup_ipv6():
         apt_install('haproxy/trusty-backports', fatal=True)
 
 
-def send_identity_notifications(notifications):
+def send_identity_notifications(notifications, use_trigger=False):
     """Send notifications to all units listening on the identity-service-notify
     interface.
 
@@ -862,6 +862,10 @@ def send_identity_notifications(notifications):
 
     NOTE: settings that are not required/inuse must always be set to None
           so that they are removed from the relation.
+
+    :param notifications: dict of notification key/value pairs.
+    :param use_trigger: determines whether a trigger value is set to ensure the
+                        remote hook is fired.
     """
     if not notifications or not is_elected_leader(CLUSTER_RES):
         return
@@ -881,8 +885,9 @@ def send_identity_notifications(notifications):
     for k, v in notifications.iteritems():
         _notifications[k] = v
 
-    # Set new values
-    _notifications['trigger'] = str(uuid.uuid4())
+    if use_trigger:
+        # Set new values
+        _notifications['trigger'] = str(uuid.uuid4())
 
     # Broadcast
     log("Sending notifications", level=DEBUG)

@@ -904,7 +904,7 @@ def send_identity_service_notifications(notifications, use_trigger=False):
         _notifications['trigger'] = str(uuid.uuid4())
 
     # Broadcast
-    log("Sending identity-service notifications to (trigger=%s)" %
+    log("Sending identity-service notifications (trigger=%s)" %
         (use_trigger), level=DEBUG)
     for rid in rel_ids:
         relation_set(relation_id=rid, relation_settings=_notifications)

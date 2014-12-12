@@ -201,11 +201,12 @@ def pgsql_db_changed():
 @hooks.hook('identity-service-relation-changed')
 def identity_changed(relation_id=None, remote_unit=None):
     notifications = {}
-    settings = relation_get(rid=relation_id, unit=remote_unit)
-    service = settings['service']
     if eligible_leader(CLUSTER_RES):
         add_service_to_keystone(relation_id, remote_unit)
         synchronize_ca()
+
+        settings = relation_get(rid=relation_id, unit=remote_unit)
+        service = settings['service']
 
         # Update service if endpoint was changed
         csum = hashlib.sha256()
@@ -226,7 +227,7 @@ def identity_changed(relation_id=None, remote_unit=None):
         log('Deferring identity_changed() to service leader.')
 
     if notifications:
-        send_identity_service_notifications(service, notifications)
+        send_identity_service_notifications(notifications)
 
 
 @hooks.hook('cluster-relation-joined')

@@ -46,7 +46,6 @@ from charmhelpers.core.hookenv import (
     relation_get,
     relation_set,
     relation_ids,
-    related_units,
     DEBUG,
     INFO,
 )
@@ -856,8 +855,7 @@ def setup_ipv6():
         apt_install('haproxy/trusty-backports', fatal=True)
 
 
-def send_identity_service_notifications(service, notifications,
-                                        use_trigger=False):
+def send_identity_service_notifications(notifications, use_trigger=False):
     """Send notifications to all units listening on the identity-service-notify
     interface.
 
@@ -866,17 +864,17 @@ def send_identity_service_notifications(service, notifications,
     NOTE: settings that are not required/inuse must always be set to None
           so that they are removed from the relation.
 
-    :param service: the service we want to notify
     :param notifications: dict of notification key/value pairs.
     :param use_trigger: determines whether a trigger value is set to ensure the
                         remote hook is fired.
     """
-    if not service or not notifications or not is_elected_leader(CLUSTER_RES):
+    if not notifications or not is_elected_leader(CLUSTER_RES):
         log("Not sending notifications", level=DEBUG)
         return
 
     rel_ids = []
     keys = []
+    diff = False
 
     # Get all settings previously sent
     for rid in relation_ids('identity-service-notify'):
@@ -884,6 +882,16 @@ def send_identity_service_notifications(service, notifications,
         rs = relation_get(unit=local_unit(), rid=rid)
         if rs:
             keys += rs.keys()
+
+        # Work out if this notification changes anything
+        for k, v in notifications.iteritems():
+            if rs.get(k, None) != v:
+                diff = True
+
+    if not diff:
+        log("Notifications unchanged by new values so skipping broadcast",
+            level=DEBUG)
+        return
 
     # Set all to None
     _notifications = {k: None for k in set(keys)}
@@ -896,17 +904,7 @@ def send_identity_service_notifications(service, notifications,
         _notifications['trigger'] = str(uuid.uuid4())
 
     # Broadcast
-    log("Sending identity-service notifications to service '%s' (trigger=%s)" %
-        (service, use_trigger), level=DEBUG)
-    sent = False
+    log("Sending identity-service notifications to (trigger=%s)" %
+        (use_trigger), level=DEBUG)
     for rid in rel_ids:
-        for unit in related_units(relid=rid):
-            if service == relation_get(attribute='service', unit=unit,
-                                       rid=rid):
-                relation_set(relation_id=rid, relation_settings=_notifications)
-                sent = True
-                break
-
-    if not sent:
-        log("No notifications sent - is service '%s' registered for "
-            "notifications" % (service), level=DEBUG)
+        relation_set(relation_id=rid, relation_settings=_notifications)

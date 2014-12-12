@@ -292,7 +292,6 @@ class TestKeystoneUtils(CharmTestCase):
             internalurl=internalurl)
 
     @patch.object(utils, 'uuid')
-    @patch.object(utils, 'related_units')
     @patch.object(utils, 'relation_set')
     @patch.object(utils, 'relation_get')
     @patch.object(utils, 'relation_ids')
@@ -301,44 +300,27 @@ class TestKeystoneUtils(CharmTestCase):
                                                  mock_relation_ids,
                                                  mock_relation_get,
                                                  mock_relation_set,
-                                                 mock_related_units,
                                                  mock_uuid):
 
         relation_id = 'testrel:0'
-        unit_name = 'unit/0'
-        svc = 'testsvc'
-
-        def rel_get(rid=None, unit=None, attribute=None):
-            if rid == relation_id:
-                if unit == unit_name:
-                    if attribute == 'service':
-                        return svc
-
-        mock_relation_get.side_effect = rel_get
         mock_uuid.uuid4.return_value = '1234'
-        mock_relation_ids.return_value = [relation_id, 'testrel:1']
-        mock_related_units.return_value = [unit_name]
+        mock_relation_ids.return_value = [relation_id]
         mock_is_elected_leader.return_value = False
-        utils.send_identity_service_notifications(svc,
-                                                  {'foo-endpoint-changed': 1})
+        utils.send_identity_service_notifications({'foo-endpoint-changed': 1})
         self.assertFalse(mock_relation_set.called)
 
         mock_is_elected_leader.return_value = True
-        utils.send_identity_service_notifications(None, {})
-        self.assertFalse(mock_relation_set.called)
-
-        mock_is_elected_leader.return_value = True
-        utils.send_identity_service_notifications(svc, {})
+        utils.send_identity_service_notifications({})
         self.assertFalse(mock_relation_set.called)
 
         settings = {'foo-endpoint-changed': 1}
-        utils.send_identity_service_notifications(svc, settings)
+        utils.send_identity_service_notifications(settings)
         self.assertTrue(mock_relation_set.called)
         mock_relation_set.assert_called_once_with(relation_id=relation_id,
                                                   relation_settings=settings)
         mock_relation_set.reset_mock()
         settings = {'foo-endpoint-changed': 1}
-        utils.send_identity_service_notifications(svc, settings,
+        utils.send_identity_service_notifications(settings,
                                                   use_trigger=True)
         self.assertTrue(mock_relation_set.called)
         settings['trigger'] = '1234'

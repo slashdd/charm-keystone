@@ -882,14 +882,15 @@ def send_identity_notifications(notifications, use_trigger=False):
 
     # Set all to None
     _notifications = {k: None for k in set(keys)}
+    # Set new values
     for k, v in notifications.iteritems():
         _notifications[k] = v
 
     if use_trigger:
-        # Set new values
         _notifications['trigger'] = str(uuid.uuid4())
 
     # Broadcast
-    log("Sending notifications", level=DEBUG)
+    log("Sending identity-service notifications (trigger=%s)" % (use_trigger),
+        level=DEBUG)
     for rid in rel_ids:
         relation_set(relation_id=rid, relation_settings=_notifications)

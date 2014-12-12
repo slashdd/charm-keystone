@@ -56,7 +56,7 @@ from keystone_utils import (
     SSH_USER,
     STORED_PASSWD,
     setup_ipv6,
-    send_identity_notifications,
+    send_identity_service_notifications,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -201,13 +201,13 @@ def pgsql_db_changed():
 @hooks.hook('identity-service-relation-changed')
 def identity_changed(relation_id=None, remote_unit=None):
     notifications = {}
+    settings = relation_get(rid=relation_id, unit=remote_unit)
+    service = settings['service']
     if eligible_leader(CLUSTER_RES):
         add_service_to_keystone(relation_id, remote_unit)
         synchronize_ca()
 
-        # Service endpoint updated so send notification to service that this
-        # has completed.
-        settings = relation_get(rid=relation_id, unit=remote_unit)
+        # Update service if endpoint was changed
         csum = hashlib.sha256()
         # We base the decision to notify on whether these parameters have
         # changed (if csum is unchanged from previous notify, relation will not
@@ -215,8 +215,7 @@ def identity_changed(relation_id=None, remote_unit=None):
         csum.update(settings['public_url'])
         csum.update(settings['admin_url'])
         csum.update(settings['internal_url'])
-        notifications['%s-endpoint-changed' % (settings['service'])] = \
-            csum.hexdigest()
+        notifications['%s-endpoint-changed' % (service)] = csum.hexdigest()
     else:
         # Each unit needs to set the db information otherwise if the unit
         # with the info dies the settings die with it Bug# 1355848
@@ -227,7 +226,7 @@ def identity_changed(relation_id=None, remote_unit=None):
         log('Deferring identity_changed() to service leader.')
 
     if notifications:
-        send_identity_notifications(notifications)
+        send_identity_service_notifications(service, notifications)
 
 
 @hooks.hook('cluster-relation-joined')

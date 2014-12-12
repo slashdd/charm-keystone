@@ -321,8 +321,9 @@ class KeystoneRelationTests(CharmTestCase):
             remote_unit='unit/0')
 
     @patch.object(hooks, 'hashlib')
-    @patch.object(hooks, 'send_identity_notifications')
-    def test_identity_changed_leader(self, mock_send_identity_notifications,
+    @patch.object(hooks, 'send_identity_service_notifications')
+    def test_identity_changed_leader(self,
+                                     mock_send_identity_service_notifications,
                                      mock_hashlib):
         self.eligible_leader.return_value = True
         hooks.identity_changed(

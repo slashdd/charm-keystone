@@ -46,6 +46,7 @@ from charmhelpers.core.hookenv import (
     relation_get,
     relation_set,
     relation_ids,
+    related_units,
     DEBUG,
     INFO,
 )
@@ -855,7 +856,8 @@ def setup_ipv6():
         apt_install('haproxy/trusty-backports', fatal=True)
 
 
-def send_identity_notifications(notifications, use_trigger=False):
+def send_identity_service_notifications(service, notifications,
+                                        use_trigger=False):
     """Send notifications to all units listening on the identity-service-notify
     interface.
 
@@ -864,11 +866,13 @@ def send_identity_notifications(notifications, use_trigger=False):
     NOTE: settings that are not required/inuse must always be set to None
           so that they are removed from the relation.
 
+    :param service: the service we want to notify
     :param notifications: dict of notification key/value pairs.
     :param use_trigger: determines whether a trigger value is set to ensure the
                         remote hook is fired.
     """
-    if not notifications or not is_elected_leader(CLUSTER_RES):
+    if not service or not notifications or not is_elected_leader(CLUSTER_RES):
+        log("Not sending notifications", level=DEBUG)
         return
 
     rel_ids = []
@@ -878,7 +882,8 @@ def send_identity_notifications(notifications, use_trigger=False):
     for rid in relation_ids('identity-service-notify'):
         rel_ids.append(rid)
         rs = relation_get(unit=local_unit(), rid=rid)
-        keys += rs.keys()
+        if rs:
+            keys += rs.keys()
 
     # Set all to None
     _notifications = {k: None for k in set(keys)}
@@ -891,7 +896,11 @@ def send_identity_notifications(notifications, use_trigger=False):
         _notifications['trigger'] = str(uuid.uuid4())
 
     # Broadcast
-    log("Sending identity-service notifications (trigger=%s)" % (use_trigger),
-        level=DEBUG)
+    log("Sending identity-service notifications to service '%s' (trigger=%s)" %
+        (service, use_trigger), level=DEBUG)
     for rid in rel_ids:
-        relation_set(relation_id=rid, relation_settings=_notifications)
+        for unit in related_units(relid=rid):
+            if service == relation_get(attribute='service', unit=unit,
+                                       rid=rid):
+                relation_set(relation_id=rid, relation_settings=_notifications)
+                break

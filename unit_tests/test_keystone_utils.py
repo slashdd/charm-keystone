@@ -179,7 +179,8 @@ class TestKeystoneUtils(CharmTestCase):
                          'auth_port': 80,
                          'service_port': 81,
                          'https_keystone': 'True',
-                         'ca_cert': 'certificate'}
+                         'ca_cert': 'certificate',
+                         'region': 'RegionOne'}
         self.peer_store_and_set.assert_called_with(
             relation_id=relation_id,
             **relation_data)

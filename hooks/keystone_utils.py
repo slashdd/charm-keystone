@@ -856,8 +856,8 @@ def setup_ipv6():
 
 
 def send_identity_service_notifications(notifications, use_trigger=False):
-    """Send notifications to all units listening on the identity-service-notify
-    interface.
+    """Send notifications to all units listening on the
+    identity-service-notifications interface.
 
     Units are expected to ignore notifications that they don't expect.
 
@@ -877,7 +877,7 @@ def send_identity_service_notifications(notifications, use_trigger=False):
     diff = False
 
     # Get all settings previously sent
-    for rid in relation_ids('identity-service-notify'):
+    for rid in relation_ids('identity-service-notifications'):
         rel_ids.append(rid)
         rs = relation_get(unit=local_unit(), rid=rid)
         if rs:

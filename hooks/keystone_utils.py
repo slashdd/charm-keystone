@@ -33,7 +33,6 @@ from charmhelpers.contrib.openstack.utils import (
     configure_installation_source,
     error_out,
     get_os_codename_install_source,
-    git_insert_restart_functions,
     git_install_requested,
     git_clone_and_install,
     os_release,
@@ -106,22 +105,11 @@ BASE_SERVICES = [
     'keystone',
 ]
 
-# ubuntu packages that must not be installed when deploying from git
+# ubuntu packages that should not be installed when deploying from git
 GIT_PACKAGE_BLACKLIST = [
     'keystone',
     'python-keystoneclient',
 ]
-
-# functions used in GIT_RESTART_MAP
-def git_start_stop_keystone(action):
-    _git_start_stop_keystone(action)
-
-# Services in this map must not be started/stopped by init scripts when
-# deployed from git. Instead, the charm-defined functions must be used to
-# start/stop processes.
-GIT_RESTART_MAP = {
-    'keystone': git_start_stop_keystone,
-}
 
 API_PORTS = {
     'keystone-admin': config('admin-port'),
@@ -251,13 +239,14 @@ def register_configs():
 
 
 def restart_map():
-    restart_map = OrderedDict([(cfg, v['services'])
-                               for cfg, v in resource_map().iteritems()
-                               if v['services']])
-    if git_install_requested():
-        restart_map = git_insert_restart_functions(restart_map,
-                                                   GIT_RESTART_MAP)
-    return restart_map
+    #TODO(coreycb): For deploy from git support, add function pointer restart
+    #               support to charm-helpers in restart_on_change(). Then we
+    #               can pass git_restart_keystone() to restart keystone, since
+    #               upstart script isn't available.
+    return OrderedDict([(cfg, v['services'])
+                        for cfg, v in resource_map().iteritems()
+                        if v['services']])
+
 
 def determine_ports():
     '''Assemble a list of API ports for services we are managing'''
@@ -320,7 +309,7 @@ def migrate_database():
     '''Runs keystone-manage to initialize a new database or migrate existing'''
     log('Migrating the keystone database.', level=INFO)
     if git_install_requested():
-        git_start_stop_keystone('stop')
+        git_stop_keystone()
     else:
         service_stop('keystone')
     # NOTE(jamespage) > icehouse creates a log file as root so use
@@ -329,7 +318,7 @@ def migrate_database():
     cmd = ['sudo', '-u', 'keystone', 'keystone-manage', 'db_sync']
     subprocess.check_output(cmd)
     if git_install_requested():
-        git_start_stop_keystone('start')
+        git_start_keystone()
     else:
         service_start('keystone')
     time.sleep(10)
@@ -954,22 +943,21 @@ def git_post_install():
     for conf, files in configs.iteritems():
         shutil.copyfile(files['src'], files['dest'])
 
-    git_start_stop_keystone('start')
+    git_start_keystone()
 
 
-def _git_start_stop_keystone(action):
-    """Start, stop, or restart keystone-all service."""
-    if action == 'start':
-        subprocess.check_call(['start-stop-daemon', '--start',
-                               '--name', 'keystone',
-                               '--background',
-                               '--chuid', 'keystone',
-                               '--chdir', '/var/lib/keystone',
-                               '--name', 'keystone',
-                               '--exec', '/usr/local/bin/keystone-all'])
-    elif action == 'stop':
-        subprocess.check_call(['start-stop-daemon', '--stop',
-                               '--name', 'keystone-all'])
-    elif action == 'restart':
-        git_start_stop_keystone('stop')
-        git_start_stop_keystone('start')
+def git_start_keystone():
+    """Start keystone-all service."""
+    subprocess.check_call(['start-stop-daemon', '--start',
+                           '--name', 'keystone',
+                           '--background',
+                           '--chuid', 'keystone',
+                           '--chdir', '/var/lib/keystone',
+                           '--name', 'keystone',
+                           '--exec', '/usr/local/bin/keystone-all'])
+
+
+def git_stop_keystone():
+    """Stop keystone-all service."""
+    subprocess.check_call(['start-stop-daemon', '--stop',
+                           '--name', 'keystone-all'])

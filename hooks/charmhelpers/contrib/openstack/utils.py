@@ -617,20 +617,3 @@ def _git_update_requirements(package_dir, reqs_dir):
         package = os.path.basename(package_dir)
         error_out("Error updating {} from global-requirements.txt".format(package))
     os.chdir(orig_dir)
-
-def git_insert_restart_functions(restart_map, git_service_map):
-    """Inserts start/stop functions into the restart_map.
-
-       Inserts start/stop functions into the restart_map, replacing the
-       corresonding service names. This is done because when a charm has
-       installed software from git, the corresponding processes can't be
-       started/stopped by init scripts. They are therefore replaced with
-       charm-defined functions that start/stop the processes."""
-    for k, v in restart_map.iteritems():
-        for i, service in enumerate(v):
-            if service in git_service_map:
-                juju_log('Replacing service %s with function %s in restart '
-                         'map' % (service, git_service_map[service].__name__))
-                v[i] = git_service_map[service]
-                break
-    return restart_map

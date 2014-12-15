@@ -86,6 +86,14 @@ options:
     default: "services"
     type: string
     description: "Name of tenant to associate service credentials."
+  service-admin-prefix:
+    type: string
+    default: 
+    description: |
+      When service relations are joined they provide a name used to create a
+      service admin_username in keystone. The name used may be too crude for
+      some situations e.g. pre-populated LDAP identity backend. If set, this
+      option will be prepended to each service admin_username.
   # Database settings used to request access via shared-db-relation-* relations
   database:
     default: "keystone"

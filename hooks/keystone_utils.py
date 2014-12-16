@@ -886,6 +886,10 @@ def send_notifications(data, use_trigger=False):
         if rs:
             keys += rs.keys()
 
+        # Don't bother checking if we have already identified a diff
+        if diff:
+            continue
+
         # Work out if this notification changes anything
         for k, v in data.iteritems():
             if rs.get(k, None) != v:

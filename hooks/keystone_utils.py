@@ -855,7 +855,7 @@ def setup_ipv6():
         apt_install('haproxy/trusty-backports', fatal=True)
 
 
-def send_identity_service_notifications(notifications, use_trigger=False):
+def send_identity_service_notifications(data, use_trigger=False):
     """Send notifications to all units listening on the
     identity-service-notifications interface.
 
@@ -864,11 +864,13 @@ def send_identity_service_notifications(notifications, use_trigger=False):
     NOTE: settings that are not required/inuse must always be set to None
           so that they are removed from the relation.
 
-    :param notifications: dict of notification key/value pairs.
-    :param use_trigger: determines whether a trigger value is set to ensure the
+    :param data: Dict of key=value to use as trigger for notification. If the
+                 last broadcast is unchanged by the addition of this data, the
+                 notification will not be sent.
+    :param use_trigger: Determines whether a trigger value is set to ensure the
                         remote hook is fired.
     """
-    if not notifications or not is_elected_leader(CLUSTER_RES):
+    if not data or not is_elected_leader(CLUSTER_RES):
         log("Not sending notifications", level=DEBUG)
         return
 
@@ -884,7 +886,7 @@ def send_identity_service_notifications(notifications, use_trigger=False):
             keys += rs.keys()
 
         # Work out if this notification changes anything
-        for k, v in notifications.iteritems():
+        for k, v in data.iteritems():
             if rs.get(k, None) != v:
                 diff = True
 
@@ -897,7 +899,7 @@ def send_identity_service_notifications(notifications, use_trigger=False):
     _notifications = {k: None for k in set(keys)}
 
     # Set new values
-    for k, v in notifications.iteritems():
+    for k, v in data.iteritems():
         _notifications[k] = v
 
     if use_trigger:

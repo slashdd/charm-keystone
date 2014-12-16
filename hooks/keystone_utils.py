@@ -898,7 +898,7 @@ def send_notifications(data, use_trigger=False):
 
     if not diff:
         log("Notifications unchanged by new values so skipping broadcast",
-            level=DEBUG)
+            level=INFO)
         return
 
     # Set all to None

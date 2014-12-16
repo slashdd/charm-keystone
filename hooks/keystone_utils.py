@@ -81,6 +81,7 @@ BASE_PACKAGES = [
     'pwgen',
     'unison',
     'uuid',
+    'python-six',
 ]
 
 BASE_SERVICES = [

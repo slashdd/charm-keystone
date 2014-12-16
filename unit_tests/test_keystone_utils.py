@@ -101,9 +101,20 @@ class TestKeystoneUtils(CharmTestCase):
         result = utils.determine_ports()
         self.assertEquals(result, ['80', '81'])
 
-    def test_determine_packages(self):
+    @patch('charmhelpers.contrib.openstack.utils.config')
+    def test_determine_packages(self, _config):
+        _config.return_value = "None"
         result = utils.determine_packages()
-        ex = utils.BASE_PACKAGES + ['keystone', 'haproxy', 'apache2']
+        ex = utils.BASE_PACKAGES + ['keystone']
+        self.assertEquals(set(ex), set(result))
+
+    @patch('charmhelpers.contrib.openstack.utils.config')
+    def test_determine_packages_git(self, _config):
+        _config.return_value = "config/git-juno-minimal.yaml"
+        result = utils.determine_packages()
+        ex = utils.BASE_PACKAGES + ['keystone'] + utils.BASE_GIT_PACKAGES
+        for p in utils.GIT_PACKAGE_BLACKLIST:
+            ex.remove(p)
         self.assertEquals(set(ex), set(result))
 
     @patch.object(hooks, 'CONFIGS')
@@ -291,3 +302,75 @@ class TestKeystoneUtils(CharmTestCase):
             region='RegionOne', service='nova',
             publicurl=publicurl, adminurl=adminurl,
             internalurl=internalurl)
+
+    @patch.object(utils, 'git_install_requested')
+    @patch.object(utils, 'git_clone_and_install')
+    @patch.object(utils, 'git_post_install')
+    @patch.object(utils, 'git_pre_install')
+    def test_git_install(self, git_pre, git_post, git_clone_and_install,
+                         git_requested):
+        file_name = 'config/git-tip-minimal.yaml'
+        git_requested.return_value = True
+        utils.git_install(file_name)
+        self.assertTrue(git_pre.called)
+        git_clone_and_install.assert_called_with(file_name,
+                                                 core_project='keystone')
+        self.assertTrue(git_post.called)
+
+    @patch.object(utils, 'mkdir')
+    @patch.object(utils, 'write_file')
+    @patch.object(utils, 'add_user_to_group')
+    @patch.object(utils, 'add_group')
+    @patch.object(utils, 'adduser')
+    def test_git_pre_install(self, adduser, add_group, add_user_to_group,
+                             write_file, mkdir):
+        utils.git_pre_install()
+        adduser.assert_called_with('keystone', shell='/bin/bash',
+                                   system_user=True)
+        add_group.assert_called_with('keystone', system_group=True)
+        add_user_to_group.assert_called_with('keystone', 'keystone')
+        expected = [
+            call('/var/lib/keystone', owner='keystone',
+                 group='keystone', perms=0700, force=False),
+            call('/var/lib/keystone/cache', owner='keystone',
+                 group='keystone', perms=0700, force=False),
+            call('/var/log/keystone', owner='keystone',
+                 group='keystone', perms=0700, force=False),
+            call('/etc/keystone', owner='keystone',
+                 group='keystone', perms=0700, force=False),
+        ]
+        self.assertEquals(mkdir.call_args_list, expected)
+        write_file.assert_called_with('/var/log/keystone/keystone.log',
+                                      '', owner='keystone', group='keystone',
+                                      perms=0600)
+
+    @patch.object(utils, 'service_start')
+    @patch.object(utils, 'render')
+    @patch('shutil.copyfile')
+    def test_git_post_install(self, copyfile, render, service_start):
+        utils.git_post_install()
+        expected = [
+            call('/mnt/openstack-git/keystone.git/etc/keystone-paste.ini',
+                 '/etc/keystone/keystone-paste.ini'),
+            call('/mnt/openstack-git/keystone.git/etc/policy.json',
+                 '/etc/keystone/policy.json'),
+            call('/mnt/openstack-git/keystone.git/etc/keystone.conf.sample',
+                 '/etc/keystone/keystone.conf'),
+        ]
+        copyfile.assert_has_calls(expected, any_order=True)
+        keystone_context = {
+            'service_description': 'Keystone API server',
+            'service_name': 'Keystone',
+            'user_name': 'keystone',
+            'start_dir': '/var/lib/keystone',
+            'process_name': 'keystone',
+            'executable_name': '/usr/local/bin/keystone-all',
+        }
+        expected = [
+            call('logging.conf', '/etc/keystone/logging.conf', {},
+                 perms=0o644),
+            call('upstart/keystone.upstart', '/etc/init/keystone.conf',
+                 keystone_context, perms=0o644),
+        ]
+        self.assertEquals(render.call_args_list, expected)
+        service_start.assert_called_with('keystone')

@@ -66,6 +66,7 @@ TO_PATCH = [
     'get_iface_for_address',
     'get_netmask_for_address',
     'get_address_in_network',
+    'git_install',
 ]
 
 
@@ -76,17 +77,40 @@ class KeystoneRelationTests(CharmTestCase):
         self.config.side_effect = self.test_config.get
         self.ssh_user = 'juju_keystone'
 
-    def test_install_hook(self):
+    @patch.object(utils, 'git_install_requested')
+    def test_install_hook(self, git_requested):
+        git_requested.return_value = False
         repo = 'cloud:precise-grizzly'
+        git_config = 'config/git-tip-minimal.yaml'
         self.test_config.set('openstack-origin', repo)
+        self.test_config.set('openstack-origin-git', git_config)
         hooks.install()
+        self.assertTrue(self.execd_preinstall.called)
         self.configure_installation_source.assert_called_with(repo)
         self.assertTrue(self.apt_update.called)
         self.apt_install.assert_called_with(
             ['haproxy', 'unison', 'python-keystoneclient',
              'uuid', 'python-mysqldb', 'openssl', 'apache2',
              'pwgen', 'keystone', 'python-psycopg2'], fatal=True)
+        self.git_install.assert_called_with(git_config)
+
+    @patch.object(utils, 'git_install_requested')
+    def test_install_hook_git(self, git_requested):
+        git_requested.return_value = True
+        repo = 'cloud:precise-grizzly'
+        git_config = 'config/git-tip-minimal.yaml'
+        self.test_config.set('openstack-origin', repo)
+        self.test_config.set('openstack-origin-git', git_config)
+        hooks.install()
         self.assertTrue(self.execd_preinstall.called)
+        self.configure_installation_source.assert_called_with(repo)
+        self.assertTrue(self.apt_update.called)
+        self.apt_install.assert_called_with(
+            ['haproxy', 'unison', 'python-setuptools', 'uuid',
+             'python-mysqldb', 'python-pip', 'openssl', 'apache2', 'pwgen',
+             'libxslt1-dev', 'python-psycopg2', 'zlib1g-dev', 'python-dev',
+             'libxml2-dev'], fatal=True)
+        self.git_install.assert_called_with(git_config)
 
     mod_ch_openstack_utils = 'charmhelpers.contrib.openstack.utils'
 
@@ -234,6 +258,7 @@ class KeystoneRelationTests(CharmTestCase):
             relation_id='identity-service:0',
             remote_unit='unit/0')
 
+    @patch.object(hooks, 'git_install_requested')
     @patch.object(hooks, 'cluster_joined')
     @patch.object(unison, 'ensure_user')
     @patch.object(unison, 'get_homedir')
@@ -242,7 +267,7 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(hooks, 'configure_https')
     def test_config_changed_no_openstack_upgrade_leader(
             self, configure_https, identity_changed,
-            configs, get_homedir, ensure_user, cluster_joined):
+            configs, get_homedir, ensure_user, cluster_joined, git_requested):
         self.openstack_upgrade_available.return_value = False
         self.eligible_leader.return_value = True
         self.relation_ids.return_value = ['identity-service:0']
@@ -264,6 +289,7 @@ class KeystoneRelationTests(CharmTestCase):
             relation_id='identity-service:0',
             remote_unit='unit/0')
 
+    @patch.object(hooks, 'git_install_requested')
     @patch.object(hooks, 'cluster_joined')
     @patch.object(unison, 'ensure_user')
     @patch.object(unison, 'get_homedir')
@@ -272,7 +298,7 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(hooks, 'configure_https')
     def test_config_changed_no_openstack_upgrade_not_leader(
             self, configure_https, identity_changed,
-            configs, get_homedir, ensure_user, cluster_joined):
+            configs, get_homedir, ensure_user, cluster_joined, git_requested):
         self.openstack_upgrade_available.return_value = False
         self.eligible_leader.return_value = False
 
@@ -288,6 +314,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertFalse(self.ensure_initial_admin.called)
         self.assertFalse(identity_changed.called)
 
+    @patch.object(hooks, 'git_install_requested')
     @patch.object(hooks, 'cluster_joined')
     @patch.object(unison, 'ensure_user')
     @patch.object(unison, 'get_homedir')
@@ -296,7 +323,8 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(hooks, 'configure_https')
     def test_config_changed_with_openstack_upgrade(
             self, configure_https, identity_changed,
-            configs, get_homedir, ensure_user, cluster_joined):
+            configs, get_homedir, ensure_user, cluster_joined, git_requested):
+        git_requested.return_value = False
         self.openstack_upgrade_available.return_value = True
         self.eligible_leader.return_value = True
         self.relation_ids.return_value = ['identity-service:0']
@@ -307,6 +335,40 @@ class KeystoneRelationTests(CharmTestCase):
         get_homedir.assert_called_with(self.ssh_user)
 
         self.assertTrue(self.do_openstack_upgrade.called)
+
+        self.save_script_rc.assert_called_with()
+        configure_https.assert_called_with()
+        self.assertTrue(configs.write_all.called)
+
+        self.migrate_database.assert_called_with()
+        self.assertTrue(self.ensure_initial_admin.called)
+        self.log.assert_called_with(
+            'Firing identity_changed hook for all related services.')
+        identity_changed.assert_called_with(
+            relation_id='identity-service:0',
+            remote_unit='unit/0')
+
+    @patch.object(hooks, 'git_install_requested')
+    @patch.object(hooks, 'cluster_joined')
+    @patch.object(unison, 'ensure_user')
+    @patch.object(unison, 'get_homedir')
+    @patch.object(hooks, 'CONFIGS')
+    @patch.object(hooks, 'identity_changed')
+    @patch.object(hooks, 'configure_https')
+    def test_config_changed_git_no_openstack_upgrade(
+            self, configure_https, identity_changed,
+            configs, get_homedir, ensure_user, cluster_joined, git_requested):
+        git_requested.return_value = True
+        self.eligible_leader.return_value = True
+        self.relation_ids.return_value = ['identity-service:0']
+        self.relation_list.return_value = ['unit/0']
+
+        hooks.config_changed()
+        ensure_user.assert_called_with(user=self.ssh_user, group='keystone')
+        get_homedir.assert_called_with(self.ssh_user)
+
+        self.assertFalse(self.openstack_upgrade_available.called)
+        self.assertFalse(self.do_openstack_upgrade.called)
 
         self.save_script_rc.assert_called_with()
         configure_https.assert_called_with()
@@ -453,10 +515,12 @@ class KeystoneRelationTests(CharmTestCase):
         cmd = ['a2dissite', 'openstack_https_frontend']
         self.check_call.assert_called_with(cmd)
 
+    @patch.object(utils, 'git_install_requested')
     @patch.object(unison, 'ssh_authorized_peers')
-    def test_upgrade_charm_leader(self, ssh_authorized_peers):
+    def test_upgrade_charm_leader(self, ssh_authorized_peers, git_requested):
         self.eligible_leader.return_value = True
         self.filter_installed_packages.return_value = []
+        git_requested.return_value = False
         hooks.upgrade_charm()
         self.assertTrue(self.apt_install.called)
         ssh_authorized_peers.assert_called_with(
@@ -468,10 +532,14 @@ class KeystoneRelationTests(CharmTestCase):
             ' is up to date')
         self.assertTrue(self.ensure_initial_admin.called)
 
+    @patch('charmhelpers.core.hookenv.config')
+    @patch.object(utils, 'git_install_requested')
     @patch.object(unison, 'ssh_authorized_peers')
-    def test_upgrade_charm_not_leader(self, ssh_authorized_peers):
+    def test_upgrade_charm_not_leader(self, ssh_authorized_peers,
+                                      git_requested, mock_config):
         self.eligible_leader.return_value = False
         self.filter_installed_packages.return_value = []
+        git_requested.return_value = False
         hooks.upgrade_charm()
         self.assertTrue(self.apt_install.called)
         ssh_authorized_peers.assert_called_with(

@@ -655,6 +655,7 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
                 relation_data["service_protocol"] = "http"
             relation_data["auth_port"] = config('admin-port')
             relation_data["service_port"] = config('service-port')
+            relation_data["region"] = config('region')
             if config('https-service-endpoints') in ['True', 'true']:
                 # Pass CA cert as client will need it to
                 # verify https connections

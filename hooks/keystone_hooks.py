@@ -206,17 +206,18 @@ def identity_changed(relation_id=None, remote_unit=None):
         synchronize_ca()
 
         settings = relation_get(rid=relation_id, unit=remote_unit)
-        service = settings['service']
-
-        # Update service if endpoint was changed
-        csum = hashlib.sha256()
-        # We base the decision to notify on whether these parameters have
-        # changed (if csum is unchanged from previous notify, relation will not
-        # fire).
-        csum.update(settings['public_url'])
-        csum.update(settings['admin_url'])
-        csum.update(settings['internal_url'])
-        notifications['%s-endpoint-changed' % (service)] = csum.hexdigest()
+        service = settings.get('service', None)
+        if service:
+            # If service is known and endpoint has changed, notify service if
+            # it is related with notifications interface.
+            csum = hashlib.sha256()
+            # We base the decision to notify on whether these parameters have
+            # changed (if csum is unchanged from previous notify, relation will
+            # not fire).
+            csum.update(settings.get('public_url', None))
+            csum.update(settings.get('admin_url', None))
+            csum.update(settings.get('internal_url', None))
+            notifications['%s-endpoint-changed' % (service)] = csum.hexdigest()
     else:
         # Each unit needs to set the db information otherwise if the unit
         # with the info dies the settings die with it Bug# 1355848

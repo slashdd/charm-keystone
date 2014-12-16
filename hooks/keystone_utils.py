@@ -872,7 +872,7 @@ def send_identity_service_notifications(data, use_trigger=False):
                         remote hook is fired.
     """
     if not data or not is_elected_leader(CLUSTER_RES):
-        log("Not sending notifications", level=DEBUG)
+        log("Not sending notifications", level=INFO)
         return
 
     rel_ids = []
@@ -890,6 +890,7 @@ def send_identity_service_notifications(data, use_trigger=False):
         for k, v in data.iteritems():
             if rs.get(k, None) != v:
                 diff = True
+                break
 
     if not diff:
         log("Notifications unchanged by new values so skipping broadcast",

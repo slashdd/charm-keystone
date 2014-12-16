@@ -901,15 +901,8 @@ def git_pre_install():
         '/etc/keystone',
     ]
 
-    # TODO(coreycb): Revisit this.  'keystone-manage db_sync' fails without
-    # the error/access logs having been created. might have been a permission
-    # denied so perhaps chmod is enough?
     logs = [
         '/var/log/keystone/keystone.log',
-        '/home/ubuntu/error.log',
-        '/home/ubuntu/access.log',
-        os.path.join(charm_dir(), 'error.log'),
-        os.path.join(charm_dir(), 'access.log'),
     ]
 
     adduser('keystone', shell='/bin/bash', system_user=True)
@@ -939,14 +932,12 @@ def git_post_install():
             'src': os.path.join(src_etc, 'keystone-paste.ini'),
             'dest': '/etc/keystone/keystone-paste.ini',
         },
-        'logging': {
-            'src': os.path.join(src_etc, 'logging.conf.sample'),
-            'dest': '/etc/keystone/logging.conf',
-        },
     }
 
     for conf, files in configs.iteritems():
         shutil.copyfile(files['src'], files['dest'])
+
+    render('logging.conf', '/etc/keystone/logging.conf', {}, perms=0o644)
 
     keystone_context = {
         'service_description': 'Keystone API server',

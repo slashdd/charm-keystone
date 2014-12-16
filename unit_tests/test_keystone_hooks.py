@@ -85,7 +85,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.apt_install.assert_called_with(
             ['haproxy', 'unison', 'python-keystoneclient',
              'uuid', 'python-mysqldb', 'openssl', 'apache2',
-             'pwgen', 'keystone', 'python-psycopg2'], fatal=True)
+             'pwgen', 'python-six', 'keystone', 'python-psycopg2'], fatal=True)
         self.assertTrue(self.execd_preinstall.called)
 
     mod_ch_openstack_utils = 'charmhelpers.contrib.openstack.utils'

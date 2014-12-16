@@ -856,9 +856,9 @@ def setup_ipv6():
         apt_install('haproxy/trusty-backports', fatal=True)
 
 
-def send_identity_service_notifications(data, use_trigger=False):
-    """Send notifications to all units listening on the
-    identity-notifications interface.
+def send_notifications(data, use_trigger=False):
+    """Send notifications to all units listening on the identity-notifications
+    interface.
 
     Units are expected to ignore notifications that they don't expect.
 

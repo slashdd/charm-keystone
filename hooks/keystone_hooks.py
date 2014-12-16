@@ -56,7 +56,7 @@ from keystone_utils import (
     SSH_USER,
     STORED_PASSWD,
     setup_ipv6,
-    send_identity_service_notifications,
+    send_notifications,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -228,7 +228,7 @@ def identity_changed(relation_id=None, remote_unit=None):
         log('Deferring identity_changed() to service leader.')
 
     if notifications:
-        send_identity_service_notifications(notifications)
+        send_notifications(notifications)
 
 
 @hooks.hook('cluster-relation-joined')

@@ -291,3 +291,35 @@ class TestKeystoneUtils(CharmTestCase):
             region='RegionOne', service='nova',
             publicurl=publicurl, adminurl=adminurl,
             internalurl=internalurl)
+
+    @patch.object(utils, 'uuid')
+    @patch.object(utils, 'relation_set')
+    @patch.object(utils, 'relation_get')
+    @patch.object(utils, 'relation_ids')
+    @patch.object(utils, 'is_elected_leader')
+    def test_send_notifications(self, mock_is_elected_leader,
+                                mock_relation_ids, mock_relation_get,
+                                mock_relation_set, mock_uuid):
+        relation_id = 'testrel:0'
+        mock_uuid.uuid4.return_value = '1234'
+        mock_relation_ids.return_value = [relation_id]
+        mock_is_elected_leader.return_value = False
+        utils.send_notifications({'foo-endpoint-changed': 1})
+        self.assertFalse(mock_relation_set.called)
+
+        mock_is_elected_leader.return_value = True
+        utils.send_notifications({})
+        self.assertFalse(mock_relation_set.called)
+
+        settings = {'foo-endpoint-changed': 1}
+        utils.send_notifications(settings)
+        self.assertTrue(mock_relation_set.called)
+        mock_relation_set.assert_called_once_with(relation_id=relation_id,
+                                                  relation_settings=settings)
+        mock_relation_set.reset_mock()
+        settings = {'foo-endpoint-changed': 1}
+        utils.send_notifications(settings, force=True)
+        self.assertTrue(mock_relation_set.called)
+        settings['trigger'] = '1234'
+        mock_relation_set.assert_called_once_with(relation_id=relation_id,
+                                                  relation_settings=settings)

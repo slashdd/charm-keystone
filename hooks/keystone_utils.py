@@ -1,6 +1,7 @@
 #!/usr/bin/python
 import subprocess
 import os
+import uuid
 import urlparse
 import time
 
@@ -12,7 +13,8 @@ from charmhelpers.contrib.hahelpers.cluster import(
     eligible_leader,
     determine_api_port,
     https,
-    is_clustered
+    is_clustered,
+    is_elected_leader,
 )
 
 from charmhelpers.contrib.openstack import context, templating
@@ -40,8 +42,11 @@ import charmhelpers.contrib.unison as unison
 from charmhelpers.core.hookenv import (
     config,
     log,
+    local_unit,
     relation_get,
     relation_set,
+    relation_ids,
+    DEBUG,
     INFO,
 )
 
@@ -850,3 +855,69 @@ def setup_ipv6():
                    ' main')
         apt_update()
         apt_install('haproxy/trusty-backports', fatal=True)
+
+
+def send_notifications(data, force=False):
+    """Send notifications to all units listening on the identity-notifications
+    interface.
+
+    Units are expected to ignore notifications that they don't expect.
+
+    NOTE: settings that are not required/inuse must always be set to None
+          so that they are removed from the relation.
+
+    :param data: Dict of key=value to use as trigger for notification. If the
+                 last broadcast is unchanged by the addition of this data, the
+                 notification will not be sent.
+    :param force: Determines whether a trigger value is set to ensure the
+                  remote hook is fired.
+    """
+    if not data or not is_elected_leader(CLUSTER_RES):
+        log("Not sending notifications (no data or not leader)", level=INFO)
+        return
+
+    rel_ids = relation_ids('identity-notifications')
+    if not rel_ids:
+        log("No relations on identity-notifications - skipping broadcast",
+            level=INFO)
+        return
+
+    keys = []
+    diff = False
+
+    # Get all settings previously sent
+    for rid in rel_ids:
+        rs = relation_get(unit=local_unit(), rid=rid)
+        if rs:
+            keys += rs.keys()
+
+        # Don't bother checking if we have already identified a diff
+        if diff:
+            continue
+
+        # Work out if this notification changes anything
+        for k, v in data.iteritems():
+            if rs.get(k, None) != v:
+                diff = True
+                break
+
+    if not diff:
+        log("Notifications unchanged by new values so skipping broadcast",
+            level=INFO)
+        return
+
+    # Set all to None
+    _notifications = {k: None for k in set(keys)}
+
+    # Set new values
+    for k, v in data.iteritems():
+        _notifications[k] = v
+
+    if force:
+        _notifications['trigger'] = str(uuid.uuid4())
+
+    # Broadcast
+    log("Sending identity-service notifications (trigger=%s)" % (force),
+        level=DEBUG)
+    for rid in rel_ids:
+        relation_set(relation_id=rid, relation_settings=_notifications)

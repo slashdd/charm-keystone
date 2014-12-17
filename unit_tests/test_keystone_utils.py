@@ -318,7 +318,7 @@ class TestKeystoneUtils(CharmTestCase):
                                                   relation_settings=settings)
         mock_relation_set.reset_mock()
         settings = {'foo-endpoint-changed': 1}
-        utils.send_notifications(settings, use_trigger=True)
+        utils.send_notifications(settings, force=True)
         self.assertTrue(mock_relation_set.called)
         settings['trigger'] = '1234'
         mock_relation_set.assert_called_once_with(relation_id=relation_id,

@@ -872,16 +872,20 @@ def send_notifications(data, use_trigger=False):
                         remote hook is fired.
     """
     if not data or not is_elected_leader(CLUSTER_RES):
-        log("Not sending notifications", level=INFO)
+        log("Not sending notifications (no data or not leader)", level=INFO)
         return
 
-    rel_ids = []
+    rel_ids = relation_ids('identity-notifications')
+    if not rel_ids:
+        log("No relations on identity-notifications - skipping broadcast",
+            level=INFO)
+        return
+
     keys = []
     diff = False
 
     # Get all settings previously sent
-    for rid in relation_ids('identity-notifications'):
-        rel_ids.append(rid)
+    for rid in rel_ids:
         rs = relation_get(unit=local_unit(), rid=rid)
         if rs:
             keys += rs.keys()

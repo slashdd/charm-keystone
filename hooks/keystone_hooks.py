@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+import hashlib
 import os
 import sys
 import time
@@ -54,7 +55,8 @@ from keystone_utils import (
     KEYSTONE_CONF,
     SSH_USER,
     STORED_PASSWD,
-    setup_ipv6
+    setup_ipv6,
+    send_notifications,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -198,9 +200,24 @@ def pgsql_db_changed():
 
 @hooks.hook('identity-service-relation-changed')
 def identity_changed(relation_id=None, remote_unit=None):
+    notifications = {}
     if eligible_leader(CLUSTER_RES):
         add_service_to_keystone(relation_id, remote_unit)
         synchronize_ca()
+
+        settings = relation_get(rid=relation_id, unit=remote_unit)
+        service = settings.get('service', None)
+        if service:
+            # If service is known and endpoint has changed, notify service if
+            # it is related with notifications interface.
+            csum = hashlib.sha256()
+            # We base the decision to notify on whether these parameters have
+            # changed (if csum is unchanged from previous notify, relation will
+            # not fire).
+            csum.update(settings.get('public_url', None))
+            csum.update(settings.get('admin_url', None))
+            csum.update(settings.get('internal_url', None))
+            notifications['%s-endpoint-changed' % (service)] = csum.hexdigest()
     else:
         # Each unit needs to set the db information otherwise if the unit
         # with the info dies the settings die with it Bug# 1355848
@@ -209,6 +226,9 @@ def identity_changed(relation_id=None, remote_unit=None):
             if 'service_password' in peerdb_settings:
                 relation_set(relation_id=rel_id, **peerdb_settings)
         log('Deferring identity_changed() to service leader.')
+
+    if notifications:
+        send_notifications(notifications)
 
 
 @hooks.hook('cluster-relation-joined')

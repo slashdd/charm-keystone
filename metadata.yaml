@@ -9,6 +9,8 @@ categories: ["misc"]
 provides:
   identity-service:
     interface: keystone
+  identity-notifications:
+    interface: keystone-notifications
   identity-admin:
     interface: keystone-admin
 requires:

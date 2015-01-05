@@ -17,6 +17,7 @@ from charmhelpers.core.hookenv import (
     is_relation_made,
     log,
     local_unit,
+    INFO,
     WARNING,
     ERROR,
     relation_get,
@@ -284,6 +285,19 @@ def cluster_joined(relation_id=None):
                      relation_settings={'private-address': private_addr})
 
 
+def is_pending_clustered():
+    """If we have HA relations but are not yet 'clustered' return True."""
+    pending = False
+    for r_id in (relation_ids('ha') or []):
+        for unit in (relation_list(r_id) or []):
+            if relation_get('clustered', rid=r_id, unit=unit):
+                pending = False
+            else:
+                pending = True
+
+    return pending
+
+
 @hooks.hook('cluster-relation-changed',
             'cluster-relation-departed')
 @restart_on_change(restart_map(), stopstart=True)
@@ -298,6 +312,14 @@ def cluster_changed():
                                 peer_interface='cluster',
                                 ensure_local_user=True)
     CONFIGS.write_all()
+
+    # If we have a pending cluster formation, defer following actions to the ha
+    # relation hook instead.
+    if is_pending_clustered():
+        log("Waiting for ha to be 'clustered' - deferring identity-updates "
+            "and cert sync to ha relation", level=INFO)
+        return
+
     for r_id in relation_ids('identity-service'):
         for unit in relation_list(r_id):
             identity_changed(relation_id=r_id, remote_unit=unit,
@@ -364,6 +386,7 @@ def ha_changed():
         ensure_initial_admin(config)
         log('Cluster configured, notifying other services and updating '
             'keystone endpoint configuration')
+
     for rid in relation_ids('identity-service'):
         for unit in related_units(rid):
             identity_changed(relation_id=rid, remote_unit=unit,

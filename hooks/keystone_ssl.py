@@ -101,6 +101,9 @@ keyUsage                = digitalSignature, keyEncipherment, keyAgreement
 extendedKeyUsage        = serverAuth, clientAuth
 """
 
+# Instance can be appended to this list to represent a singleton
+CA_SINGLETON = []
+
 
 def init_ca(ca_dir, common_name, org_name=ORG_NAME, org_unit_name=ORG_UNIT):
     print 'Ensuring certificate authority exists at %s.' % ca_dir

@@ -1,7 +1,8 @@
 #!/usr/bin/python
-
 import hashlib
 import os
+import re
+import stat
 import sys
 import time
 
@@ -16,6 +17,7 @@ from charmhelpers.core.hookenv import (
     is_relation_made,
     log,
     local_unit,
+    WARNING,
     ERROR,
     relation_get,
     relation_ids,
@@ -57,11 +59,13 @@ from keystone_utils import (
     STORED_PASSWD,
     setup_ipv6,
     send_notifications,
+    check_peer_actions,
+    CA_CERT_PATH,
+    ensure_permissions,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
-    eligible_leader,
-    is_leader,
+    is_elected_leader,
     get_hacluster_config,
 )
 
@@ -109,10 +113,19 @@ def config_changed():
 
     check_call(['chmod', '-R', 'g+wrx', '/var/lib/keystone/'])
 
+    # Ensure unison can write to certs dir.
+    # FIXME: need to a better way around this e.g. move cert to it's own dir
+    # and give that unison permissions.
+    path = os.path.dirname(CA_CERT_PATH)
+    perms = int(oct(stat.S_IMODE(os.stat(path).st_mode) |
+                    (stat.S_IWGRP | stat.S_IXGRP)), base=8)
+    ensure_permissions(path, group='keystone', perms=perms)
+
     save_script_rc()
     configure_https()
     CONFIGS.write_all()
-    if eligible_leader(CLUSTER_RES):
+
+    if is_elected_leader(CLUSTER_RES):
         migrate_database()
         ensure_initial_admin(config)
         log('Firing identity_changed hook for all related services.')
@@ -121,7 +134,9 @@ def config_changed():
         for r_id in relation_ids('identity-service'):
             for unit in relation_list(r_id):
                 identity_changed(relation_id=r_id,
-                                 remote_unit=unit)
+                                 remote_unit=unit, sync_certs=False)
+
+    synchronize_ca()
 
     [cluster_joined(rid) for rid in relation_ids('cluster')]
 
@@ -163,7 +178,7 @@ def db_changed():
         log('shared-db relation incomplete. Peer not ready?')
     else:
         CONFIGS.write(KEYSTONE_CONF)
-        if eligible_leader(CLUSTER_RES):
+        if is_elected_leader(CLUSTER_RES):
             # Bugs 1353135 & 1187508. Dbs can appear to be ready before the
             # units acl entry has been added. So, if the db supports passing
             # a list of permitted units then check if we're in the list.
@@ -188,7 +203,7 @@ def pgsql_db_changed():
         log('pgsql-db relation incomplete. Peer not ready?')
     else:
         CONFIGS.write(KEYSTONE_CONF)
-        if eligible_leader(CLUSTER_RES):
+        if is_elected_leader(CLUSTER_RES):
             migrate_database()
             ensure_initial_admin(config)
             # Ensure any existing service entries are updated in the
@@ -199,11 +214,27 @@ def pgsql_db_changed():
 
 
 @hooks.hook('identity-service-relation-changed')
-def identity_changed(relation_id=None, remote_unit=None):
+def identity_changed(relation_id=None, remote_unit=None, sync_certs=True):
     notifications = {}
-    if eligible_leader(CLUSTER_RES):
-        add_service_to_keystone(relation_id, remote_unit)
-        synchronize_ca()
+    if is_elected_leader(CLUSTER_RES):
+        # Catch database not configured error and defer until db ready
+        from keystoneclient.apiclient.exceptions import InternalServerError
+        try:
+            add_service_to_keystone(relation_id, remote_unit)
+        except InternalServerError as exc:
+            key = re.compile("'keystone\..+' doesn't exist")
+            if re.search(key, exc.message):
+                log("Keystone database not yet ready (InternalServerError "
+                    "raised) - deferring until *-db relation completes.",
+                    level=WARNING)
+                return
+
+            log("Unexpected exception occurred", level=ERROR)
+            raise
+
+        CONFIGS.write_all()
+        if sync_certs:
+            synchronize_ca()
 
         settings = relation_get(rid=relation_id, unit=remote_unit)
         service = settings.get('service', None)
@@ -257,18 +288,22 @@ def cluster_joined(relation_id=None):
             'cluster-relation-departed')
 @restart_on_change(restart_map(), stopstart=True)
 def cluster_changed():
+    check_peer_actions()
+
     # NOTE(jamespage) re-echo passwords for peer storage
-    peer_echo(includes=['_passwd', 'identity-service:'])
+    echo_whitelist = ['_passwd', 'identity-service:', 'ssl-cert-master']
+    peer_echo(includes=echo_whitelist)
     unison.ssh_authorized_peers(user=SSH_USER,
                                 group='keystone',
                                 peer_interface='cluster',
                                 ensure_local_user=True)
-    synchronize_ca()
     CONFIGS.write_all()
     for r_id in relation_ids('identity-service'):
         for unit in relation_list(r_id):
-            identity_changed(relation_id=r_id,
-                             remote_unit=unit)
+            identity_changed(relation_id=r_id, remote_unit=unit,
+                             sync_certs=False)
+
+    synchronize_ca()
 
 
 @hooks.hook('ha-relation-joined')
@@ -325,14 +360,16 @@ def ha_joined():
 def ha_changed():
     clustered = relation_get('clustered')
     CONFIGS.write_all()
-    if (clustered is not None and
-            is_leader(CLUSTER_RES)):
+    if clustered is not None and is_elected_leader(CLUSTER_RES):
         ensure_initial_admin(config)
         log('Cluster configured, notifying other services and updating '
             'keystone endpoint configuration')
     for rid in relation_ids('identity-service'):
         for unit in related_units(rid):
-            identity_changed(relation_id=rid, remote_unit=unit)
+            identity_changed(relation_id=rid, remote_unit=unit,
+                             sync_certs=False)
+
+    synchronize_ca()
 
 
 @hooks.hook('identity-admin-relation-changed')
@@ -375,8 +412,7 @@ def upgrade_charm():
                                 group='keystone',
                                 peer_interface='cluster',
                                 ensure_local_user=True)
-    synchronize_ca()
-    if eligible_leader(CLUSTER_RES):
+    if is_elected_leader(CLUSTER_RES):
         log('Cluster leader - ensuring endpoint configuration'
             ' is up to date')
         time.sleep(10)
@@ -385,8 +421,9 @@ def upgrade_charm():
         for r_id in relation_ids('identity-service'):
             for unit in relation_list(r_id):
                 identity_changed(relation_id=r_id,
-                                 remote_unit=unit)
+                                 remote_unit=unit, sync_certs=False)
     CONFIGS.write_all()
+    synchronize_ca()
 
 
 def main():

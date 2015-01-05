@@ -26,7 +26,7 @@ TO_PATCH = [
     'get_os_codename_install_source',
     'grant_role',
     'configure_installation_source',
-    'eligible_leader',
+    'is_elected_leader',
     'https',
     'is_clustered',
     'peer_store_and_set',
@@ -113,7 +113,7 @@ class TestKeystoneUtils(CharmTestCase):
             self, migrate_database, determine_packages, configs):
         self.test_config.set('openstack-origin', 'precise')
         determine_packages.return_value = []
-        self.eligible_leader.return_value = True
+        self.is_elected_leader.return_value = True
 
         utils.do_openstack_upgrade(configs)
 

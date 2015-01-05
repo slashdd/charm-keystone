@@ -250,7 +250,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             'admin_token': 'ubuntutesting',
             'service_password': u.not_null,
             'service_port': '5000',
-            'auth_port': '35347',
+            'auth_port': '35357',
             'auth_protocol': 'http',
             'private-address': u.valid_ip,
             'https_keystone': 'False',

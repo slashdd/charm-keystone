@@ -125,7 +125,7 @@ BASE_RESOURCE_MAP = OrderedDict([
                      context.WorkerConfigContext()],
     }),
     (HAPROXY_CONF, {
-        'contexts': [context.HAProxyContext(),
+        'contexts': [context.HAProxyContext(singlenode_mode=True),
                      keystone_context.HAProxyContext()],
         'services': ['haproxy'],
     }),
@@ -247,9 +247,10 @@ def determine_packages():
 def save_script_rc():
     env_vars = {'OPENSTACK_SERVICE_KEYSTONE': 'keystone',
                 'OPENSTACK_PORT_ADMIN': determine_api_port(
-                    api_port('keystone-admin')),
+                    api_port('keystone-admin'), singlenode_mode=True),
                 'OPENSTACK_PORT_PUBLIC': determine_api_port(
-                    api_port('keystone-public'))}
+                    api_port('keystone-public'),
+                    singlenode_mode=True)}
     _save_script_rc(**env_vars)
 
 
@@ -297,10 +298,12 @@ def get_local_endpoint():
         ipv6_addr = get_ipv6_addr(exc_list=[config('vip')])[0]
         endpoint_url = 'http://[%s]:{}/v2.0/' % ipv6_addr
         local_endpoint = endpoint_url.format(
-            determine_api_port(api_port('keystone-admin')))
+            determine_api_port(api_port('keystone-admin'),
+                               singlenode_mode=True))
     else:
         local_endpoint = 'http://localhost:{}/v2.0/'.format(
-            determine_api_port(api_port('keystone-admin')))
+            determine_api_port(api_port('keystone-admin'),
+                               singlenode_mode=True))
 
     return local_endpoint
 

@@ -63,6 +63,7 @@ from keystone_utils import (
     check_peer_actions,
     CA_CERT_PATH,
     ensure_permissions,
+    is_pending_clustered,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -285,19 +286,6 @@ def cluster_joined(relation_id=None):
                      relation_settings={'private-address': private_addr})
 
 
-def is_pending_clustered():
-    """If we have HA relations but are not yet 'clustered' return True."""
-    pending = False
-    for r_id in (relation_ids('ha') or []):
-        for unit in (relation_list(r_id) or []):
-            if relation_get('clustered', rid=r_id, unit=unit):
-                pending = False
-            else:
-                pending = True
-
-    return pending
-
-
 @hooks.hook('cluster-relation-changed',
             'cluster-relation-departed')
 @restart_on_change(restart_map(), stopstart=True)
@@ -306,7 +294,6 @@ def cluster_changed():
 
     # NOTE(jamespage) re-echo passwords for peer storage
     echo_whitelist = ['_passwd', 'identity-service:', 'ssl-cert-master']
-    peer_echo(includes=echo_whitelist)
     unison.ssh_authorized_peers(user=SSH_USER,
                                 group='keystone',
                                 peer_interface='cluster',
@@ -326,6 +313,7 @@ def cluster_changed():
                              sync_certs=False)
 
     synchronize_ca()
+    peer_echo(includes=echo_whitelist)
 
 
 @hooks.hook('ha-relation-joined')

@@ -356,11 +356,13 @@ class KeystoneRelationTests(CharmTestCase):
             user=self.ssh_user, group='juju_keystone',
             peer_interface='cluster', ensure_local_user=True)
 
+    @patch.object(hooks, 'is_pending_clustered')
     @patch.object(hooks, 'check_peer_actions')
     @patch.object(unison, 'ssh_authorized_peers')
     @patch.object(hooks, 'CONFIGS')
     def test_cluster_changed(self, configs, ssh_authorized_peers,
-                             check_peer_actions):
+                             check_peer_actions, is_pending_clustered):
+        is_pending_clustered.return_value = False
         hooks.cluster_changed()
         whitelist = ['_passwd', 'identity-service:', 'ssl-cert-master']
         self.peer_echo.assert_called_with(includes=whitelist)

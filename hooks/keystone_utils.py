@@ -1149,3 +1149,13 @@ def send_notifications(data, force=False):
         level=DEBUG)
     for rid in rel_ids:
         relation_set(relation_id=rid, relation_settings=_notifications)
+
+
+def is_pending_clustered():
+    """If we have HA relations but are not yet 'clustered' return True."""
+    for r_id in (relation_ids('ha') or []):
+        for unit in (relation_list(r_id) or []):
+            if not relation_get('clustered', rid=r_id, unit=unit):
+                return True
+
+    return False

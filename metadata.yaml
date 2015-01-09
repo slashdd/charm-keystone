@@ -12,6 +12,8 @@ provides:
     scope: container
   identity-service:
     interface: keystone
+  identity-notifications:
+    interface: keystone-notifications
   identity-admin:
     interface: keystone-admin
 requires:

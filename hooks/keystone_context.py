@@ -1,4 +1,4 @@
-from charmhelpers.core.hookenv import config, unit_get
+from charmhelpers.core.hookenv import config
 
 from charmhelpers.core.host import mkdir, write_file
 
@@ -6,14 +6,10 @@ from charmhelpers.contrib.openstack import context
 
 from charmhelpers.contrib.hahelpers.cluster import (
     determine_apache_port,
-    determine_api_port,
-    is_clustered
+    determine_api_port
 )
 
 from charmhelpers.contrib.hahelpers.apache import install_ca_cert
-
-from charmhelpers.contrib.network.ip import (
-    get_address_in_network, is_address_in_network)
 
 import os
 
@@ -49,26 +45,12 @@ class ApacheSSLContext(context.ApacheSSLContext):
         install_ca_cert(ca.get_ca_bundle())
 
     def canonical_names(self):
-        addresses = []
-        vips = []
-        if config('vip'):
-            vips = config('vip').split()
-        for network_type in ['os-internal-network',
-                             'os-admin-network',
-                             'os-public-network']:
-            address = get_address_in_network(config(network_type),
-                                             unit_get('private-address'))
-            if len(vips) > 0 and is_clustered():
-                for vip in vips:
-                    if is_address_in_network(config(network_type),
-                                             vip):
-                        addresses.append(vip)
-                        break
-            elif is_clustered():
-                addresses.append(config('vip'))
-            else:
-                addresses.append(address)
-        return list(set(addresses))
+        addresses = self.get_network_addresses()
+        addrs = []
+        for address, endpoint in addresses:
+            addrs.append(endpoint)
+
+        return list(set(addrs))
 
 
 class HAProxyContext(context.HAProxyContext):
@@ -90,8 +72,10 @@ class HAProxyContext(context.HAProxyContext):
         listen_ports['public_port'] = api_port('keystone-public')
 
         # Apache ports
-        a_admin_port = determine_apache_port(api_port('keystone-admin'))
-        a_public_port = determine_apache_port(api_port('keystone-public'))
+        a_admin_port = determine_apache_port(api_port('keystone-admin'),
+                                             singlenode_mode=True)
+        a_public_port = determine_apache_port(api_port('keystone-public'),
+                                              singlenode_mode=True)
 
         port_mapping = {
             'admin-port': [
@@ -118,8 +102,10 @@ class KeystoneContext(context.OSContextGenerator):
         )
         ctxt = {}
         ctxt['token'] = set_admin_token(config('admin-token'))
-        ctxt['admin_port'] = determine_api_port(api_port('keystone-admin'))
-        ctxt['public_port'] = determine_api_port(api_port('keystone-public'))
+        ctxt['admin_port'] = determine_api_port(api_port('keystone-admin'),
+                                                singlenode_mode=True)
+        ctxt['public_port'] = determine_api_port(api_port('keystone-public'),
+                                                 singlenode_mode=True)
         ctxt['debug'] = config('debug') in ['yes', 'true', 'True']
         ctxt['verbose'] = config('verbose') in ['yes', 'true', 'True']
         ctxt['identity_backend'] = config('identity-backend')

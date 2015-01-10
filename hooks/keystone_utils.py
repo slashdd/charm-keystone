@@ -1,13 +1,15 @@
 #!/usr/bin/python
 import glob
 import grp
-import subprocess
+import hashlib
 import os
 import pwd
-import uuid
-import urlparse
 import shutil
+import subprocess
+import threading
 import time
+import urlparse
+import uuid
 
 from base64 import b64encode
 from collections import OrderedDict
@@ -56,10 +58,10 @@ from charmhelpers.core.hookenv import (
     config,
     log,
     local_unit,
+    related_units,
     relation_get,
     relation_set,
     relation_ids,
-    unit_get,
     DEBUG,
     INFO,
     WARNING,
@@ -130,6 +132,7 @@ SSL_DIR = '/var/lib/keystone/juju_ssl/'
 SSL_CA_NAME = 'Ubuntu Cloud'
 CLUSTER_RES = 'grp_ks_vips'
 SSH_USER = 'juju_keystone'
+SSL_SYNC_SEMAPHORE = threading.Semaphore()
 
 BASE_RESOURCE_MAP = OrderedDict([
     (KEYSTONE_CONF, {
@@ -701,7 +704,7 @@ def is_ssl_cert_master():
         master = relation_get(attribute='ssl-cert-master', rid=rid,
                               unit=local_unit())
 
-    if master and master == unit_get('private-address'):
+    if master and master == local_unit():
         return True
 
     return False
@@ -720,6 +723,39 @@ def unison_sync(paths_to_sync):
                          fatal=True)
 
 
+def is_sync_master():
+    if not peer_units():
+        log("Not syncing certs since there are no peer units.", level=INFO)
+        return False
+
+    # If no ssl master elected and we are cluster leader, elect this unit.
+    if is_elected_leader(CLUSTER_RES):
+        master = []
+        for rid in relation_ids('cluster'):
+            for unit in related_units(rid):
+                m = relation_get(rid=rid, unit=unit,
+                                 attribute='ssl-cert-master')
+                if m is not None:
+                    master.append(m)
+
+        master = set(master)
+        if not master or ('unknown' in master and len(master) == 1):
+            log("Electing this unit as ssl-cert-master", level=DEBUG)
+            for rid in relation_ids('cluster'):
+                settings = {'ssl-cert-master': local_unit(),
+                            'ssl-synced-units': None}
+                relation_set(relation_id=rid, relation_settings=settings)
+
+            # Return now and wait for cluster-relation-changed for sync.
+            return False
+
+    if not is_ssl_cert_master():
+        log("Not ssl cert master - skipping sync", level=INFO)
+        return False
+
+    return True
+
+
 def synchronize_ca(fatal=True):
     """Broadcast service credentials to peers.
 
@@ -732,27 +768,6 @@ def synchronize_ca(fatal=True):
     complete actions before electing the new leader as sync master.
     """
     paths_to_sync = [SYNC_FLAGS_DIR]
-
-    if not peer_units():
-        log("Not syncing certs since there are no peer units.", level=INFO)
-        return
-
-    # If no ssl master elected and we are cluster leader, elect this unit.
-    if is_elected_leader(CLUSTER_RES):
-        master = relation_get(attribute='ssl-cert-master')
-        if not master or master == 'unknown':
-            log("Electing this unit as ssl-cert-master", level=DEBUG)
-            for rid in relation_ids('cluster'):
-                relation_set(relation_id=rid,
-                             relation_settings={'ssl-cert-master':
-                                                unit_get('private-address'),
-                                                'trigger': str(uuid.uuid4())})
-            # Return now and wait for echo before continuing.
-            return
-
-    if not is_ssl_cert_master():
-        log("Not ssl cert master - skipping sync", level=INFO)
-        return
 
     if str_is_true(config('https-service-endpoints')):
         log("Syncing all endpoint certs since https-service-endpoints=True",
@@ -785,7 +800,6 @@ def synchronize_ca(fatal=True):
     # new ssl keys.
     create_peer_service_actions('restart', ['apache2'])
     create_service_action('update-ca-certificates')
-
     try:
         unison_sync(paths_to_sync)
     except:
@@ -795,23 +809,94 @@ def synchronize_ca(fatal=True):
             log("Sync failed but fatal=False", level=INFO)
             return
 
-    trigger = str(uuid.uuid4())
-    log("Sending restart-services-trigger=%s to all peers" % (trigger),
-        level=DEBUG)
-    settings = {'restart-services-trigger': trigger}
-
     # Cleanup
     shutil.rmtree(SYNC_FLAGS_DIR)
     mkdir(SYNC_FLAGS_DIR, SSH_USER, 'keystone', 0o775)
 
-    # If we are the sync master but no longer leader then re-elect master.
-    if not is_elected_leader(CLUSTER_RES):
-        log("Re-electing ssl cert master.", level=INFO)
-        settings['ssl-cert-master'] = 'unknown'
+    trigger = str(uuid.uuid4())
+    log("Sending restart-services-trigger=%s to all peers" % (trigger),
+        level=DEBUG)
 
-    log("Sync complete - sending peer info", level=DEBUG)
-    for rid in relation_ids('cluster'):
-        relation_set(relation_id=rid, **settings)
+    log("Sync complete", level=DEBUG)
+    return {'restart-services-trigger': trigger,
+            'ssl-synced-units': peer_units()}
+
+
+def update_hash_from_path(hash, path, recurse_depth=10):
+    """Recurse through path and update the provided hash for every file found.
+    """
+    if not recurse_depth:
+        log("Max recursion depth (%s) reached for update_hash_from_path() at "
+            "path='%s' - not going any deeper" % (recurse_depth, path),
+            level=WARNING)
+        return sum
+
+    for p in glob.glob("%s/*" % path):
+        if os.path.isdir(p):
+            update_hash_from_path(hash, p, recurse_depth=recurse_depth - 1)
+        else:
+            with open(p, 'r') as fd:
+                hash.update(fd.read())
+
+
+def synchronize_ca_if_changed(force=False, fatal=True):
+    """Decorator to perform ssl cert sync if decorated function modifies them
+    in any way.
+
+    If force is True a sync is done regardless.
+    """
+    def inner_synchronize_ca_if_changed1(f):
+        def inner_synchronize_ca_if_changed2(*args, **kwargs):
+            if not is_sync_master():
+                return f(*args, **kwargs)
+
+            peer_settings = {}
+            try:
+                # Ensure we don't do a double sync if we are nested.
+                if not force and SSL_SYNC_SEMAPHORE.acquire(blocking=0):
+                    hash1 = hashlib.sha256()
+                    for path in [SSL_DIR, APACHE_SSL_DIR, CA_CERT_PATH]:
+                        update_hash_from_path(hash1, path)
+
+                    hash1 = hash1.hexdigest()
+
+                    ret = f(*args, **kwargs)
+
+                    hash2 = hashlib.sha256()
+                    for path in [SSL_DIR, APACHE_SSL_DIR, CA_CERT_PATH]:
+                        update_hash_from_path(hash2, path)
+
+                    hash2 = hash2.hexdigest()
+                    if hash1 != hash2:
+                        log("SSL certs have changed - syncing peers",
+                            level=DEBUG)
+                        peer_settings = synchronize_ca(fatal=fatal)
+                    else:
+                        log("SSL certs have not changed - skipping sync",
+                            level=DEBUG)
+                else:
+                    ret = f(*args, **kwargs)
+                    if force:
+                        log("Doing forced ssl cert sync", level=DEBUG)
+                        peer_settings = synchronize_ca(fatal=fatal)
+
+                # If we are the sync master but no longer leader then re-elect
+                # master.
+                if not is_elected_leader(CLUSTER_RES):
+                    log("Re-electing ssl cert master.", level=INFO)
+                    peer_settings['ssl-cert-master'] = 'unknown'
+
+                for rid in relation_ids('cluster'):
+                    relation_set(relation_id=rid,
+                                 relation_settings=peer_settings)
+
+                return ret
+            finally:
+                SSL_SYNC_SEMAPHORE.release()
+
+        return inner_synchronize_ca_if_changed2
+
+    return inner_synchronize_ca_if_changed1
 
 
 def get_ca(user='keystone', group='keystone'):
@@ -838,8 +923,11 @@ def get_ca(user='keystone', group='keystone'):
 
         # Tag this host as the ssl cert master.
         if is_clustered() or peer_units():
-            peer_store(key='ssl-cert-master',
-                       value=unit_get('private-address'))
+            for rid in relation_ids('cluster'):
+                relation_set(relation_id=rid,
+                             relation_settings={'ssl-cert-master':
+                                                local_unit(),
+                                                'synced-units': None})
 
         ssl.CA_SINGLETON.append(ca)
 
@@ -1149,13 +1237,3 @@ def send_notifications(data, force=False):
         level=DEBUG)
     for rid in rel_ids:
         relation_set(relation_id=rid, relation_settings=_notifications)
-
-
-def is_pending_clustered():
-    """If we have HA relations but are not yet 'clustered' return True."""
-    for r_id in (relation_ids('ha') or []):
-        for unit in (relation_list(r_id) or []):
-            if not relation_get('clustered', rid=r_id, unit=unit):
-                return True
-
-    return False

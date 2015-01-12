@@ -721,7 +721,7 @@ def unison_sync(paths_to_sync):
                          fatal=True)
 
 
-def synchronize_ca(fatal=True):
+def synchronize_ca(fatal=False):
     """Broadcast service credentials to peers.
 
     By default a failure to sync is fatal and will result in a raised
@@ -792,7 +792,7 @@ def update_hash_from_path(hash, path, recurse_depth=10):
                 hash.update(fd.read())
 
 
-def synchronize_ca_if_changed(force=False, fatal=True):
+def synchronize_ca_if_changed(force=False, fatal=False):
     """Decorator to perform ssl cert sync if decorated function modifies them
     in any way.
 
@@ -836,9 +836,10 @@ def synchronize_ca_if_changed(force=False, fatal=True):
                         log("Doing forced ssl cert sync", level=DEBUG)
                         peer_settings = synchronize_ca(fatal=fatal)
 
-                for rid in relation_ids('cluster'):
-                    relation_set(relation_id=rid,
-                                 relation_settings=peer_settings)
+                if peer_settings:
+                    for rid in relation_ids('cluster'):
+                        relation_set(relation_id=rid,
+                                     relation_settings=peer_settings)
 
                 return ret
             finally:

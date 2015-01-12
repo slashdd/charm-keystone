@@ -100,7 +100,7 @@ def install():
 
 @hooks.hook('config-changed')
 @restart_on_change(restart_map())
-@synchronize_ca_if_changed(fatal=False)
+@synchronize_ca_if_changed()
 def config_changed():
     if config('prefer-ipv6'):
         setup_ipv6()
@@ -286,13 +286,13 @@ def cluster_joined(relation_id=None):
                      relation_settings={'private-address': private_addr})
 
 
-@synchronize_ca_if_changed()
+@synchronize_ca_if_changed(fatal=True)
 def identity_updates_with_ssl_sync():
     CONFIGS.write_all()
     update_all_identity_relation_units()
 
 
-@synchronize_ca_if_changed(force=True)
+@synchronize_ca_if_changed(force=True, fatal=True)
 def identity_updates_with_forced_ssl_sync():
     identity_updates_with_ssl_sync()
 
@@ -416,7 +416,7 @@ def admin_relation_changed():
     relation_set(**relation_data)
 
 
-@synchronize_ca_if_changed()
+@synchronize_ca_if_changed(fatal=True)
 def configure_https():
     '''
     Enables SSL API Apache config if appropriate and kicks identity-service

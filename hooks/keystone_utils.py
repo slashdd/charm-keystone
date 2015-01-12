@@ -4,7 +4,7 @@ import grp
 import hashlib
 import os
 import pwd
-import shutil
+import re
 import subprocess
 import threading
 import time
@@ -19,7 +19,6 @@ from charmhelpers.contrib.hahelpers.cluster import(
     is_elected_leader,
     determine_api_port,
     https,
-    is_clustered,
     peer_units,
 )
 
@@ -58,7 +57,6 @@ from charmhelpers.core.hookenv import (
     config,
     log,
     local_unit,
-    related_units,
     relation_get,
     relation_set,
     relation_ids,
@@ -400,7 +398,7 @@ def create_endpoint_template(region, service, publicurl, adminurl,
 
             up_to_date = True
             for k in ['publicurl', 'adminurl', 'internalurl']:
-                if ep[k] != locals()[k]:
+                if ep.get(k) != locals()[k]:
                     up_to_date = False
 
             if up_to_date:
@@ -651,26 +649,37 @@ def check_peer_actions():
     if restart and os.path.isdir(SYNC_FLAGS_DIR):
         for flagfile in glob.glob(os.path.join(SYNC_FLAGS_DIR, '*')):
             flag = os.path.basename(flagfile)
-            service = flag.partition('.')[0]
-            action = flag.partition('.')[2]
-
-            if action == 'restart':
-                log("Running action='%s' on service '%s'" %
-                    (action, service), level=DEBUG)
-                service_restart(service)
-            elif action == 'start':
-                log("Running action='%s' on service '%s'" %
-                    (action, service), level=DEBUG)
-                service_start(service)
-            elif action == 'stop':
-                log("Running action='%s' on service '%s'" %
-                    (action, service), level=DEBUG)
-                service_stop(service)
-            elif flag == 'update-ca-certificates':
-                log("Running update-ca-certificates", level=DEBUG)
-                subprocess.check_call(['update-ca-certificates'])
+            key = re.compile("^(.+)?\.(.+)?\.(.+)")
+            res = re.search(key, flag)
+            if res:
+                source = res. group(1)
+                service = res. group(2)
+                action = res. group(3)
             else:
-                log("Unknown action flag=%s" % (flag), level=WARNING)
+                key = re.compile("^(.+)?\.(.+)?")
+                res = re.search(key, flag)
+                source = res. group(1)
+                action = res. group(2)
+
+            # Don't execute actions requested byu this unit.
+            if local_unit().replace('.', '-') != source:
+                if action == 'restart':
+                    log("Running action='%s' on service '%s'" %
+                        (action, service), level=DEBUG)
+                    service_restart(service)
+                elif action == 'start':
+                    log("Running action='%s' on service '%s'" %
+                        (action, service), level=DEBUG)
+                    service_start(service)
+                elif action == 'stop':
+                    log("Running action='%s' on service '%s'" %
+                        (action, service), level=DEBUG)
+                    service_stop(service)
+                elif action == 'update-ca-certificates':
+                    log("Running update-ca-certificates", level=DEBUG)
+                    subprocess.check_call(['update-ca-certificates'])
+                else:
+                    log("Unknown action flag=%s" % (flag), level=WARNING)
 
             os.remove(flagfile)
 
@@ -683,31 +692,20 @@ def create_peer_service_actions(action, services):
     synced.
     """
     for service in services:
-        flagfile = os.path.join(SYNC_FLAGS_DIR, '%s.%s' %
-                                (service.strip(), action))
+        flagfile = os.path.join(SYNC_FLAGS_DIR, '%s.%s.%s' %
+                                (local_unit().replace('/', '-'),
+                                 service.strip(), action))
         log("Creating action %s" % (flagfile), level=DEBUG)
         write_file(flagfile, content='', owner=SSH_USER, group='keystone',
                    perms=0o644)
 
 
 def create_service_action(action):
+    action = "%s.%s" % (local_unit().replace('/', '-'), action)
     flagfile = os.path.join(SYNC_FLAGS_DIR, action)
     log("Creating action %s" % (flagfile), level=DEBUG)
     write_file(flagfile, content='', owner=SSH_USER, group='keystone',
                perms=0o644)
-
-
-def is_ssl_cert_master():
-    """Return True if this unit is ssl cert master."""
-    master = None
-    for rid in relation_ids('cluster'):
-        master = relation_get(attribute='ssl-cert-master', rid=rid,
-                              unit=local_unit())
-
-    if master and master == local_unit():
-        return True
-
-    return False
 
 
 @retry_on_exception(3, base_delay=2, exc_type=subprocess.CalledProcessError)
@@ -721,39 +719,6 @@ def unison_sync(paths_to_sync):
     unison.sync_to_peers(peer_interface='cluster', paths=paths_to_sync,
                          user=SSH_USER, verbose=True, gid=keystone_gid,
                          fatal=True)
-
-
-def is_sync_master():
-    if not peer_units():
-        log("Not syncing certs since there are no peer units.", level=INFO)
-        return False
-
-    # If no ssl master elected and we are cluster leader, elect this unit.
-    if is_elected_leader(CLUSTER_RES):
-        master = []
-        for rid in relation_ids('cluster'):
-            for unit in related_units(rid):
-                m = relation_get(rid=rid, unit=unit,
-                                 attribute='ssl-cert-master')
-                if m is not None:
-                    master.append(m)
-
-        master = set(master)
-        if not master or ('unknown' in master and len(master) == 1):
-            log("Electing this unit as ssl-cert-master", level=DEBUG)
-            for rid in relation_ids('cluster'):
-                settings = {'ssl-cert-master': local_unit(),
-                            'ssl-synced-units': None}
-                relation_set(relation_id=rid, relation_settings=settings)
-
-            # Return now and wait for cluster-relation-changed for sync.
-            return False
-
-    if not is_ssl_cert_master():
-        log("Not ssl cert master - skipping sync", level=INFO)
-        return False
-
-    return True
 
 
 def synchronize_ca(fatal=True):
@@ -785,16 +750,8 @@ def synchronize_ca(fatal=True):
         log("Nothing to sync - skipping", level=DEBUG)
         return
 
-    # If we are sync master proceed even if we are not leader since we are
-    # most likely to have up-to-date certs. If not leader we will re-elect once
-    # synced. This is done to avoid being affected by leader changing before
-    # all units have synced certs.
-
-    # Clear any existing flags
-    if os.path.isdir(SYNC_FLAGS_DIR):
-        shutil.rmtree(SYNC_FLAGS_DIR)
-
-    mkdir(SYNC_FLAGS_DIR, SSH_USER, 'keystone', 0o775)
+    if not os.path.isdir(SYNC_FLAGS_DIR):
+        mkdir(SYNC_FLAGS_DIR, SSH_USER, 'keystone', 0o775)
 
     # We need to restart peer apache services to ensure they have picked up
     # new ssl keys.
@@ -808,10 +765,6 @@ def synchronize_ca(fatal=True):
         else:
             log("Sync failed but fatal=False", level=INFO)
             return
-
-    # Cleanup
-    shutil.rmtree(SYNC_FLAGS_DIR)
-    mkdir(SYNC_FLAGS_DIR, SSH_USER, 'keystone', 0o775)
 
     trigger = str(uuid.uuid4())
     log("Sending restart-services-trigger=%s to all peers" % (trigger),
@@ -829,7 +782,7 @@ def update_hash_from_path(hash, path, recurse_depth=10):
         log("Max recursion depth (%s) reached for update_hash_from_path() at "
             "path='%s' - not going any deeper" % (recurse_depth, path),
             level=WARNING)
-        return sum
+        return
 
     for p in glob.glob("%s/*" % path):
         if os.path.isdir(p):
@@ -847,13 +800,16 @@ def synchronize_ca_if_changed(force=False, fatal=True):
     """
     def inner_synchronize_ca_if_changed1(f):
         def inner_synchronize_ca_if_changed2(*args, **kwargs):
-            if not is_sync_master():
-                return f(*args, **kwargs)
-
-            peer_settings = {}
+            # Only sync master can do sync. Ensure (a) we are not nested and
+            # (b) a master is elected and we are it.
             try:
+                acquired = SSL_SYNC_SEMAPHORE.acquire(blocking=0)
+                if not acquired or not is_elected_leader(CLUSTER_RES):
+                    return f(*args, **kwargs)
+
+                peer_settings = {}
                 # Ensure we don't do a double sync if we are nested.
-                if not force and SSL_SYNC_SEMAPHORE.acquire(blocking=0):
+                if not force:
                     hash1 = hashlib.sha256()
                     for path in [SSL_DIR, APACHE_SSL_DIR, CA_CERT_PATH]:
                         update_hash_from_path(hash1, path)
@@ -879,12 +835,6 @@ def synchronize_ca_if_changed(force=False, fatal=True):
                     if force:
                         log("Doing forced ssl cert sync", level=DEBUG)
                         peer_settings = synchronize_ca(fatal=fatal)
-
-                # If we are the sync master but no longer leader then re-elect
-                # master.
-                if not is_elected_leader(CLUSTER_RES):
-                    log("Re-electing ssl cert master.", level=INFO)
-                    peer_settings['ssl-cert-master'] = 'unknown'
 
                 for rid in relation_ids('cluster'):
                     relation_set(relation_id=rid,
@@ -920,14 +870,6 @@ def get_ca(user='keystone', group='keystone'):
         subprocess.check_output(['chown', '-R', '%s.%s' % (user, group),
                                  '%s' % SSL_DIR])
         subprocess.check_output(['chmod', '-R', 'g+rwx', '%s' % SSL_DIR])
-
-        # Tag this host as the ssl cert master.
-        if is_clustered() or peer_units():
-            for rid in relation_ids('cluster'):
-                relation_set(relation_id=rid,
-                             relation_settings={'ssl-cert-master':
-                                                local_unit(),
-                                                'synced-units': None})
 
         ssl.CA_SINGLETON.append(ca)
 

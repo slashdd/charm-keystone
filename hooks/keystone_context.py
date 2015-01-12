@@ -8,7 +8,8 @@ from charmhelpers.contrib.openstack import context
 
 from charmhelpers.contrib.hahelpers.cluster import (
     determine_apache_port,
-    determine_api_port
+    determine_api_port,
+    is_elected_leader,
 )
 
 from charmhelpers.core.hookenv import (
@@ -37,7 +38,7 @@ class ApacheSSLContext(context.ApacheSSLContext):
         from keystone_utils import (
             SSH_USER,
             get_ca,
-            is_ssl_cert_master,
+            CLUSTER_RES,
             ensure_permissions,
         )
 
@@ -48,9 +49,8 @@ class ApacheSSLContext(context.ApacheSSLContext):
         ensure_permissions(ssl_dir, user=SSH_USER, group='keystone',
                            perms=perms)
 
-        if not is_ssl_cert_master():
-            log("Not leader or cert master so skipping apache cert config",
-                level=INFO)
+        if not is_elected_leader(CLUSTER_RES):
+            log("Not leader - skipping apache cert config", level=INFO)
             return
 
         log("Creating apache ssl certs in %s" % (ssl_dir), level=INFO)
@@ -66,13 +66,12 @@ class ApacheSSLContext(context.ApacheSSLContext):
         from keystone_utils import (
             SSH_USER,
             get_ca,
-            is_ssl_cert_master,
+            CLUSTER_RES,
             ensure_permissions,
         )
 
-        if not is_ssl_cert_master():
-            log("Not leader or cert master so skipping apache ca config",
-                level=INFO)
+        if not is_elected_leader(CLUSTER_RES):
+            log("Not leader - skipping apache cert config", level=INFO)
             return
 
         ca = get_ca(user=SSH_USER)

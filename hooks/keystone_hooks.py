@@ -64,7 +64,6 @@ from keystone_utils import (
     check_peer_actions,
     CA_CERT_PATH,
     ensure_permissions,
-    is_ssl_cert_master,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -307,7 +306,8 @@ def cluster_changed():
     # Uncomment the following to print out all cluster relation settings in
     # log (debug only).
     """
-    rels = ["%s:%s" % (k, v) for k, v in relation_get().iteritems()]
+    settings = relation_get()
+    rels = ["%s:%s" % (k, v) for k, v in settings.iteritems()]
     tag = '\n[debug:%s]' % (remote_unit())
     log("PEER RELATION SETTINGS (unit=%s): %s" % (remote_unit(),
                                                   tag.join(rels)),
@@ -330,9 +330,7 @@ def cluster_changed():
     else:
         identity_updates_with_ssl_sync()
 
-    # If we are cert master ignore what other peers have to say
-    if not is_ssl_cert_master():
-        echo_whitelist.append('ssl-cert-master')
+    echo_whitelist.append('ssl-synced-units')
 
     # ssl cert sync must be done BEFORE this to reduce the risk of feedback
     # loops in cluster relation
@@ -372,7 +370,7 @@ def ha_joined():
             vip_group.append(vip_key)
 
     if len(vip_group) >= 1:
-        relation_set(groups={'grp_ks_vips': ' '.join(vip_group)})
+        relation_set(groups={CLUSTER_RES: ' '.join(vip_group)})
 
     init_services = {
         'res_ks_haproxy': 'haproxy'

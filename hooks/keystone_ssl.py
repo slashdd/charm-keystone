@@ -5,6 +5,13 @@ import shutil
 import subprocess
 import tarfile
 import tempfile
+import time
+
+from charmhelpers.core.hookenv import (
+    log,
+    DEBUG,
+    WARNING,
+)
 
 CA_EXPIRY = '365'
 ORG_NAME = 'Ubuntu'
@@ -278,23 +285,42 @@ class JujuCA(object):
         crt = self._sign_csr(csr, service, common_name)
         cmd = ['chown', '-R', '%s.%s' % (self.user, self.group), self.ca_dir]
         subprocess.check_call(cmd)
-        print 'Signed new CSR, crt @ %s' % crt
+        log('Signed new CSR, crt @ %s' % crt, level=DEBUG)
         return crt, key
 
     def get_cert_and_key(self, common_name):
-        print 'Getting certificate and key for %s.' % common_name
-        key = os.path.join(self.ca_dir, 'certs', '%s.key' % common_name)
-        crt = os.path.join(self.ca_dir, 'certs', '%s.crt' % common_name)
-        if os.path.isfile(crt):
-            print 'Found existing certificate for %s.' % common_name
-            crt = open(crt, 'r').read()
-            try:
-                key = open(key, 'r').read()
-            except:
-                print 'Could not load ssl private key for %s from %s' %\
-                    (common_name, key)
-                exit(1)
-            return crt, key
+        log('Getting certificate and key for %s.' % common_name, level=DEBUG)
+        keypath = os.path.join(self.ca_dir, 'certs', '%s.key' % common_name)
+        crtpath = os.path.join(self.ca_dir, 'certs', '%s.crt' % common_name)
+        if os.path.isfile(crtpath):
+            log('Found existing certificate for %s.' % common_name,
+                level=DEBUG)
+            max_retries = 3
+            while True:
+                mtime = os.path.getmtime(crtpath)
+
+                crt = open(crtpath, 'r').read()
+                try:
+                    key = open(keypath, 'r').read()
+                except:
+                    msg = ('Could not load ssl private key for %s from %s' %
+                           (common_name, keypath))
+                    raise Exception(msg)
+
+                # Ensure we are not reading a file that is being written to
+                if mtime != os.path.getmtime(crtpath):
+                    max_retries -= 1
+                    if max_retries == 0:
+                        msg = ("crt contents changed during read - retry "
+                               "failed")
+                        raise Exception(msg)
+
+                    log("crt contents changed during read - re-reading",
+                        level=WARNING)
+                    time.sleep(1)
+                else:
+                    return crt, key
+
         crt, key = self._create_certificate(common_name, common_name)
         return open(crt, 'r').read(), open(key, 'r').read()
 

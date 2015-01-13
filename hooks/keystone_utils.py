@@ -63,6 +63,7 @@ from charmhelpers.core.hookenv import (
     DEBUG,
     INFO,
     WARNING,
+    ERROR,
 )
 
 from charmhelpers.fetch import (
@@ -652,14 +653,14 @@ def check_peer_actions():
             key = re.compile("^(.+)?\.(.+)?\.(.+)")
             res = re.search(key, flag)
             if res:
-                source = res. group(1)
-                service = res. group(2)
-                action = res. group(3)
+                source = res.group(1)
+                service = res.group(2)
+                action = res.group(3)
             else:
                 key = re.compile("^(.+)?\.(.+)?")
                 res = re.search(key, flag)
-                source = res. group(1)
-                action = res. group(2)
+                source = res.group(1)
+                action = res.group(2)
 
             # Don't execute actions requested byu this unit.
             if local_unit().replace('.', '-') != source:
@@ -676,7 +677,7 @@ def check_peer_actions():
                         (action, service), level=DEBUG)
                     service_stop(service)
                 elif action == 'update-ca-certificates':
-                    log("Running update-ca-certificates", level=DEBUG)
+                    log("Running %s" % (action), level=DEBUG)
                     subprocess.check_call(['update-ca-certificates'])
                 else:
                     log("Unknown action flag=%s" % (flag), level=WARNING)
@@ -700,12 +701,13 @@ def create_peer_service_actions(action, services):
                    perms=0o644)
 
 
-def create_service_action(action):
-    action = "%s.%s" % (local_unit().replace('/', '-'), action)
-    flagfile = os.path.join(SYNC_FLAGS_DIR, action)
-    log("Creating action %s" % (flagfile), level=DEBUG)
-    write_file(flagfile, content='', owner=SSH_USER, group='keystone',
-               perms=0o644)
+def create_peer_actions(actions):
+    for action in actions:
+        action = "%s.%s" % (local_unit().replace('/', '-'), action)
+        flagfile = os.path.join(SYNC_FLAGS_DIR, action)
+        log("Creating action %s" % (flagfile), level=DEBUG)
+        write_file(flagfile, content='', owner=SSH_USER, group='keystone',
+                   perms=0o644)
 
 
 @retry_on_exception(3, base_delay=2, exc_type=subprocess.CalledProcessError)
@@ -756,22 +758,47 @@ def synchronize_ca(fatal=False):
     # We need to restart peer apache services to ensure they have picked up
     # new ssl keys.
     create_peer_service_actions('restart', ['apache2'])
-    create_service_action('update-ca-certificates')
-    try:
-        unison_sync(paths_to_sync)
-    except:
-        if fatal:
-            raise
-        else:
-            log("Sync failed but fatal=False", level=INFO)
-            return
+    create_peer_actions(['update-ca-certificates'])
 
-    trigger = str(uuid.uuid4())
-    log("Sending restart-services-trigger=%s to all peers" % (trigger),
+    retries = 3
+    while True:
+        hash1 = hashlib.sha256()
+        for path in paths_to_sync:
+            update_hash_from_path(hash1, path)
+
+        try:
+            unison_sync(paths_to_sync)
+        except:
+            if fatal:
+                raise
+            else:
+                log("Sync failed but fatal=False", level=INFO)
+                return
+
+        hash2 = hashlib.sha256()
+        for path in paths_to_sync:
+            update_hash_from_path(hash2, path)
+
+        # Detect whether someone else has synced to this unit while we did our
+        # transfer.
+        if hash1.hexdigest() != hash2.hexdigest():
+            retries -= 1
+            if retries > 0:
+                log("SSL dir contents changed during sync - retrying unison "
+                    "sync %s more times" % (retries), level=WARNING)
+            else:
+                log("SSL dir contents changed during sync - retries failed",
+                    level=ERROR)
+                return {}
+        else:
+            break
+
+    hash = hash1.hexdigest()
+    log("Sending restart-services-trigger=%s to all peers" % (hash),
         level=DEBUG)
 
     log("Sync complete", level=DEBUG)
-    return {'restart-services-trigger': trigger,
+    return {'restart-services-trigger': hash,
             'ssl-synced-units': peer_units()}
 
 
@@ -802,28 +829,31 @@ def synchronize_ca_if_changed(force=False, fatal=False):
         def inner_synchronize_ca_if_changed2(*args, **kwargs):
             # Only sync master can do sync. Ensure (a) we are not nested and
             # (b) a master is elected and we are it.
+            acquired = SSL_SYNC_SEMAPHORE.acquire(blocking=0)
             try:
-                acquired = SSL_SYNC_SEMAPHORE.acquire(blocking=0)
-                if not acquired or not is_elected_leader(CLUSTER_RES):
+                if not acquired:
+                    log("Nested sync - ignoring", level=DEBUG)
+                    return f(*args, **kwargs)
+
+                if not is_elected_leader(CLUSTER_RES):
+                    log("Not leader - ignoring sync", level=DEBUG)
                     return f(*args, **kwargs)
 
                 peer_settings = {}
-                # Ensure we don't do a double sync if we are nested.
                 if not force:
-                    hash1 = hashlib.sha256()
-                    for path in [SSL_DIR, APACHE_SSL_DIR, CA_CERT_PATH]:
-                        update_hash_from_path(hash1, path)
+                    ssl_dirs = [SSL_DIR, APACHE_SSL_DIR, CA_CERT_PATH]
 
-                    hash1 = hash1.hexdigest()
+                    hash1 = hashlib.sha256()
+                    for path in ssl_dirs:
+                        update_hash_from_path(hash1, path)
 
                     ret = f(*args, **kwargs)
 
                     hash2 = hashlib.sha256()
-                    for path in [SSL_DIR, APACHE_SSL_DIR, CA_CERT_PATH]:
+                    for path in ssl_dirs:
                         update_hash_from_path(hash2, path)
 
-                    hash2 = hash2.hexdigest()
-                    if hash1 != hash2:
+                    if hash1.hexdigest() != hash2.hexdigest():
                         log("SSL certs have changed - syncing peers",
                             level=DEBUG)
                         peer_settings = synchronize_ca(fatal=fatal)
@@ -832,9 +862,8 @@ def synchronize_ca_if_changed(force=False, fatal=False):
                             level=DEBUG)
                 else:
                     ret = f(*args, **kwargs)
-                    if force:
-                        log("Doing forced ssl cert sync", level=DEBUG)
-                        peer_settings = synchronize_ca(fatal=fatal)
+                    log("Doing forced ssl cert sync", level=DEBUG)
+                    peer_settings = synchronize_ca(fatal=fatal)
 
                 if peer_settings:
                     for rid in relation_ids('cluster'):
@@ -889,6 +918,22 @@ def relation_list(rid):
         return result
 
 
+def print_rel_debug(relation_data, remote_unit, relation_id, tag, name):
+    debug_settings = relation_get(unit=local_unit(), rid=relation_id)
+    diff = {k: {'b': debug_settings[k], 'a': v} for k, v in
+            relation_data.iteritems()
+            if (k in debug_settings and
+                relation_data[k] != debug_settings.get(k))}
+
+    unchanged = [k for k in debug_settings.iterkeys()
+                 if k not in relation_data]
+
+    log("[debug:%s:%s:%s:%s] diff=%s" %
+        (name, tag, remote_unit, relation_id, str(diff)), level=DEBUG)
+    log("[debug:%s:%s:%s:%s] unchanged=%s" %
+        (name, tag, remote_unit, relation_id, unchanged), level=DEBUG)
+
+
 def add_service_to_keystone(relation_id=None, remote_unit=None):
     import manager
     manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
@@ -900,7 +945,7 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
     https_cns = []
     if single.issubset(settings):
         # other end of relation advertised only one endpoint
-        if 'None' in [v for k, v in settings.iteritems()]:
+        if 'None' in settings.itervalues():
             # Some backend services advertise no endpoint but require a
             # hook execution to update auth strategy.
             relation_data = {}
@@ -928,6 +973,10 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
             for role in get_requested_roles(settings):
                 log("Creating requested role: %s" % role)
                 create_role(role)
+
+            print_rel_debug(relation_data, remote_unit, relation_id, "1",
+                            'add-svc-to-ks')
+
             peer_store_and_set(relation_id=relation_id,
                                **relation_data)
             return
@@ -1003,7 +1052,7 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         if prefix:
             service_username = "%s%s" % (prefix, service_username)
 
-    if 'None' in [v for k, v in settings.iteritems()]:
+    if 'None' in settings.itervalues():
         return
 
     if not service_username:
@@ -1041,10 +1090,10 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         "service_password": service_password,
         "service_tenant": service_tenant,
         "service_tenant_id": manager.resolve_tenant_id(service_tenant),
-        "https_keystone": "False",
-        "ssl_cert": "",
-        "ssl_key": "",
-        "ca_cert": ""
+        "https_keystone": None,
+        "ssl_cert": None,
+        "ssl_key": None,
+        "ca_cert": None
     }
 
     # Check if https is enabled
@@ -1070,6 +1119,9 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         ca_bundle = ca.get_ca_bundle()
         relation_data['ca_cert'] = b64encode(ca_bundle)
         relation_data['https_keystone'] = 'True'
+
+    print_rel_debug(relation_data, remote_unit, relation_id, "2",
+                    'add-svc-to-ks')
     peer_store_and_set(relation_id=relation_id,
                        **relation_data)
 

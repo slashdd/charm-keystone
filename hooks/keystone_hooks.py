@@ -64,6 +64,7 @@ from keystone_utils import (
     check_peer_actions,
     CA_CERT_PATH,
     ensure_permissions,
+    print_rel_debug,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -219,6 +220,8 @@ def pgsql_db_changed():
 @hooks.hook('identity-service-relation-changed')
 @synchronize_ca_if_changed()
 def identity_changed(relation_id=None, remote_unit=None):
+    CONFIGS.write_all()
+
     notifications = {}
     if is_elected_leader(CLUSTER_RES):
         # Catch database not configured error and defer until db ready
@@ -235,8 +238,6 @@ def identity_changed(relation_id=None, remote_unit=None):
 
             log("Unexpected exception occurred", level=ERROR)
             raise
-
-        CONFIGS.write_all()
 
         settings = relation_get(rid=relation_id, unit=remote_unit)
         service = settings.get('service', None)
@@ -332,6 +333,10 @@ def cluster_changed():
 
     echo_whitelist.append('ssl-synced-units')
 
+    echo_settings = {k: v for k, v in relation_get().iteritems()
+                     if k in echo_whitelist}
+    print_rel_debug(echo_settings, None, None, 'cluster_changed', '1')
+
     # ssl cert sync must be done BEFORE this to reduce the risk of feedback
     # loops in cluster relation
     peer_echo(includes=echo_whitelist)
@@ -390,8 +395,9 @@ def ha_joined():
 @restart_on_change(restart_map())
 @synchronize_ca_if_changed()
 def ha_changed():
-    clustered = relation_get('clustered')
     CONFIGS.write_all()
+
+    clustered = relation_get('clustered')
     if clustered and is_elected_leader(CLUSTER_RES):
         ensure_initial_admin(config)
         log('Cluster configured, notifying other services and updating '
@@ -442,13 +448,14 @@ def upgrade_charm():
                                 group='keystone',
                                 peer_interface='cluster',
                                 ensure_local_user=True)
+
+    CONFIGS.write_all()
+
     if is_elected_leader(CLUSTER_RES):
         log('Cluster leader - ensuring endpoint configuration is up to '
             'date', level=DEBUG)
         time.sleep(10)
         update_all_identity_relation_units()
-
-    CONFIGS.write_all()
 
 
 def main():

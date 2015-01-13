@@ -19,7 +19,6 @@ from charmhelpers.contrib.hahelpers.cluster import(
     is_elected_leader,
     determine_api_port,
     https,
-    peer_units,
 )
 
 from charmhelpers.contrib.openstack import context, templating
@@ -809,8 +808,7 @@ def synchronize_ca(fatal=False):
         level=DEBUG)
 
     log("Sync complete", level=DEBUG)
-    return {'restart-services-trigger': hash,
-            'ssl-synced-units': peer_units()}
+    return {'restart-services-trigger': hash}
 
 
 def update_hash_from_path(hash, path, recurse_depth=10):

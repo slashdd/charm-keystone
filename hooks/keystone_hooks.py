@@ -18,7 +18,6 @@ from charmhelpers.core.hookenv import (
     log,
     local_unit,
     DEBUG,
-    INFO,
     WARNING,
     ERROR,
     relation_get,
@@ -171,6 +170,7 @@ def pgsql_db_joined():
 
 
 def update_all_identity_relation_units():
+    CONFIGS.write_all()
     try:
         migrate_database()
     except Exception as exc:
@@ -182,6 +182,11 @@ def update_all_identity_relation_units():
         for rid in relation_ids('identity-service'):
                 for unit in related_units(rid):
                     identity_changed(relation_id=rid, remote_unit=unit)
+
+
+@synchronize_ca_if_changed(force=True)
+def update_all_identity_relation_units_force_sync():
+    update_all_identity_relation_units()
 
 
 @hooks.hook('shared-db-relation-changed')
@@ -269,36 +274,40 @@ def identity_changed(relation_id=None, remote_unit=None):
 
 
 @hooks.hook('cluster-relation-joined')
-def cluster_joined(relation_id=None):
+def cluster_joined():
     unison.ssh_authorized_peers(user=SSH_USER,
                                 group='juju_keystone',
                                 peer_interface='cluster',
                                 ensure_local_user=True)
+
+    settings = {}
+
     for addr_type in ADDRESS_TYPES:
         address = get_address_in_network(
             config('os-{}-network'.format(addr_type))
         )
         if address:
-            relation_set(
-                relation_id=relation_id,
-                relation_settings={'{}-address'.format(addr_type): address}
-            )
+            settings['{}-address'.format(addr_type)] = address
 
     if config('prefer-ipv6'):
         private_addr = get_ipv6_addr(exc_list=[config('vip')])[0]
-        relation_set(relation_id=relation_id,
-                     relation_settings={'private-address': private_addr})
+        settings['private-address'] = private_addr
+
+    # This will be consumed by -changed for ssl sync
+    settings['ssl-sync-required-%s' % (remote_unit().replace('/', '-'))] = '1'
+
+    relation_set(relation_settings=settings)
 
 
-@synchronize_ca_if_changed(fatal=True)
-def identity_updates_with_ssl_sync():
-    CONFIGS.write_all()
-    update_all_identity_relation_units()
+def get_new_peers(peers):
+    units = []
+    key = re.compile("^ssl-sync-required-(.+)")
+    for peer in peers:
+        res = re.search(key, peer)
+        if res:
+            units.append(res.group(1))
 
-
-@synchronize_ca_if_changed(force=True, fatal=True)
-def identity_updates_with_forced_ssl_sync():
-    identity_updates_with_ssl_sync()
+    return units
 
 
 @hooks.hook('cluster-relation-changed',
@@ -314,19 +323,19 @@ def cluster_changed():
                                 peer_interface='cluster',
                                 ensure_local_user=True)
 
-    synced_units = relation_get(attribute='ssl-synced-units',
-                                unit=local_unit())
-    if not synced_units or (remote_unit() not in synced_units):
-        log("Peer '%s' not in list of synced units (%s)" %
-            (remote_unit(), synced_units), level=INFO)
-        identity_updates_with_forced_ssl_sync()
+    if is_elected_leader(CLUSTER_RES):
+        new_peers = get_new_peers(peer_units())
+        if new_peers:
+            log("New peers joined and need syncing - %s" %
+                (', '.join(new_peers)), level=DEBUG)
+            update_all_identity_relation_units_force_sync()
+            # Clear
+            relation_set(relation_settings={p: None for p in new_peers})
+        else:
+            update_all_identity_relation_units()
     else:
-        identity_updates_with_ssl_sync()
+        CONFIGS.write_all()
 
-    echo_whitelist.append('ssl-synced-units')
-
-    # ssl cert sync must be done BEFORE this to reduce the risk of feedback
-    # loops in cluster relation
     peer_echo(includes=echo_whitelist)
 
 

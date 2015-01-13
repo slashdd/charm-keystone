@@ -34,7 +34,6 @@ TO_PATCH = [
     'relation_set',
     'relation_get',
     'related_units',
-    'remote_unit',
     'unit_get',
     'peer_echo',
     # charmhelpers.core.host
@@ -162,13 +161,11 @@ class KeystoneRelationTests(CharmTestCase):
 
     @patch('keystone_utils.log')
     @patch('keystone_utils.is_elected_leader')
-    @patch('keystone_utils.peer_units')
     @patch.object(hooks, 'CONFIGS')
-    def test_db_changed_missing_relation_data(self, configs, mock_peer_units,
+    def test_db_changed_missing_relation_data(self, configs,
                                               mock_is_elected_leader,
                                               mock_log):
         mock_is_elected_leader.return_value = False
-        mock_peer_units.return_value = None
         configs.complete_contexts = MagicMock()
         configs.complete_contexts.return_value = []
         hooks.db_changed()
@@ -205,13 +202,11 @@ class KeystoneRelationTests(CharmTestCase):
 
     @patch('keystone_utils.log')
     @patch('keystone_utils.is_elected_leader')
-    @patch('keystone_utils.peer_units')
     @patch.object(hooks, 'CONFIGS')
     @patch.object(hooks, 'identity_changed')
     def test_db_changed_allowed(self, identity_changed, configs,
-                                mock_peer_units, mock_is_elected_leader,
+                                mock_is_elected_leader,
                                 mock_log):
-        mock_peer_units.return_value = None
         self.relation_ids.return_value = ['identity-service:0']
         self.related_units.return_value = ['unit/0']
 
@@ -226,13 +221,10 @@ class KeystoneRelationTests(CharmTestCase):
 
     @patch('keystone_utils.log')
     @patch('keystone_utils.is_elected_leader')
-    @patch('keystone_utils.peer_units')
     @patch.object(hooks, 'CONFIGS')
     @patch.object(hooks, 'identity_changed')
     def test_db_changed_not_allowed(self, identity_changed, configs,
-                                    mock_peer_units, mock_is_elected_leader,
-                                    mock_log):
-        mock_peer_units.return_value = None
+                                    mock_is_elected_leader, mock_log):
         self.relation_ids.return_value = ['identity-service:0']
         self.related_units.return_value = ['unit/0']
 
@@ -245,13 +237,10 @@ class KeystoneRelationTests(CharmTestCase):
 
     @patch('keystone_utils.log')
     @patch('keystone_utils.is_elected_leader')
-    @patch('keystone_utils.peer_units')
     @patch.object(hooks, 'CONFIGS')
     @patch.object(hooks, 'identity_changed')
     def test_postgresql_db_changed(self, identity_changed, configs,
-                                   mock_peer_units, mock_is_elected_leader,
-                                   mock_log):
-        mock_peer_units.return_value = None
+                                   mock_is_elected_leader, mock_log):
         self.relation_ids.return_value = ['identity-service:0']
         self.related_units.return_value = ['unit/0']
 
@@ -389,10 +378,12 @@ class KeystoneRelationTests(CharmTestCase):
             'identity-service:0',
             'unit/0')
 
+    @patch.object(hooks, 'remote_unit')
     @patch('keystone_utils.log')
     @patch('keystone_utils.is_elected_leader')
     def test_identity_changed_no_leader(self, mock_is_elected_leader,
-                                        mock_log):
+                                        mock_log, mock_remote_unit):
+        mock_remote_unit.return_value = 'unit/0'
         self.is_elected_leader.return_value = False
         hooks.identity_changed(
             relation_id='identity-service:0',
@@ -401,13 +392,19 @@ class KeystoneRelationTests(CharmTestCase):
         self.log.assert_called_with(
             'Deferring identity_changed() to service leader.')
 
+    @patch.object(hooks, 'remote_unit')
+    @patch.object(hooks, 'peer_units')
     @patch.object(unison, 'ssh_authorized_peers')
-    def test_cluster_joined(self, ssh_authorized_peers):
+    def test_cluster_joined(self, ssh_authorized_peers, mock_peer_units,
+                            mock_remote_unit):
+        mock_remote_unit.return_value = 'unit/0'
+        mock_peer_units.return_value = ['unit/0']
         hooks.cluster_joined()
         ssh_authorized_peers.assert_called_with(
             user=self.ssh_user, group='juju_keystone',
             peer_interface='cluster', ensure_local_user=True)
 
+    @patch.object(hooks, 'peer_units')
     @patch('keystone_utils.log')
     @patch('keystone_utils.is_elected_leader')
     @patch('keystone_utils.synchronize_ca')
@@ -417,10 +414,11 @@ class KeystoneRelationTests(CharmTestCase):
     def test_cluster_changed(self, configs, ssh_authorized_peers,
                              check_peer_actions, mock_synchronize_ca,
                              mock_is_elected_leader,
-                             mock_log):
+                             mock_log, mock_peer_units):
+        mock_peer_units.return_value = ['unit/0']
         mock_is_elected_leader.return_value = False
         hooks.cluster_changed()
-        whitelist = ['_passwd', 'identity-service:', 'ssl-synced-units']
+        whitelist = ['_passwd', 'identity-service:']
         self.peer_echo.assert_called_with(includes=whitelist)
         ssh_authorized_peers.assert_called_with(
             user=self.ssh_user, group='keystone',
@@ -477,15 +475,12 @@ class KeystoneRelationTests(CharmTestCase):
 
     @patch('keystone_utils.log')
     @patch('keystone_utils.is_elected_leader')
-    @patch('keystone_utils.peer_units')
     @patch('keystone_utils.synchronize_ca')
     @patch.object(hooks, 'CONFIGS')
     def test_ha_relation_changed_not_clustered_not_leader(self, configs,
                                                           mock_synchronize_ca,
-                                                          mock_peer_units,
                                                           mock_is_leader,
                                                           mock_log):
-        mock_peer_units.return_value = None
         mock_is_leader.return_value = False
         self.relation_get.return_value = False
         self.is_elected_leader.return_value = False
@@ -496,15 +491,12 @@ class KeystoneRelationTests(CharmTestCase):
 
     @patch('keystone_utils.log')
     @patch('keystone_utils.is_elected_leader')
-    @patch('keystone_utils.peer_units')
     @patch.object(hooks, 'identity_changed')
     @patch.object(hooks, 'CONFIGS')
     def test_ha_relation_changed_clustered_leader(self, configs,
                                                   identity_changed,
-                                                  mock_peer_units,
                                                   mock_is_elected_leader,
                                                   mock_log):
-        mock_peer_units.return_value = None
         mock_is_elected_leader.return_value = False
         self.relation_get.return_value = True
         self.is_elected_leader.return_value = True
@@ -521,12 +513,9 @@ class KeystoneRelationTests(CharmTestCase):
 
     @patch('keystone_utils.log')
     @patch('keystone_utils.is_elected_leader')
-    @patch('keystone_utils.peer_units')
     @patch.object(hooks, 'CONFIGS')
-    def test_configure_https_enable(self, configs, mock_peer_units,
-                                    mock_is_elected_leader,
+    def test_configure_https_enable(self, configs, mock_is_elected_leader,
                                     mock_log):
-        mock_peer_units.return_value = None
         mock_is_elected_leader.return_value = False
         configs.complete_contexts = MagicMock()
         configs.complete_contexts.return_value = ['https']
@@ -539,12 +528,9 @@ class KeystoneRelationTests(CharmTestCase):
 
     @patch('keystone_utils.log')
     @patch('keystone_utils.is_elected_leader')
-    @patch('keystone_utils.peer_units')
     @patch.object(hooks, 'CONFIGS')
-    def test_configure_https_disable(self, configs, mock_peer_units,
-                                     mock_is_elected_leader,
+    def test_configure_https_disable(self, configs, mock_is_elected_leader,
                                      mock_log):
-        mock_peer_units.return_value = None
         mock_is_elected_leader.return_value = False
         configs.complete_contexts = MagicMock()
         configs.complete_contexts.return_value = ['']

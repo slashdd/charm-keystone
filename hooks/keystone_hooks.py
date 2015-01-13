@@ -55,6 +55,7 @@ from keystone_utils import (
     synchronize_ca_if_changed,
     register_configs,
     restart_map,
+    services,
     CLUSTER_RES,
     KEYSTONE_CONF,
     SSH_USER,
@@ -86,6 +87,8 @@ from charmhelpers.contrib.network.ip import (
     is_ipv6
 )
 from charmhelpers.contrib.openstack.context import ADDRESS_TYPES
+
+from charmhelpers.contrib.charmsupport import nrpe
 
 hooks = Hooks()
 CONFIGS = register_configs()
@@ -129,6 +132,7 @@ def config_changed():
 
     save_script_rc()
     configure_https()
+    update_nrpe_config()
     CONFIGS.write_all()
 
     # Update relations since SSL may have been configured. If we have peer
@@ -450,12 +454,25 @@ def upgrade_charm():
                                 ensure_local_user=True)
 
     CONFIGS.write_all()
+    update_nrpe_config()
 
     if is_elected_leader(CLUSTER_RES):
         log('Cluster leader - ensuring endpoint configuration is up to '
             'date', level=DEBUG)
         time.sleep(10)
         update_all_identity_relation_units()
+
+
+@hooks.hook('nrpe-external-master-relation-joined',
+            'nrpe-external-master-relation-changed')
+def update_nrpe_config():
+    # python-dbus is used by check_upstart_job
+    apt_install('python-dbus')
+    hostname = nrpe.get_nagios_hostname()
+    current_unit = nrpe.get_nagios_unit_name()
+    nrpe_setup = nrpe.NRPE(hostname=hostname)
+    nrpe.add_init_service_checks(nrpe_setup, services(), current_unit)
+    nrpe_setup.write()
 
 
 def main():

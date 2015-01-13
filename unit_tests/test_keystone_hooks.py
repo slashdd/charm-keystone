@@ -57,6 +57,7 @@ TO_PATCH = [
     'ensure_initial_admin',
     'add_service_to_keystone',
     'synchronize_ca_if_changed',
+    'update_nrpe_config',
     # other
     'check_call',
     'execd_preinstall',

@@ -89,8 +89,7 @@ class TestKeystoneContexts(CharmTestCase):
                      'keystone': '1.2.3.4',
                      'unit-0': '10.0.0.0'
                  }
-             }},
-             'default_backend': '1.2.3.4'
+             }}
              }
         )
 

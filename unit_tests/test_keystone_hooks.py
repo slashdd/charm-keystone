@@ -56,6 +56,7 @@ TO_PATCH = [
     'ensure_initial_admin',
     'add_service_to_keystone',
     'synchronize_ca',
+    'update_nrpe_config',
     # other
     'check_call',
     'execd_preinstall',
@@ -85,7 +86,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.apt_install.assert_called_with(
             ['haproxy', 'unison', 'python-keystoneclient',
              'uuid', 'python-mysqldb', 'openssl', 'apache2',
-             'pwgen', 'keystone', 'python-psycopg2'], fatal=True)
+             'pwgen', 'python-six', 'keystone', 'python-psycopg2'], fatal=True)
         self.assertTrue(self.execd_preinstall.called)
 
     mod_ch_openstack_utils = 'charmhelpers.contrib.openstack.utils'
@@ -320,7 +321,10 @@ class KeystoneRelationTests(CharmTestCase):
             relation_id='identity-service:0',
             remote_unit='unit/0')
 
-    def test_identity_changed_leader(self):
+    @patch.object(hooks, 'hashlib')
+    @patch.object(hooks, 'send_notifications')
+    def test_identity_changed_leader(self, mock_send_notifications,
+                                     mock_hashlib):
         self.eligible_leader.return_value = True
         hooks.identity_changed(
             relation_id='identity-service:0',

@@ -82,6 +82,7 @@ class TestKeystoneContexts(CharmTestCase):
              'stat_port': ':8888',
              'service_ports': {'admin-port': ['keystone', '34'],
                                'public-port': ['keystone', '34']},
+             'default_backend': '1.2.3.4',
              'frontends': {'1.2.3.4': {
                  'network': '1.2.3.4/255.255.255.0',
                  'backends': {
@@ -92,3 +93,30 @@ class TestKeystoneContexts(CharmTestCase):
              'default_backend': '1.2.3.4'
              }
         )
+
+    @patch('charmhelpers.contrib.openstack.context.log')
+    @patch('charmhelpers.contrib.openstack.context.config')
+    @patch('charmhelpers.contrib.openstack.context.unit_get')
+    @patch('charmhelpers.contrib.openstack.context.is_clustered')
+    @patch('charmhelpers.contrib.network.ip.get_address_in_network')
+    def test_canonical_names_without_network_splits(self,
+                                                    mock_get_address,
+                                                    mock_is_clustered,
+                                                    mock_unit_get,
+                                                    mock_config,
+                                                    mock_log):
+        NET_CONFIG = {'vip': '10.0.3.1 10.0.3.2',
+                      'os-internal-network': None,
+                      'os-admin-network': None,
+                      'os-public-network': None}
+
+        mock_unit_get.return_value = '10.0.3.10'
+        mock_is_clustered.return_value = True
+        config = {}
+        config.update(NET_CONFIG)
+        mock_config.side_effect = lambda key: config[key]
+        apache = context.ApacheSSLContext()
+        apache.canonical_names()
+        msg = "Multiple networks configured but net_type" \
+              " is None (os-public-network)."
+        mock_log.assert_called_with(msg, level="WARNING")

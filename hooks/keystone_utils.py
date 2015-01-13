@@ -672,7 +672,7 @@ def check_peer_actions():
                 source = res.group(1)
                 action = res.group(2)
 
-            # Don't execute actions requested byu this unit.
+            # Don't execute actions requested by this unit.
             if local_unit().replace('.', '-') != source:
                 if action == 'restart':
                     log("Running action='%s' on service '%s'" %
@@ -692,7 +692,10 @@ def check_peer_actions():
                 else:
                     log("Unknown action flag=%s" % (flag), level=WARNING)
 
-            os.remove(flagfile)
+            try:
+                os.remove(flagfile)
+            except:
+                pass
 
 
 def create_peer_service_actions(action, services):
@@ -1080,10 +1083,10 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         "service_password": service_password,
         "service_tenant": service_tenant,
         "service_tenant_id": manager.resolve_tenant_id(service_tenant),
-        "https_keystone": None,
-        "ssl_cert": None,
-        "ssl_key": None,
-        "ca_cert": None
+        "https_keystone": "False",
+        "ssl_cert": "",
+        "ssl_key": "",
+        "ca_cert": ""
     }
 
     # Check if https is enabled

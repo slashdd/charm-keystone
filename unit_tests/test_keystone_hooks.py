@@ -42,6 +42,8 @@ TO_PATCH = [
     'restart_on_change',
     # charmhelpers.contrib.openstack.utils
     'configure_installation_source',
+    # charmhelpers.contrib.openstack.ip
+    'resolve_address',
     # charmhelpers.contrib.hahelpers.cluster_utils
     'is_elected_leader',
     'get_hacluster_config',
@@ -417,9 +419,12 @@ class KeystoneRelationTests(CharmTestCase):
                              mock_log, mock_peer_units):
         mock_peer_units.return_value = ['unit/0']
         mock_is_elected_leader.return_value = False
+        self.is_elected_leader.return_value = False
+        self.relation_get.return_value = {'foo_passwd': '123',
+                                          'identity-service:16_foo': 'bar'}
         hooks.cluster_changed()
-        whitelist = ['_passwd', 'identity-service:']
-        self.peer_echo.assert_called_with(includes=whitelist)
+        self.peer_echo.assert_called_with(includes=['foo_passwd',
+                                                    'identity-service:16_foo'])
         ssh_authorized_peers.assert_called_with(
             user=self.ssh_user, group='keystone',
             peer_interface='cluster', ensure_local_user=True)

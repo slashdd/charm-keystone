@@ -88,6 +88,12 @@ from charmhelpers.contrib.openstack.context import ADDRESS_TYPES
 
 from charmhelpers.contrib.charmsupport import nrpe
 
+from charmhelpers.contrib.openstack.ip import (
+    resolve_address,
+    PUBLIC,
+    ADMIN,
+)
+
 hooks = Hooks()
 CONFIGS = register_configs()
 
@@ -310,14 +316,52 @@ def get_new_peers(peers):
     return units
 
 
+def apply_echo_filters(settings, echo_whitelist):
+    """Filter settings to be peer_echo'ed.
+
+    We may have received some data that we don't want to re-echo so filter
+    out unwanted keys and provide overrides.
+
+    Returns:
+        tuple(filtered list of keys to be echoed, overrides for keys omitted)
+    """
+    filtered = []
+    overrides = {}
+    for key in settings.iterkeys():
+        for ekey in echo_whitelist:
+            if ekey in key:
+                if ekey == 'identity-service:':
+                    auth_host = resolve_address(ADMIN)
+                    service_host = resolve_address(PUBLIC)
+                    if (key.endswith('auth_host') and
+                            settings[key] != auth_host):
+                        overrides[key] = auth_host
+                        continue
+                    elif (key.endswith('service_host') and
+                            settings[key] != service_host):
+                        overrides[key] = service_host
+                        continue
+
+                filtered.append(key)
+
+    return filtered, overrides
+
+
 @hooks.hook('cluster-relation-changed',
             'cluster-relation-departed')
 @restart_on_change(restart_map(), stopstart=True)
 def cluster_changed():
-    check_peer_actions()
-
+    settings = relation_get()
     # NOTE(jamespage) re-echo passwords for peer storage
-    echo_whitelist = ['_passwd', 'identity-service:']
+    echo_whitelist, overrides = \
+        apply_echo_filters(settings, ['_passwd', 'identity-service:'])
+    log("Peer echo overrides: %s" % (overrides), level=DEBUG)
+    relation_set(**overrides)
+    if echo_whitelist:
+        log("Peer echo whitelist: %s" % (echo_whitelist), level=DEBUG)
+        peer_echo(includes=echo_whitelist)
+
+    check_peer_actions()
     unison.ssh_authorized_peers(user=SSH_USER,
                                 group='keystone',
                                 peer_interface='cluster',
@@ -335,8 +379,6 @@ def cluster_changed():
             update_all_identity_relation_units()
     else:
         CONFIGS.write_all()
-
-    peer_echo(includes=echo_whitelist)
 
 
 @hooks.hook('ha-relation-joined')

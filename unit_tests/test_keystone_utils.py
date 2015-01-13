@@ -231,9 +231,9 @@ class TestKeystoneUtils(CharmTestCase):
                          'auth_port': 80, 'service_username': 'keystone',
                          'service_password': 'password',
                          'service_tenant': 'tenant',
-                         'https_keystone': None,
-                         'ssl_cert': None, 'ssl_key': None,
-                         'ca_cert': None, 'auth_host': '10.0.0.3',
+                         'https_keystone': 'False',
+                         'ssl_cert': '', 'ssl_key': '',
+                         'ca_cert': '', 'auth_host': '10.0.0.3',
                          'service_host': '10.0.0.3',
                          'auth_protocol': 'http', 'service_protocol': 'http',
                          'service_tenant_id': 'tenant_id'}

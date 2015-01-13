@@ -28,7 +28,6 @@ TO_PATCH = [
     'configure_installation_source',
     'is_elected_leader',
     'https',
-    'is_clustered',
     'peer_store_and_set',
     'service_stop',
     'service_start',
@@ -200,7 +199,6 @@ class TestKeystoneUtils(CharmTestCase):
         self.resolve_address.return_value = '10.0.0.3'
         self.test_config.set('admin-port', 80)
         self.test_config.set('service-port', 81)
-        self.is_clustered.return_value = False
         self.https.return_value = False
         self.test_config.set('https-service-endpoints', 'False')
         self.get_local_endpoint.return_value = 'http://localhost:80/v2.0/'
@@ -233,9 +231,9 @@ class TestKeystoneUtils(CharmTestCase):
                          'auth_port': 80, 'service_username': 'keystone',
                          'service_password': 'password',
                          'service_tenant': 'tenant',
-                         'https_keystone': 'False',
-                         'ssl_cert': '', 'ssl_key': '',
-                         'ca_cert': '', 'auth_host': '10.0.0.3',
+                         'https_keystone': None,
+                         'ssl_cert': None, 'ssl_key': None,
+                         'ca_cert': None, 'auth_host': '10.0.0.3',
                          'service_host': '10.0.0.3',
                          'auth_protocol': 'http', 'service_protocol': 'http',
                          'service_tenant_id': 'tenant_id'}

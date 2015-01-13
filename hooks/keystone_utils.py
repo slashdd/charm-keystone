@@ -929,22 +929,6 @@ def relation_list(rid):
         return result
 
 
-def print_rel_debug(relation_data, remote_unit, relation_id, tag, name):
-    debug_settings = relation_get(unit=local_unit(), rid=relation_id)
-    diff = {k: {'b': debug_settings[k], 'a': v} for k, v in
-            relation_data.iteritems()
-            if (k in debug_settings and
-                relation_data[k] != debug_settings.get(k))}
-
-    unchanged = [k for k in debug_settings.iterkeys()
-                 if k not in relation_data]
-
-    log("[debug:%s:%s:%s:%s] diff=%s" %
-        (name, tag, remote_unit, relation_id, str(diff)), level=DEBUG)
-    log("[debug:%s:%s:%s:%s] unchanged=%s" %
-        (name, tag, remote_unit, relation_id, unchanged), level=DEBUG)
-
-
 def add_service_to_keystone(relation_id=None, remote_unit=None):
     import manager
     manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
@@ -984,9 +968,6 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
             for role in get_requested_roles(settings):
                 log("Creating requested role: %s" % role)
                 create_role(role)
-
-            print_rel_debug(relation_data, remote_unit, relation_id, "1",
-                            'add-svc-to-ks')
 
             peer_store_and_set(relation_id=relation_id,
                                **relation_data)
@@ -1131,8 +1112,6 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         relation_data['ca_cert'] = b64encode(ca_bundle)
         relation_data['https_keystone'] = 'True'
 
-    print_rel_debug(relation_data, remote_unit, relation_id, "2",
-                    'add-svc-to-ks')
     peer_store_and_set(relation_id=relation_id,
                        **relation_data)
 

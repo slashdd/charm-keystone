@@ -65,7 +65,6 @@ from keystone_utils import (
     check_peer_actions,
     CA_CERT_PATH,
     ensure_permissions,
-    print_rel_debug,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -308,17 +307,6 @@ def identity_updates_with_forced_ssl_sync():
 def cluster_changed():
     check_peer_actions()
 
-    # Uncomment the following to print out all cluster relation settings in
-    # log (debug only).
-    """
-    settings = relation_get()
-    rels = ["%s:%s" % (k, v) for k, v in settings.iteritems()]
-    tag = '\n[debug:%s]' % (remote_unit())
-    log("PEER RELATION SETTINGS (unit=%s): %s" % (remote_unit(),
-                                                  tag.join(rels)),
-        level=DEBUG)
-    """
-
     # NOTE(jamespage) re-echo passwords for peer storage
     echo_whitelist = ['_passwd', 'identity-service:']
     unison.ssh_authorized_peers(user=SSH_USER,
@@ -336,10 +324,6 @@ def cluster_changed():
         identity_updates_with_ssl_sync()
 
     echo_whitelist.append('ssl-synced-units')
-
-    echo_settings = {k: v for k, v in relation_get().iteritems()
-                     if k in echo_whitelist}
-    print_rel_debug(echo_settings, None, None, 'cluster_changed', '1')
 
     # ssl cert sync must be done BEFORE this to reduce the risk of feedback
     # loops in cluster relation

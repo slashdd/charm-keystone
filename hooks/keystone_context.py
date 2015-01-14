@@ -72,8 +72,10 @@ class HAProxyContext(context.HAProxyContext):
         listen_ports['public_port'] = api_port('keystone-public')
 
         # Apache ports
-        a_admin_port = determine_apache_port(api_port('keystone-admin'))
-        a_public_port = determine_apache_port(api_port('keystone-public'))
+        a_admin_port = determine_apache_port(api_port('keystone-admin'),
+                                             singlenode_mode=True)
+        a_public_port = determine_apache_port(api_port('keystone-public'),
+                                              singlenode_mode=True)
 
         port_mapping = {
             'admin-port': [
@@ -100,8 +102,10 @@ class KeystoneContext(context.OSContextGenerator):
         )
         ctxt = {}
         ctxt['token'] = set_admin_token(config('admin-token'))
-        ctxt['admin_port'] = determine_api_port(api_port('keystone-admin'))
-        ctxt['public_port'] = determine_api_port(api_port('keystone-public'))
+        ctxt['admin_port'] = determine_api_port(api_port('keystone-admin'),
+                                                singlenode_mode=True)
+        ctxt['public_port'] = determine_api_port(api_port('keystone-public'),
+                                                 singlenode_mode=True)
         ctxt['debug'] = config('debug') in ['yes', 'true', 'True']
         ctxt['verbose'] = config('verbose') in ['yes', 'true', 'True']
         ctxt['identity_backend'] = config('identity-backend')

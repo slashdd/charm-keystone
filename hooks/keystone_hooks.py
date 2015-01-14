@@ -131,8 +131,10 @@ def config_changed():
                 identity_changed(relation_id=r_id,
                                  remote_unit=unit)
 
-    [admin_relation_changed(rid) for rid in relation_ids('identity-admin')]
-    [cluster_joined(rid) for rid in relation_ids('cluster')]
+    for rid in relation_ids('identity-admin'):
+        admin_relation_changed(rid)
+    for rid in relation_ids('cluster'):
+        cluster_joined(rid)
 
 
 @hooks.hook('shared-db-relation-joined')
@@ -277,7 +279,8 @@ def cluster_changed():
         for unit in relation_list(r_id):
             identity_changed(relation_id=r_id,
                              remote_unit=unit)
-    [admin_relation_changed(rid) for rid in relation_ids('identity-admin')]
+    for rid in relation_ids('identity-admin'):
+        admin_relation_changed(rid)
 
 
 @hooks.hook('ha-relation-joined')

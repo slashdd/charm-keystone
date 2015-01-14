@@ -486,32 +486,39 @@ def grant_role(user, role, tenant):
 
 
 def store_admin_passwd(passwd):
-    open(STORED_PASSWD, 'w+').writelines("%s\n" % passwd)
+    with open(STORED_PASSWD, 'w+') as fd:
+        fd.writelines("%s\n" % passwd)
 
 
 def get_admin_passwd():
-    if config("admin-password") not in ["None", ""]:
-        return config("admin-password")
-    passwd = ""
+    passwd = config("admin-password")
+    if passwd not in ["None", ""]:
+        return passwd
+
     if eligible_leader(CLUSTER_RES):
         if os.path.isfile(STORED_PASSWD):
-            log("Loading stored passwd from %s" % STORED_PASSWD)
-            passwd = open(STORED_PASSWD, 'r').readline().strip('\n')
-        if passwd == "":
+            log("Loading stored passwd from %s" % STORED_PASSWD, level=INFO)
+            with open(STORED_PASSWD, 'r') as fd:
+                passwd = fd.readline().strip('\n')
+
+        if not passwd:
             log("Generating new passwd for user: %s" %
                 config("admin-user"))
             cmd = ['pwgen', '-c', '16', '1']
             passwd = str(subprocess.check_output(cmd)).strip()
             store_admin_passwd(passwd)
+
         if is_relation_made("cluster"):
             peer_store("admin_passwd", passwd)
+
         return passwd
-    else:
-        if is_relation_made("cluster"):
-            passwd = peer_retrieve('admin_passwd')
-            if passwd:
-                store_admin_passwd(passwd)
-        return passwd
+
+    if is_relation_made("cluster"):
+        passwd = peer_retrieve('admin_passwd')
+        if passwd:
+            store_admin_passwd(passwd)
+
+    return passwd
 
 
 def ensure_initial_admin(config):

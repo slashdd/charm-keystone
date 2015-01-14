@@ -56,7 +56,6 @@ from keystone_utils import (
     CLUSTER_RES,
     KEYSTONE_CONF,
     SSH_USER,
-    STORED_PASSWD,
     setup_ipv6,
     send_notifications,
 )

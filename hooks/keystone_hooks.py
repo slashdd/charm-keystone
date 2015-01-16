@@ -1,5 +1,6 @@
 #!/usr/bin/python
 
+import hashlib
 import os
 import sys
 import time
@@ -45,6 +46,7 @@ from keystone_utils import (
     determine_packages,
     do_openstack_upgrade,
     ensure_initial_admin,
+    get_admin_passwd,
     git_install,
     migrate_database,
     save_script_rc,
@@ -52,11 +54,12 @@ from keystone_utils import (
     register_configs,
     relation_list,
     restart_map,
+    services,
     CLUSTER_RES,
     KEYSTONE_CONF,
     SSH_USER,
-    STORED_PASSWD,
-    setup_ipv6
+    setup_ipv6,
+    send_notifications,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -70,14 +73,20 @@ from charmhelpers.contrib.peerstorage import (
     peer_retrieve_by_prefix,
     peer_echo,
 )
+from charmhelpers.contrib.openstack.ip import (
+    ADMIN,
+    resolve_address,
+)
 from charmhelpers.contrib.network.ip import (
     get_iface_for_address,
     get_netmask_for_address,
     get_address_in_network,
     get_ipv6_addr,
-    is_ipv6
+    is_ipv6,
 )
 from charmhelpers.contrib.openstack.context import ADDRESS_TYPES
+
+from charmhelpers.contrib.charmsupport import nrpe
 
 hooks = Hooks()
 CONFIGS = register_configs()
@@ -113,6 +122,7 @@ def config_changed():
 
     save_script_rc()
     configure_https()
+    update_nrpe_config()
     CONFIGS.write_all()
     if eligible_leader(CLUSTER_RES):
         migrate_database()
@@ -125,7 +135,10 @@ def config_changed():
                 identity_changed(relation_id=r_id,
                                  remote_unit=unit)
 
-    [cluster_joined(rid) for rid in relation_ids('cluster')]
+    for rid in relation_ids('identity-admin'):
+        admin_relation_changed(rid)
+    for rid in relation_ids('cluster'):
+        cluster_joined(rid)
 
 
 #TODO(coreycb): For deploy from git support, need to implement action-set
@@ -176,7 +189,6 @@ def db_changed():
             # units acl entry has been added. So, if the db supports passing
             # a list of permitted units then check if we're in the list.
             allowed_units = relation_get('allowed_units')
-            print "allowed_units:" + str(allowed_units)
             if allowed_units and local_unit() not in allowed_units.split():
                 log('Allowed_units list provided and this unit not present')
                 return
@@ -208,9 +220,24 @@ def pgsql_db_changed():
 
 @hooks.hook('identity-service-relation-changed')
 def identity_changed(relation_id=None, remote_unit=None):
+    notifications = {}
     if eligible_leader(CLUSTER_RES):
         add_service_to_keystone(relation_id, remote_unit)
         synchronize_ca()
+
+        settings = relation_get(rid=relation_id, unit=remote_unit)
+        service = settings.get('service', None)
+        if service:
+            # If service is known and endpoint has changed, notify service if
+            # it is related with notifications interface.
+            csum = hashlib.sha256()
+            # We base the decision to notify on whether these parameters have
+            # changed (if csum is unchanged from previous notify, relation will
+            # not fire).
+            csum.update(settings.get('public_url', None))
+            csum.update(settings.get('admin_url', None))
+            csum.update(settings.get('internal_url', None))
+            notifications['%s-endpoint-changed' % (service)] = csum.hexdigest()
     else:
         # Each unit needs to set the db information otherwise if the unit
         # with the info dies the settings die with it Bug# 1355848
@@ -219,6 +246,9 @@ def identity_changed(relation_id=None, remote_unit=None):
             if 'service_password' in peerdb_settings:
                 relation_set(relation_id=rel_id, **peerdb_settings)
         log('Deferring identity_changed() to service leader.')
+
+    if notifications:
+        send_notifications(notifications)
 
 
 @hooks.hook('cluster-relation-joined')
@@ -259,6 +289,8 @@ def cluster_changed():
         for unit in relation_list(r_id):
             identity_changed(relation_id=r_id,
                              remote_unit=unit)
+    for rid in relation_ids('identity-admin'):
+        admin_relation_changed(rid)
 
 
 @hooks.hook('ha-relation-joined')
@@ -280,7 +312,11 @@ def ha_joined():
             res_ks_vip = 'ocf:heartbeat:IPaddr2'
             vip_params = 'ip'
 
-        iface = get_iface_for_address(vip)
+        iface = (get_iface_for_address(vip) or
+                 config('vip_iface'))
+        netmask = (get_netmask_for_address(vip) or
+                   config('vip_cidr'))
+
         if iface is not None:
             vip_key = 'res_ks_{}_vip'.format(iface)
             resources[vip_key] = res_ks_vip
@@ -289,7 +325,7 @@ def ha_joined():
                 ' nic="{iface}"'.format(ip=vip_params,
                                         vip=vip,
                                         iface=iface,
-                                        netmask=get_netmask_for_address(vip))
+                                        netmask=netmask)
             )
             vip_group.append(vip_key)
 
@@ -326,19 +362,17 @@ def ha_changed():
 
 
 @hooks.hook('identity-admin-relation-changed')
-def admin_relation_changed():
+def admin_relation_changed(relation_id=None):
     # TODO: fixup
     relation_data = {
-        'service_hostname': unit_get('private-address'),
+        'service_hostname': resolve_address(ADMIN),
         'service_port': config('service-port'),
         'service_username': config('admin-user'),
         'service_tenant_name': config('admin-role'),
         'service_region': config('region'),
     }
-    if os.path.isfile(STORED_PASSWD):
-        with open(STORED_PASSWD) as f:
-            relation_data['service_password'] = f.readline().strip('\n')
-    relation_set(**relation_data)
+    relation_data['service_password'] = get_admin_passwd()
+    relation_set(relation_id=relation_id, **relation_data)
 
 
 def configure_https():
@@ -365,6 +399,7 @@ def upgrade_charm():
                                 group='keystone',
                                 peer_interface='cluster',
                                 ensure_local_user=True)
+    update_nrpe_config()
     synchronize_ca()
     if eligible_leader(CLUSTER_RES):
         log('Cluster leader - ensuring endpoint configuration'
@@ -377,6 +412,18 @@ def upgrade_charm():
                 identity_changed(relation_id=r_id,
                                  remote_unit=unit)
     CONFIGS.write_all()
+
+
+@hooks.hook('nrpe-external-master-relation-joined',
+            'nrpe-external-master-relation-changed')
+def update_nrpe_config():
+    # python-dbus is used by check_upstart_job
+    apt_install('python-dbus')
+    hostname = nrpe.get_nagios_hostname()
+    current_unit = nrpe.get_nagios_unit_name()
+    nrpe_setup = nrpe.NRPE(hostname=hostname)
+    nrpe.add_init_service_checks(nrpe_setup, services(), current_unit)
+    nrpe_setup.write()
 
 
 def main():

@@ -304,8 +304,8 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         conf = '/etc/keystone/keystone.conf'
         relation = unit.relation('identity-service', 'cinder:identity-service')
         expected = {'admin_token': relation['admin_token'],
-                    'admin_port': relation['auth_port'],
-                    'public_port': relation['service_port'],
+                    'admin_port': '35347',
+                    'public_port': '4990',
                     'use_syslog': 'False',
                     'log_config': '/etc/keystone/logging.conf',
                     'debug': 'False',

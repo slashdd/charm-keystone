@@ -1,4 +1,4 @@
-from mock import patch, call, MagicMock
+from mock import patch, call, MagicMock, Mock
 from test_utils import CharmTestCase
 import os
 import manager
@@ -35,6 +35,8 @@ TO_PATCH = [
     'relation_get',
     'relation_set',
     'https',
+    'is_relation_made',
+    'peer_store',
     # generic
     'apt_update',
     'apt_upgrade',
@@ -302,6 +304,60 @@ class TestKeystoneUtils(CharmTestCase):
             region='RegionOne', service='nova',
             publicurl=publicurl, adminurl=adminurl,
             internalurl=internalurl)
+
+    @patch.object(utils, 'uuid')
+    @patch.object(utils, 'relation_set')
+    @patch.object(utils, 'relation_get')
+    @patch.object(utils, 'relation_ids')
+    @patch.object(utils, 'is_elected_leader')
+    def test_send_notifications(self, mock_is_elected_leader,
+                                mock_relation_ids, mock_relation_get,
+                                mock_relation_set, mock_uuid):
+        relation_id = 'testrel:0'
+        mock_uuid.uuid4.return_value = '1234'
+        mock_relation_ids.return_value = [relation_id]
+        mock_is_elected_leader.return_value = False
+        utils.send_notifications({'foo-endpoint-changed': 1})
+        self.assertFalse(mock_relation_set.called)
+
+        mock_is_elected_leader.return_value = True
+        utils.send_notifications({})
+        self.assertFalse(mock_relation_set.called)
+
+        settings = {'foo-endpoint-changed': 1}
+        utils.send_notifications(settings)
+        self.assertTrue(mock_relation_set.called)
+        mock_relation_set.assert_called_once_with(relation_id=relation_id,
+                                                  relation_settings=settings)
+        mock_relation_set.reset_mock()
+        settings = {'foo-endpoint-changed': 1}
+        utils.send_notifications(settings, force=True)
+        self.assertTrue(mock_relation_set.called)
+        settings['trigger'] = '1234'
+        mock_relation_set.assert_called_once_with(relation_id=relation_id,
+                                                  relation_settings=settings)
+
+    def test_get_admin_passwd_pwd_set(self):
+        self.test_config.set('admin-password', 'supersecret')
+        self.assertEqual(utils.get_admin_passwd(), 'supersecret')
+
+    @patch('os.path.isfile')
+    def test_get_admin_passwd_pwd_file_load(self, isfile):
+        self.test_config.set('admin-password', '')
+        isfile.return_value = True
+        with patch('__builtin__.open') as mock_open:
+            mock_open.return_value.__enter__ = lambda s: s
+            mock_open.return_value.__exit__ = Mock()
+            mock_open.return_value.readline.return_value = 'supersecretfilepwd'
+            self.assertEqual(utils.get_admin_passwd(), 'supersecretfilepwd')
+
+    @patch.object(utils, 'store_admin_passwd')
+    @patch('os.path.isfile')
+    def test_get_admin_passwd_genpass(self, isfile, store_admin_passwd):
+        self.test_config.set('admin-password', '')
+        isfile.return_value = False
+        self.subprocess.check_output.return_value = 'supersecretgen'
+        self.assertEqual(utils.get_admin_passwd(), 'supersecretgen')
 
     @patch.object(utils, 'git_install_requested')
     @patch.object(utils, 'git_clone_and_install')

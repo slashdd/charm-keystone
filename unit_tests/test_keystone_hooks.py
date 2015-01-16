@@ -56,6 +56,7 @@ TO_PATCH = [
     'ensure_initial_admin',
     'add_service_to_keystone',
     'synchronize_ca',
+    'update_nrpe_config',
     # other
     'check_call',
     'execd_preinstall',
@@ -91,7 +92,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.apt_install.assert_called_with(
             ['haproxy', 'unison', 'python-keystoneclient',
              'uuid', 'python-mysqldb', 'openssl', 'apache2',
-             'pwgen', 'keystone', 'python-psycopg2'], fatal=True)
+             'pwgen', 'python-six', 'keystone', 'python-psycopg2'], fatal=True)
         self.git_install.assert_called_with(git_config)
 
     @patch.object(utils, 'git_install_requested')
@@ -259,6 +260,7 @@ class KeystoneRelationTests(CharmTestCase):
             remote_unit='unit/0')
 
     @patch.object(hooks, 'git_install_requested')
+    @patch.object(hooks, 'admin_relation_changed')
     @patch.object(hooks, 'cluster_joined')
     @patch.object(unison, 'ensure_user')
     @patch.object(unison, 'get_homedir')
@@ -267,10 +269,11 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(hooks, 'configure_https')
     def test_config_changed_no_openstack_upgrade_leader(
             self, configure_https, identity_changed,
-            configs, get_homedir, ensure_user, cluster_joined, git_requested):
+            configs, get_homedir, ensure_user, cluster_joined,
+            admin_relation_changed, git_requested):
         self.openstack_upgrade_available.return_value = False
         self.eligible_leader.return_value = True
-        self.relation_ids.return_value = ['identity-service:0']
+        self.relation_ids.return_value = ['dummyid:0']
         self.relation_list.return_value = ['unit/0']
 
         hooks.config_changed()
@@ -286,8 +289,9 @@ class KeystoneRelationTests(CharmTestCase):
         self.log.assert_called_with(
             'Firing identity_changed hook for all related services.')
         identity_changed.assert_called_with(
-            relation_id='identity-service:0',
+            relation_id='dummyid:0',
             remote_unit='unit/0')
+        admin_relation_changed.assert_called_with('dummyid:0')
 
     @patch.object(hooks, 'git_install_requested')
     @patch.object(hooks, 'cluster_joined')
@@ -315,6 +319,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertFalse(identity_changed.called)
 
     @patch.object(hooks, 'git_install_requested')
+    @patch.object(hooks, 'admin_relation_changed')
     @patch.object(hooks, 'cluster_joined')
     @patch.object(unison, 'ensure_user')
     @patch.object(unison, 'get_homedir')
@@ -323,11 +328,11 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(hooks, 'configure_https')
     def test_config_changed_with_openstack_upgrade(
             self, configure_https, identity_changed,
-            configs, get_homedir, ensure_user, cluster_joined, git_requested):
-        git_requested.return_value = False
+            configs, get_homedir, ensure_user, cluster_joined,
+            admin_relation_changed, git_requested):
         self.openstack_upgrade_available.return_value = True
         self.eligible_leader.return_value = True
-        self.relation_ids.return_value = ['identity-service:0']
+        self.relation_ids.return_value = ['dummyid:0']
         self.relation_list.return_value = ['unit/0']
 
         hooks.config_changed()
@@ -345,8 +350,9 @@ class KeystoneRelationTests(CharmTestCase):
         self.log.assert_called_with(
             'Firing identity_changed hook for all related services.')
         identity_changed.assert_called_with(
-            relation_id='identity-service:0',
+            relation_id='dummyid:0',
             remote_unit='unit/0')
+        admin_relation_changed.assert_called_with('dummyid:0')
 
     @patch.object(hooks, 'git_install_requested')
     @patch.object(hooks, 'cluster_joined')
@@ -382,7 +388,10 @@ class KeystoneRelationTests(CharmTestCase):
             relation_id='identity-service:0',
             remote_unit='unit/0')
 
-    def test_identity_changed_leader(self):
+    @patch.object(hooks, 'hashlib')
+    @patch.object(hooks, 'send_notifications')
+    def test_identity_changed_leader(self, mock_send_notifications,
+                                     mock_hashlib):
         self.eligible_leader.return_value = True
         hooks.identity_changed(
             relation_id='identity-service:0',
@@ -438,6 +447,31 @@ class KeystoneRelationTests(CharmTestCase):
             'resource_params': {
                 'res_ks_em1_vip': 'params ip="10.10.10.10"'
                                   ' cidr_netmask="255.255.255.0" nic="em1"',
+                'res_ks_haproxy': 'op monitor interval="5s"'},
+            'clones': {'cl_ks_haproxy': 'res_ks_haproxy'}
+        }
+        self.relation_set.assert_called_with(**args)
+
+    def test_ha_joined_no_bound_ip(self):
+        self.get_hacluster_config.return_value = {
+            'vip': '10.10.10.10',
+            'ha-bindiface': 'em0',
+            'ha-mcastport': '8080'
+        }
+        self.test_config.set('vip_iface', 'eth120')
+        self.test_config.set('vip_cidr', '21')
+        self.get_iface_for_address.return_value = None
+        self.get_netmask_for_address.return_value = None
+        hooks.ha_joined()
+        args = {
+            'corosync_bindiface': 'em0',
+            'corosync_mcastport': '8080',
+            'init_services': {'res_ks_haproxy': 'haproxy'},
+            'resources': {'res_ks_eth120_vip': 'ocf:heartbeat:IPaddr2',
+                          'res_ks_haproxy': 'lsb:haproxy'},
+            'resource_params': {
+                'res_ks_eth120_vip': 'params ip="10.10.10.10"'
+                                     ' cidr_netmask="21" nic="eth120"',
                 'res_ks_haproxy': 'op monitor interval="5s"'},
             'clones': {'cl_ks_haproxy': 'res_ks_haproxy'}
         }

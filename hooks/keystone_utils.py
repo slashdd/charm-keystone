@@ -2,6 +2,7 @@
 import shutil
 import subprocess
 import os
+import uuid
 import urlparse
 import time
 
@@ -13,7 +14,8 @@ from charmhelpers.contrib.hahelpers.cluster import(
     eligible_leader,
     determine_api_port,
     https,
-    is_clustered
+    is_clustered,
+    is_elected_leader,
 )
 
 from charmhelpers.contrib.openstack import context, templating
@@ -43,9 +45,13 @@ import charmhelpers.contrib.unison as unison
 from charmhelpers.core.hookenv import (
     charm_dir,
     config,
+    is_relation_made,
     log,
+    local_unit,
     relation_get,
     relation_set,
+    relation_ids,
+    DEBUG,
     INFO,
 )
 
@@ -89,6 +95,7 @@ BASE_PACKAGES = [
     'python-keystoneclient',
     'python-mysqldb',
     'python-psycopg2',
+    'python-six',
     'pwgen',
     'unison',
     'uuid',
@@ -145,7 +152,7 @@ BASE_RESOURCE_MAP = OrderedDict([
                      context.WorkerConfigContext()],
     }),
     (HAPROXY_CONF, {
-        'contexts': [context.HAProxyContext(),
+        'contexts': [context.HAProxyContext(singlenode_mode=True),
                      keystone_context.HAProxyContext()],
         'services': ['haproxy'],
     }),
@@ -246,6 +253,14 @@ def restart_map():
                         if v['services']])
 
 
+def services():
+    ''' Returns a list of services associate with this charm '''
+    _services = []
+    for v in restart_map().values():
+        _services = _services + v
+    return list(set(_services))
+
+
 def determine_ports():
     '''Assemble a list of API ports for services we are managing'''
     ports = [config('admin-port'), config('service-port')]
@@ -274,9 +289,10 @@ def determine_packages():
 def save_script_rc():
     env_vars = {'OPENSTACK_SERVICE_KEYSTONE': 'keystone',
                 'OPENSTACK_PORT_ADMIN': determine_api_port(
-                    api_port('keystone-admin')),
+                    api_port('keystone-admin'), singlenode_mode=True),
                 'OPENSTACK_PORT_PUBLIC': determine_api_port(
-                    api_port('keystone-public'))}
+                    api_port('keystone-public'),
+                    singlenode_mode=True)}
     _save_script_rc(**env_vars)
 
 
@@ -324,10 +340,12 @@ def get_local_endpoint():
         ipv6_addr = get_ipv6_addr(exc_list=[config('vip')])[0]
         endpoint_url = 'http://[%s]:{}/v2.0/' % ipv6_addr
         local_endpoint = endpoint_url.format(
-            determine_api_port(api_port('keystone-admin')))
+            determine_api_port(api_port('keystone-admin'),
+                               singlenode_mode=True))
     else:
         local_endpoint = 'http://localhost:{}/v2.0/'.format(
-            determine_api_port(api_port('keystone-admin')))
+            determine_api_port(api_port('keystone-admin'),
+                               singlenode_mode=True))
 
     return local_endpoint
 
@@ -500,6 +518,42 @@ def grant_role(user, role, tenant):
             (user, role, tenant))
 
 
+def store_admin_passwd(passwd):
+    with open(STORED_PASSWD, 'w+') as fd:
+        fd.writelines("%s\n" % passwd)
+
+
+def get_admin_passwd():
+    passwd = config("admin-password")
+    if passwd and passwd.lower() != "none":
+        return passwd
+
+    if eligible_leader(CLUSTER_RES):
+        if os.path.isfile(STORED_PASSWD):
+            log("Loading stored passwd from %s" % STORED_PASSWD, level=INFO)
+            with open(STORED_PASSWD, 'r') as fd:
+                passwd = fd.readline().strip('\n')
+
+        if not passwd:
+            log("Generating new passwd for user: %s" %
+                config("admin-user"))
+            cmd = ['pwgen', '-c', '16', '1']
+            passwd = str(subprocess.check_output(cmd)).strip()
+            store_admin_passwd(passwd)
+
+        if is_relation_made("cluster"):
+            peer_store("admin_passwd", passwd)
+
+        return passwd
+
+    if is_relation_made("cluster"):
+        passwd = peer_retrieve('admin_passwd')
+        if passwd:
+            store_admin_passwd(passwd)
+
+    return passwd
+
+
 def ensure_initial_admin(config):
     """ Ensures the minimum admin stuff exists in whatever database we're
         using.
@@ -512,24 +566,13 @@ def ensure_initial_admin(config):
     """
     create_tenant("admin")
     create_tenant(config("service-tenant"))
-
-    passwd = ""
-    if config("admin-password") != "None":
-        passwd = config("admin-password")
-    elif os.path.isfile(STORED_PASSWD):
-        log("Loading stored passwd from %s" % STORED_PASSWD)
-        passwd = open(STORED_PASSWD, 'r').readline().strip('\n')
-    if passwd == "":
-        log("Generating new passwd for user: %s" %
-            config("admin-user"))
-        cmd = ['pwgen', '-c', '16', '1']
-        passwd = str(subprocess.check_output(cmd)).strip()
-        open(STORED_PASSWD, 'w+').writelines("%s\n" % passwd)
     # User is managed by ldap backend when using ldap identity
     if not (config('identity-backend') == 'ldap' and config('ldap-readonly')):
-        create_user(config('admin-user'), passwd, tenant='admin')
-        update_user_password(config('admin-user'), passwd)
-        create_role(config('admin-role'), config('admin-user'), 'admin')
+        passwd = get_admin_passwd()
+        if passwd:
+            create_user(config('admin-user'), passwd, tenant='admin')
+            update_user_password(config('admin-user'), passwd)
+            create_role(config('admin-role'), config('admin-user'), 'admin')
     create_service_entry("keystone", "identity", "Keystone Identity Service")
 
     for region in config('region').split():
@@ -882,6 +925,72 @@ def setup_ipv6():
                    ' main')
         apt_update()
         apt_install('haproxy/trusty-backports', fatal=True)
+
+
+def send_notifications(data, force=False):
+    """Send notifications to all units listening on the identity-notifications
+    interface.
+
+    Units are expected to ignore notifications that they don't expect.
+
+    NOTE: settings that are not required/inuse must always be set to None
+          so that they are removed from the relation.
+
+    :param data: Dict of key=value to use as trigger for notification. If the
+                 last broadcast is unchanged by the addition of this data, the
+                 notification will not be sent.
+    :param force: Determines whether a trigger value is set to ensure the
+                  remote hook is fired.
+    """
+    if not data or not is_elected_leader(CLUSTER_RES):
+        log("Not sending notifications (no data or not leader)", level=INFO)
+        return
+
+    rel_ids = relation_ids('identity-notifications')
+    if not rel_ids:
+        log("No relations on identity-notifications - skipping broadcast",
+            level=INFO)
+        return
+
+    keys = []
+    diff = False
+
+    # Get all settings previously sent
+    for rid in rel_ids:
+        rs = relation_get(unit=local_unit(), rid=rid)
+        if rs:
+            keys += rs.keys()
+
+        # Don't bother checking if we have already identified a diff
+        if diff:
+            continue
+
+        # Work out if this notification changes anything
+        for k, v in data.iteritems():
+            if rs.get(k, None) != v:
+                diff = True
+                break
+
+    if not diff:
+        log("Notifications unchanged by new values so skipping broadcast",
+            level=INFO)
+        return
+
+    # Set all to None
+    _notifications = {k: None for k in set(keys)}
+
+    # Set new values
+    for k, v in data.iteritems():
+        _notifications[k] = v
+
+    if force:
+        _notifications['trigger'] = str(uuid.uuid4())
+
+    # Broadcast
+    log("Sending identity-service notifications (trigger=%s)" % (force),
+        level=DEBUG)
+    for rid in rel_ids:
+        relation_set(relation_id=rid, relation_settings=_notifications)
 
 
 def git_install(file_name):

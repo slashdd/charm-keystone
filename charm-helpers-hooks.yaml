@@ -14,3 +14,4 @@ include:
     - contrib.peerstorage
     - contrib.network.ip
     - contrib.python.packages
+    - contrib.charmsupport

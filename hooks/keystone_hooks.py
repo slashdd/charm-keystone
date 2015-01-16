@@ -24,7 +24,6 @@ from charmhelpers.core.hookenv import (
     relation_ids,
     relation_set,
     related_units,
-    remote_unit,
     unit_get,
 )
 
@@ -64,6 +63,8 @@ from keystone_utils import (
     check_peer_actions,
     CA_CERT_PATH,
     ensure_permissions,
+    get_ssl_sync_request_units,
+    clear_ssl_sync_requests,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -299,21 +300,10 @@ def cluster_joined():
         private_addr = get_ipv6_addr(exc_list=[config('vip')])[0]
         settings['private-address'] = private_addr
 
-    # This will be consumed by -changed for ssl sync
-    settings['ssl-sync-required-%s' % (remote_unit().replace('/', '-'))] = '1'
+    # This will be consumed by cluster-relation-changed ssl master
+    settings['ssl-sync-required-%s' % (local_unit().replace('/', '-'))] = '1'
 
     relation_set(relation_settings=settings)
-
-
-def get_new_peers(peers):
-    units = []
-    key = re.compile("^ssl-sync-required-(.+)")
-    for peer in peers:
-        res = re.search(key, peer)
-        if res:
-            units.append(res.group(1))
-
-    return units
 
 
 def apply_echo_filters(settings, echo_whitelist):
@@ -354,7 +344,8 @@ def cluster_changed():
     settings = relation_get()
     # NOTE(jamespage) re-echo passwords for peer storage
     echo_whitelist, overrides = \
-        apply_echo_filters(settings, ['_passwd', 'identity-service:'])
+        apply_echo_filters(settings, ['_passwd', 'identity-service:',
+                                      'ssl-cert-master'])
     log("Peer echo overrides: %s" % (overrides), level=DEBUG)
     relation_set(**overrides)
     if echo_whitelist:
@@ -368,13 +359,12 @@ def cluster_changed():
                                 ensure_local_user=True)
 
     if is_elected_leader(CLUSTER_RES):
-        new_peers = get_new_peers(peer_units())
-        if new_peers:
+        units = get_ssl_sync_request_units(settings.keys())
+        if units:
             log("New peers joined and need syncing - %s" %
-                (', '.join(new_peers)), level=DEBUG)
+                (', '.join(units)), level=DEBUG)
             update_all_identity_relation_units_force_sync()
-            # Clear
-            relation_set(relation_settings={p: None for p in new_peers})
+            clear_ssl_sync_requests(units)
         else:
             update_all_identity_relation_units()
     else:

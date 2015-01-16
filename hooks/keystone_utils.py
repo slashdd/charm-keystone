@@ -100,6 +100,7 @@ API_PORTS = {
 }
 
 KEYSTONE_CONF = "/etc/keystone/keystone.conf"
+KEYSTONE_LOGGER_CONF = "/etc/keystone/logging.conf"
 KEYSTONE_CONF_DIR = os.path.dirname(KEYSTONE_CONF)
 STORED_PASSWD = "/var/lib/keystone/keystone.passwd"
 STORED_TOKEN = "/var/lib/keystone/keystone.token"
@@ -124,6 +125,10 @@ BASE_RESOURCE_MAP = OrderedDict([
                      keystone_context.HAProxyContext(),
                      context.BindHostContext(),
                      context.WorkerConfigContext()],
+    }),
+    (KEYSTONE_LOGGER_CONF, {
+        'contexts': [keystone_context.KeystoneLoggingContext()],
+        'services': BASE_SERVICES,
     }),
     (HAPROXY_CONF, {
         'contexts': [context.HAProxyContext(singlenode_mode=True),

@@ -45,6 +45,7 @@ from keystone_utils import (
     determine_packages,
     do_openstack_upgrade,
     ensure_initial_admin,
+    get_admin_passwd,
     migrate_database,
     save_script_rc,
     synchronize_ca,
@@ -55,7 +56,6 @@ from keystone_utils import (
     CLUSTER_RES,
     KEYSTONE_CONF,
     SSH_USER,
-    STORED_PASSWD,
     setup_ipv6,
     send_notifications,
 )
@@ -71,12 +71,16 @@ from charmhelpers.contrib.peerstorage import (
     peer_retrieve_by_prefix,
     peer_echo,
 )
+from charmhelpers.contrib.openstack.ip import (
+    ADMIN,
+    resolve_address,
+)
 from charmhelpers.contrib.network.ip import (
     get_iface_for_address,
     get_netmask_for_address,
     get_address_in_network,
     get_ipv6_addr,
-    is_ipv6
+    is_ipv6,
 )
 from charmhelpers.contrib.openstack.context import ADDRESS_TYPES
 
@@ -127,7 +131,10 @@ def config_changed():
                 identity_changed(relation_id=r_id,
                                  remote_unit=unit)
 
-    [cluster_joined(rid) for rid in relation_ids('cluster')]
+    for rid in relation_ids('identity-admin'):
+        admin_relation_changed(rid)
+    for rid in relation_ids('cluster'):
+        cluster_joined(rid)
 
 
 @hooks.hook('shared-db-relation-joined')
@@ -172,7 +179,6 @@ def db_changed():
             # units acl entry has been added. So, if the db supports passing
             # a list of permitted units then check if we're in the list.
             allowed_units = relation_get('allowed_units')
-            print "allowed_units:" + str(allowed_units)
             if allowed_units and local_unit() not in allowed_units.split():
                 log('Allowed_units list provided and this unit not present')
                 return
@@ -273,6 +279,8 @@ def cluster_changed():
         for unit in relation_list(r_id):
             identity_changed(relation_id=r_id,
                              remote_unit=unit)
+    for rid in relation_ids('identity-admin'):
+        admin_relation_changed(rid)
 
 
 @hooks.hook('ha-relation-joined')
@@ -344,19 +352,17 @@ def ha_changed():
 
 
 @hooks.hook('identity-admin-relation-changed')
-def admin_relation_changed():
+def admin_relation_changed(relation_id=None):
     # TODO: fixup
     relation_data = {
-        'service_hostname': unit_get('private-address'),
+        'service_hostname': resolve_address(ADMIN),
         'service_port': config('service-port'),
         'service_username': config('admin-user'),
         'service_tenant_name': config('admin-role'),
         'service_region': config('region'),
     }
-    if os.path.isfile(STORED_PASSWD):
-        with open(STORED_PASSWD) as f:
-            relation_data['service_password'] = f.readline().strip('\n')
-    relation_set(**relation_data)
+    relation_data['service_password'] = get_admin_passwd()
+    relation_set(relation_id=relation_id, **relation_data)
 
 
 def configure_https():

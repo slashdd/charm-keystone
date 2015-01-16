@@ -235,6 +235,7 @@ class KeystoneRelationTests(CharmTestCase):
             relation_id='identity-service:0',
             remote_unit='unit/0')
 
+    @patch.object(hooks, 'admin_relation_changed')
     @patch.object(hooks, 'cluster_joined')
     @patch.object(unison, 'ensure_user')
     @patch.object(unison, 'get_homedir')
@@ -243,10 +244,11 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(hooks, 'configure_https')
     def test_config_changed_no_openstack_upgrade_leader(
             self, configure_https, identity_changed,
-            configs, get_homedir, ensure_user, cluster_joined):
+            configs, get_homedir, ensure_user, cluster_joined,
+            admin_relation_changed):
         self.openstack_upgrade_available.return_value = False
         self.eligible_leader.return_value = True
-        self.relation_ids.return_value = ['identity-service:0']
+        self.relation_ids.return_value = ['dummyid:0']
         self.relation_list.return_value = ['unit/0']
 
         hooks.config_changed()
@@ -262,8 +264,9 @@ class KeystoneRelationTests(CharmTestCase):
         self.log.assert_called_with(
             'Firing identity_changed hook for all related services.')
         identity_changed.assert_called_with(
-            relation_id='identity-service:0',
+            relation_id='dummyid:0',
             remote_unit='unit/0')
+        admin_relation_changed.assert_called_with('dummyid:0')
 
     @patch.object(hooks, 'cluster_joined')
     @patch.object(unison, 'ensure_user')
@@ -289,6 +292,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertFalse(self.ensure_initial_admin.called)
         self.assertFalse(identity_changed.called)
 
+    @patch.object(hooks, 'admin_relation_changed')
     @patch.object(hooks, 'cluster_joined')
     @patch.object(unison, 'ensure_user')
     @patch.object(unison, 'get_homedir')
@@ -297,10 +301,11 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(hooks, 'configure_https')
     def test_config_changed_with_openstack_upgrade(
             self, configure_https, identity_changed,
-            configs, get_homedir, ensure_user, cluster_joined):
+            configs, get_homedir, ensure_user, cluster_joined,
+            admin_relation_changed):
         self.openstack_upgrade_available.return_value = True
         self.eligible_leader.return_value = True
-        self.relation_ids.return_value = ['identity-service:0']
+        self.relation_ids.return_value = ['dummyid:0']
         self.relation_list.return_value = ['unit/0']
 
         hooks.config_changed()
@@ -318,8 +323,9 @@ class KeystoneRelationTests(CharmTestCase):
         self.log.assert_called_with(
             'Firing identity_changed hook for all related services.')
         identity_changed.assert_called_with(
-            relation_id='identity-service:0',
+            relation_id='dummyid:0',
             remote_unit='unit/0')
+        admin_relation_changed.assert_called_with('dummyid:0')
 
     @patch.object(hooks, 'hashlib')
     @patch.object(hooks, 'send_notifications')

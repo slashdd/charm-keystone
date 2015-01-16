@@ -41,6 +41,7 @@ import charmhelpers.contrib.unison as unison
 
 from charmhelpers.core.hookenv import (
     config,
+    is_relation_made,
     log,
     local_unit,
     relation_get,
@@ -484,6 +485,42 @@ def grant_role(user, role, tenant):
             (user, role, tenant))
 
 
+def store_admin_passwd(passwd):
+    with open(STORED_PASSWD, 'w+') as fd:
+        fd.writelines("%s\n" % passwd)
+
+
+def get_admin_passwd():
+    passwd = config("admin-password")
+    if passwd and passwd.lower() != "none":
+        return passwd
+
+    if eligible_leader(CLUSTER_RES):
+        if os.path.isfile(STORED_PASSWD):
+            log("Loading stored passwd from %s" % STORED_PASSWD, level=INFO)
+            with open(STORED_PASSWD, 'r') as fd:
+                passwd = fd.readline().strip('\n')
+
+        if not passwd:
+            log("Generating new passwd for user: %s" %
+                config("admin-user"))
+            cmd = ['pwgen', '-c', '16', '1']
+            passwd = str(subprocess.check_output(cmd)).strip()
+            store_admin_passwd(passwd)
+
+        if is_relation_made("cluster"):
+            peer_store("admin_passwd", passwd)
+
+        return passwd
+
+    if is_relation_made("cluster"):
+        passwd = peer_retrieve('admin_passwd')
+        if passwd:
+            store_admin_passwd(passwd)
+
+    return passwd
+
+
 def ensure_initial_admin(config):
     """ Ensures the minimum admin stuff exists in whatever database we're
         using.
@@ -496,24 +533,13 @@ def ensure_initial_admin(config):
     """
     create_tenant("admin")
     create_tenant(config("service-tenant"))
-
-    passwd = ""
-    if config("admin-password") != "None":
-        passwd = config("admin-password")
-    elif os.path.isfile(STORED_PASSWD):
-        log("Loading stored passwd from %s" % STORED_PASSWD)
-        passwd = open(STORED_PASSWD, 'r').readline().strip('\n')
-    if passwd == "":
-        log("Generating new passwd for user: %s" %
-            config("admin-user"))
-        cmd = ['pwgen', '-c', '16', '1']
-        passwd = str(subprocess.check_output(cmd)).strip()
-        open(STORED_PASSWD, 'w+').writelines("%s\n" % passwd)
     # User is managed by ldap backend when using ldap identity
     if not (config('identity-backend') == 'ldap' and config('ldap-readonly')):
-        create_user(config('admin-user'), passwd, tenant='admin')
-        update_user_password(config('admin-user'), passwd)
-        create_role(config('admin-role'), config('admin-user'), 'admin')
+        passwd = get_admin_passwd()
+        if passwd:
+            create_user(config('admin-user'), passwd, tenant='admin')
+            update_user_password(config('admin-user'), passwd)
+            create_role(config('admin-role'), config('admin-user'), 'admin')
     create_service_entry("keystone", "identity", "Keystone Identity Service")
 
     for region in config('region').split():

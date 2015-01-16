@@ -134,14 +134,3 @@ class KeystoneContext(context.OSContextGenerator):
             resolve_address(ADMIN),
             api_port('keystone-admin')).rstrip('v2.0')
         return ctxt
-
-
-class KeystoneLoggingContext(context.OSContextGenerator):
-
-    def __call__(self):
-        ctxt = {}
-        debug = config('debug')
-        if debug and debug.lower() in ['yes', 'true']:
-            ctxt['root_level'] = 'DEBUG'
-
-        return ctxt

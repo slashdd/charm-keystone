@@ -119,13 +119,3 @@ class TestKeystoneContexts(CharmTestCase):
         msg = "Multiple networks configured but net_type" \
               " is None (os-public-network)."
         mock_log.assert_called_with(msg, level="WARNING")
-
-    @patch.object(context, 'config')
-    def test_keystone_logger_context(self, mock_config):
-        ctxt = context.KeystoneLoggingContext()
-
-        mock_config.return_value = None
-        self.assertEqual({}, ctxt())
-
-        mock_config.return_value = 'True'
-        self.assertEqual({'root_level': 'DEBUG'}, ctxt())

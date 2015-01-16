@@ -56,6 +56,7 @@ TO_PATCH = [
     'ensure_initial_admin',
     'add_service_to_keystone',
     'synchronize_ca',
+    'update_nrpe_config',
     # other
     'check_call',
     'execd_preinstall',
@@ -379,6 +380,31 @@ class KeystoneRelationTests(CharmTestCase):
             'resource_params': {
                 'res_ks_em1_vip': 'params ip="10.10.10.10"'
                                   ' cidr_netmask="255.255.255.0" nic="em1"',
+                'res_ks_haproxy': 'op monitor interval="5s"'},
+            'clones': {'cl_ks_haproxy': 'res_ks_haproxy'}
+        }
+        self.relation_set.assert_called_with(**args)
+
+    def test_ha_joined_no_bound_ip(self):
+        self.get_hacluster_config.return_value = {
+            'vip': '10.10.10.10',
+            'ha-bindiface': 'em0',
+            'ha-mcastport': '8080'
+        }
+        self.test_config.set('vip_iface', 'eth120')
+        self.test_config.set('vip_cidr', '21')
+        self.get_iface_for_address.return_value = None
+        self.get_netmask_for_address.return_value = None
+        hooks.ha_joined()
+        args = {
+            'corosync_bindiface': 'em0',
+            'corosync_mcastport': '8080',
+            'init_services': {'res_ks_haproxy': 'haproxy'},
+            'resources': {'res_ks_eth120_vip': 'ocf:heartbeat:IPaddr2',
+                          'res_ks_haproxy': 'lsb:haproxy'},
+            'resource_params': {
+                'res_ks_eth120_vip': 'params ip="10.10.10.10"'
+                                     ' cidr_netmask="21" nic="eth120"',
                 'res_ks_haproxy': 'op monitor interval="5s"'},
             'clones': {'cl_ks_haproxy': 'res_ks_haproxy'}
         }

@@ -82,6 +82,7 @@ class TestKeystoneContexts(CharmTestCase):
              'stat_port': ':8888',
              'service_ports': {'admin-port': ['keystone', '34'],
                                'public-port': ['keystone', '34']},
+             'default_backend': '1.2.3.4',
              'frontends': {'1.2.3.4': {
                  'network': '1.2.3.4/255.255.255.0',
                  'backends': {

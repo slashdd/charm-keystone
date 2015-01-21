@@ -27,7 +27,6 @@ from charmhelpers.core.hookenv import (
 from charmhelpers.core.host import (
     mkdir,
     restart_on_change,
-    service_reload,
 )
 
 from charmhelpers.fetch import (
@@ -386,10 +385,6 @@ def configure_https():
 @restart_on_change(restart_map(), stopstart=True)
 def upgrade_charm():
     apt_install(filter_installed_packages(determine_packages()))
-    # Migrating to haproxy always-on config needs an early reconfigure to
-    # fix Bug #1413285
-    CONFIGS.write_all()
-    service_reload('keystone')
     unison.ssh_authorized_peers(user=SSH_USER,
                                 group='keystone',
                                 peer_interface='cluster',

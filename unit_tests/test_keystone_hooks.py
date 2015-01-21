@@ -40,7 +40,6 @@ TO_PATCH = [
     'apt_install',
     'apt_update',
     'restart_on_change',
-    'service_reload',
     # charmhelpers.contrib.openstack.utils
     'configure_installation_source',
     # charmhelpers.contrib.hahelpers.cluster_utils
@@ -495,7 +494,6 @@ class KeystoneRelationTests(CharmTestCase):
         self.filter_installed_packages.return_value = []
         hooks.upgrade_charm()
         self.assertTrue(self.apt_install.called)
-        self.service_reload.assert_called_with('keystone')
         ssh_authorized_peers.assert_called_with(
             user=self.ssh_user, group='keystone',
             peer_interface='cluster', ensure_local_user=True)
@@ -511,7 +509,6 @@ class KeystoneRelationTests(CharmTestCase):
         self.filter_installed_packages.return_value = []
         hooks.upgrade_charm()
         self.assertTrue(self.apt_install.called)
-        self.service_reload.assert_called_with('keystone')
         ssh_authorized_peers.assert_called_with(
             user=self.ssh_user, group='keystone',
             peer_interface='cluster', ensure_local_user=True)

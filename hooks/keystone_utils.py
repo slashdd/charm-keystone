@@ -2,6 +2,7 @@
 import glob
 import grp
 import hashlib
+import json
 import os
 import pwd
 import re
@@ -220,7 +221,7 @@ valid_services = {
 }
 
 
-def str_is_true(value):
+def is_str_true(value):
     if value and value.lower() in ['true', 'yes']:
         return True
 
@@ -766,23 +767,22 @@ def unison_sync(paths_to_sync):
                          fatal=True)
 
 
-def get_ssl_sync_request_units(rkeys):
+def get_ssl_sync_request_units():
+    """Get list of units that have requested to be synced.
+
+    NOTE: this must be called from cluster relation context.
+    """
     units = []
-    key = re.compile("^ssl-sync-required-(.+)")
-    for rkey in rkeys:
-        res = re.search(key, rkey)
-        if res:
-            units.append(res.group(1))
+    for unit in related_units():
+        settings = relation_get(unit=unit) or {}
+        rkeys = settings.keys()
+        key = re.compile("^ssl-sync-required-(.+)")
+        for rkey in rkeys:
+            res = re.search(key, rkey)
+            if res:
+                units.append(res.group(1))
 
     return units
-
-
-def clear_ssl_sync_requests(units):
-    settings = {}
-    for unit in units:
-        settings['ssl-sync-required-%s' % (unit)] = None
-
-    relation_set(settings=settings)
 
 
 def is_ssl_cert_master():
@@ -801,6 +801,12 @@ def ensure_ssl_cert_master(use_oldest_peer=False):
     Normally the cluster leader will take control but we allow for this to be
     ignored since this could be called before the cluster is ready.
     """
+    # Don't do anything if we are not in ssl/https mode
+    if not (is_str_true(config('use-https')) or
+            is_str_true(config('https-service-endpoints'))):
+        log("SSL/HTTPS is NOT enabled", level=DEBUG)
+        return False
+
     if not peer_units():
         log("Not syncing certs since there are no peer units.", level=INFO)
         return False
@@ -855,13 +861,13 @@ def synchronize_ca(fatal=False):
     """
     paths_to_sync = [SYNC_FLAGS_DIR]
 
-    if str_is_true(config('https-service-endpoints')):
+    if is_str_true(config('https-service-endpoints')):
         log("Syncing all endpoint certs since https-service-endpoints=True",
             level=DEBUG)
         paths_to_sync.append(SSL_DIR)
         paths_to_sync.append(APACHE_SSL_DIR)
         paths_to_sync.append(CA_CERT_PATH)
-    elif str_is_true(config('use-https')):
+    elif is_str_true(config('use-https')):
         log("Syncing keystone-endpoint certs since use-https=True",
             level=DEBUG)
         paths_to_sync.append(APACHE_SSL_DIR)
@@ -878,6 +884,9 @@ def synchronize_ca(fatal=False):
     # new ssl keys.
     create_peer_service_actions('restart', ['apache2'])
     create_peer_actions(['update-ca-certificates'])
+
+    # Format here needs to match that used when peers request sync
+    synced_units = [unit.replace('/', '-') for unit in peer_units()]
 
     retries = 3
     while True:
@@ -917,7 +926,8 @@ def synchronize_ca(fatal=False):
         level=DEBUG)
 
     log("Sync complete", level=DEBUG)
-    return {'restart-services-trigger': hash}
+    return {'restart-services-trigger': hash,
+            'ssl-synced-units': json.dumps(synced_units)}
 
 
 def update_hash_from_path(hash, path, recurse_depth=10):
@@ -1075,7 +1085,7 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
             relation_data["auth_port"] = config('admin-port')
             relation_data["service_port"] = config('service-port')
             relation_data["region"] = config('region')
-            if str_is_true(config('https-service-endpoints')):
+            if is_str_true(config('https-service-endpoints')):
                 # Pass CA cert as client will need it to
                 # verify https connections
                 ca = get_ca(user=SSH_USER)
@@ -1215,7 +1225,7 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         relation_data["auth_protocol"] = "http"
         relation_data["service_protocol"] = "http"
     # generate or get a new cert/key for service if set to manage certs.
-    if str_is_true(config('https-service-endpoints')):
+    if is_str_true(config('https-service-endpoints')):
         ca = get_ca(user=SSH_USER)
         # NOTE(jamespage) may have multiple cns to deal with to iterate
         https_cns = set(https_cns)

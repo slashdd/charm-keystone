@@ -1,5 +1,6 @@
 #!/usr/bin/python
 import hashlib
+import json
 import os
 import re
 import stat
@@ -64,7 +65,8 @@ from keystone_utils import (
     CA_CERT_PATH,
     ensure_permissions,
     get_ssl_sync_request_units,
-    clear_ssl_sync_requests,
+    is_str_true,
+    is_ssl_cert_master,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -146,6 +148,13 @@ def config_changed():
 
     for rid in relation_ids('identity-admin'):
         admin_relation_changed(rid)
+
+    # Ensure sync request is sent out (needed for upgrade to ssl from non-ssl)
+    settings = {}
+    append_ssl_sync_request(settings)
+    if settings:
+        for rid in relation_ids('cluster'):
+            relation_set(relation_id=rid, relation_settings=settings)
 
 
 @hooks.hook('shared-db-relation-joined')
@@ -281,6 +290,17 @@ def identity_changed(relation_id=None, remote_unit=None):
         send_notifications(notifications)
 
 
+def append_ssl_sync_request(settings):
+    """Add request to be synced to relation settings.
+
+    This will be consumed by cluster-relation-changed ssl master.
+    """
+    if (is_str_true(config('use-https')) or
+            is_str_true(config('https-service-endpoints'))):
+        unit = local_unit().replace('/', '-')
+        settings['ssl-sync-required-%s' % (unit)] = '1'
+
+
 @hooks.hook('cluster-relation-joined')
 def cluster_joined():
     unison.ssh_authorized_peers(user=SSH_USER,
@@ -301,8 +321,7 @@ def cluster_joined():
         private_addr = get_ipv6_addr(exc_list=[config('vip')])[0]
         settings['private-address'] = private_addr
 
-    # This will be consumed by cluster-relation-changed ssl master
-    settings['ssl-sync-required-%s' % (local_unit().replace('/', '-'))] = '1'
+    append_ssl_sync_request(settings)
 
     relation_set(relation_settings=settings)
 
@@ -359,13 +378,18 @@ def cluster_changed():
                                 peer_interface='cluster',
                                 ensure_local_user=True)
 
-    if is_elected_leader(CLUSTER_RES):
-        units = get_ssl_sync_request_units(settings.keys())
-        if units:
+    if is_elected_leader(CLUSTER_RES) or is_ssl_cert_master():
+        units = get_ssl_sync_request_units()
+        synced_units = relation_get(attribute='ssl-synced-units',
+                                    unit=local_unit())
+        if synced_units:
+            synced_units = json.loads(synced_units)
+            diff = set(units).symmetric_difference(set(synced_units))
+
+        if units and (not synced_units or diff):
             log("New peers joined and need syncing - %s" %
                 (', '.join(units)), level=DEBUG)
             update_all_identity_relation_units_force_sync()
-            clear_ssl_sync_requests(units)
         else:
             update_all_identity_relation_units()
 

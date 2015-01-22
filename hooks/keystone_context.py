@@ -1,3 +1,5 @@
+import os
+
 from charmhelpers.core.hookenv import config
 
 from charmhelpers.core.host import mkdir, write_file
@@ -6,12 +8,15 @@ from charmhelpers.contrib.openstack import context
 
 from charmhelpers.contrib.hahelpers.cluster import (
     determine_apache_port,
-    determine_api_port
+    determine_api_port,
+)
+
+from charmhelpers.core.hookenv import (
+    log,
+    INFO,
 )
 
 from charmhelpers.contrib.hahelpers.apache import install_ca_cert
-
-import os
 
 CA_CERT_PATH = '/usr/local/share/ca-certificates/keystone_juju_ca_cert.crt'
 
@@ -29,20 +34,52 @@ class ApacheSSLContext(context.ApacheSSLContext):
         return super(ApacheSSLContext, self).__call__()
 
     def configure_cert(self, cn):
-        from keystone_utils import SSH_USER, get_ca
+        from keystone_utils import (
+            SSH_USER,
+            get_ca,
+            ensure_permissions,
+            is_ssl_cert_master,
+        )
+
         ssl_dir = os.path.join('/etc/apache2/ssl/', self.service_namespace)
-        mkdir(path=ssl_dir)
+        perms = 0o755
+        mkdir(path=ssl_dir, owner=SSH_USER, group='keystone', perms=perms)
+        # Ensure accessible by keystone ssh user and group (for sync)
+        ensure_permissions(ssl_dir, user=SSH_USER, group='keystone',
+                           perms=perms)
+
+        if not is_ssl_cert_master():
+            log("Not ssl-cert-master - skipping apache cert config",
+                level=INFO)
+            return
+
+        log("Creating apache ssl certs in %s" % (ssl_dir), level=INFO)
+
         ca = get_ca(user=SSH_USER)
         cert, key = ca.get_cert_and_key(common_name=cn)
         write_file(path=os.path.join(ssl_dir, 'cert_{}'.format(cn)),
-                   content=cert)
+                   content=cert, owner=SSH_USER, group='keystone', perms=0o644)
         write_file(path=os.path.join(ssl_dir, 'key_{}'.format(cn)),
-                   content=key)
+                   content=key, owner=SSH_USER, group='keystone', perms=0o644)
 
     def configure_ca(self):
-        from keystone_utils import SSH_USER, get_ca
+        from keystone_utils import (
+            SSH_USER,
+            get_ca,
+            ensure_permissions,
+            is_ssl_cert_master,
+        )
+
+        if not is_ssl_cert_master():
+            log("Not ssl-cert-master - skipping apache cert config",
+                level=INFO)
+            return
+
         ca = get_ca(user=SSH_USER)
         install_ca_cert(ca.get_ca_bundle())
+        # Ensure accessible by keystone ssh user and group (unison)
+        ensure_permissions(CA_CERT_PATH, user=SSH_USER, group='keystone',
+                           perms=0o0644)
 
     def canonical_names(self):
         addresses = self.get_network_addresses()

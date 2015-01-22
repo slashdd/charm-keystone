@@ -135,6 +135,8 @@ def config_changed():
         admin_relation_changed(rid)
     for rid in relation_ids('cluster'):
         cluster_joined(rid)
+    for r_id in relation_ids('ha'):
+        ha_joined(relation_id=r_id)
 
 
 @hooks.hook('shared-db-relation-joined')
@@ -403,8 +405,6 @@ def upgrade_charm():
             for unit in relation_list(r_id):
                 identity_changed(relation_id=r_id,
                                  remote_unit=unit)
-    for r_id in relation_ids('ha'):
-        ha_joined(relation_id=r_id)
     CONFIGS.write_all()
 
 

@@ -203,13 +203,15 @@ class KeystoneRelationTests(CharmTestCase):
         configs.write = MagicMock()
         hooks.pgsql_db_changed()
 
+    @patch.object(hooks, 'is_db_ready')
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
     @patch.object(hooks, 'CONFIGS')
     @patch.object(hooks, 'identity_changed')
     def test_db_changed_allowed(self, identity_changed, configs,
                                 mock_ensure_ssl_cert_master,
-                                mock_log):
+                                mock_log, mock_is_db_ready):
+        mock_is_db_ready.return_value = True
         mock_ensure_ssl_cert_master.return_value = False
         self.relation_ids.return_value = ['identity-service:0']
         self.related_units.return_value = ['unit/0']
@@ -223,12 +225,15 @@ class KeystoneRelationTests(CharmTestCase):
             relation_id='identity-service:0',
             remote_unit='unit/0')
 
+    @patch.object(hooks, 'is_db_ready')
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
     @patch.object(hooks, 'CONFIGS')
     @patch.object(hooks, 'identity_changed')
     def test_db_changed_not_allowed(self, identity_changed, configs,
-                                    mock_ensure_ssl_cert_master, mock_log):
+                                    mock_ensure_ssl_cert_master, mock_log,
+                                    mock_is_db_ready):
+        mock_is_db_ready.return_value = False
         mock_ensure_ssl_cert_master.return_value = False
         self.relation_ids.return_value = ['identity-service:0']
         self.related_units.return_value = ['unit/0']
@@ -374,13 +379,15 @@ class KeystoneRelationTests(CharmTestCase):
             remote_unit='unit/0')
         admin_relation_changed.assert_called_with('identity-service:0')
 
+    @patch.object(hooks, 'is_db_ready')
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
     @patch.object(hooks, 'hashlib')
     @patch.object(hooks, 'send_notifications')
     def test_identity_changed_leader(self, mock_send_notifications,
                                      mock_hashlib, mock_ensure_ssl_cert_master,
-                                     mock_log):
+                                     mock_log, mock_is_db_ready):
+        mock_is_db_ready.return_value = True
         mock_ensure_ssl_cert_master.return_value = False
         hooks.identity_changed(
             relation_id='identity-service:0',

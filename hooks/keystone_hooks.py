@@ -284,7 +284,7 @@ def cluster_changed():
 
 
 @hooks.hook('ha-relation-joined')
-def ha_joined():
+def ha_joined(relation_id=None):
     cluster_config = get_hacluster_config()
     resources = {
         'res_ks_haproxy': 'lsb:haproxy',
@@ -320,7 +320,8 @@ def ha_joined():
             vip_group.append(vip_key)
 
     if len(vip_group) >= 1:
-        relation_set(groups={'grp_ks_vips': ' '.join(vip_group)})
+        relation_set(relation_id=relation_id,
+                     groups={'grp_ks_vips': ' '.join(vip_group)})
 
     init_services = {
         'res_ks_haproxy': 'haproxy'
@@ -328,7 +329,8 @@ def ha_joined():
     clones = {
         'cl_ks_haproxy': 'res_ks_haproxy'
     }
-    relation_set(init_services=init_services,
+    relation_set(relation_id=relation_id,
+                 init_services=init_services,
                  corosync_bindiface=cluster_config['ha-bindiface'],
                  corosync_mcastport=cluster_config['ha-mcastport'],
                  resources=resources,
@@ -401,6 +403,8 @@ def upgrade_charm():
             for unit in relation_list(r_id):
                 identity_changed(relation_id=r_id,
                                  remote_unit=unit)
+    for r_id in relation_ids('ha'):
+        ha_joined(relation_id=r_id)
     CONFIGS.write_all()
 
 

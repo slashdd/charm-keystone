@@ -2,7 +2,6 @@
 import hashlib
 import json
 import os
-import re
 import stat
 import sys
 import time
@@ -67,6 +66,7 @@ from keystone_utils import (
     get_ssl_sync_request_units,
     is_str_true,
     is_ssl_cert_master,
+    is_db_ready,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -219,8 +219,7 @@ def db_changed():
             # Bugs 1353135 & 1187508. Dbs can appear to be ready before the
             # units acl entry has been added. So, if the db supports passing
             # a list of permitted units then check if we're in the list.
-            allowed_units = relation_get('allowed_units')
-            if allowed_units and local_unit() not in allowed_units.split():
+            if not is_db_ready(use_current_context=True):
                 log('Allowed_units list provided and this unit not present')
                 return
             # Ensure any existing service entries are updated in the
@@ -249,21 +248,13 @@ def identity_changed(relation_id=None, remote_unit=None):
 
     notifications = {}
     if is_elected_leader(CLUSTER_RES):
-        # Catch database not configured error and defer until db ready
-        from keystoneclient.apiclient.exceptions import InternalServerError
-        try:
-            add_service_to_keystone(relation_id, remote_unit)
-        except InternalServerError as exc:
-            key = re.compile("'keystone\..+' doesn't exist")
-            if re.search(key, exc.message):
-                log("Keystone database not yet ready (InternalServerError "
-                    "raised) - deferring until *-db relation completes.",
-                    level=WARNING)
-                return
 
-            log("Unexpected exception occurred", level=ERROR)
-            raise
+        if not is_db_ready():
+            log("identity-service-relation-changed hook fired before db "
+                "ready - deferring until db ready", level=WARNING)
+            return
 
+        add_service_to_keystone(relation_id, remote_unit)
         settings = relation_get(rid=relation_id, unit=remote_unit)
         service = settings.get('service', None)
         if service:

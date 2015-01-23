@@ -62,6 +62,7 @@ from charmhelpers.core.hookenv import (
     local_unit,
     relation_get,
     relation_set,
+    relation_id,
     relation_ids,
     related_units,
     DEBUG,
@@ -1356,3 +1357,43 @@ def send_notifications(data, force=False):
         level=DEBUG)
     for rid in rel_ids:
         relation_set(relation_id=rid, relation_settings=_notifications)
+
+
+def is_db_ready(use_current_context=False, db_rel=None):
+    """Database relations are expected to provide a list of 'allowed' units to
+    confirm that the database is ready for use by those units.
+
+    If db relation has provided this information and local unit is a member,
+    returns True otherwise False.
+    """
+    key = 'allowed_units'
+    db_rels = ['shared-db', 'pgsql-db']
+    if db_rel:
+        db_rels = [db_rel]
+
+    rel_has_units = False
+
+    if use_current_context:
+        if not any([relation_id() in relation_ids(r) for r in db_rels]):
+            raise Exception("use_current_context=True but not in one of %s "
+                            "rel hook contexts (currently in %s)." %
+                            (', '.join(db_rels), relation_id()))
+
+        allowed_units = relation_get(attribute=key)
+        if allowed_units and local_unit() in allowed_units.split():
+            return True
+    else:
+        for rel in db_rels:
+            for rid in relation_ids(rel):
+                for unit in related_units(rid):
+                    allowed_units = relation_get(rid=rid, unit=unit,
+                                                 attribute=key)
+                    if allowed_units and local_unit() in allowed_units.split():
+                        return True
+
+                    # If relation has units
+                    return False
+
+    # If neither relation has units then we are probably in sqllite mode return
+    # True.
+    return not rel_has_units

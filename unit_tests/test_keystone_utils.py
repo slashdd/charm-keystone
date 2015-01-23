@@ -33,6 +33,10 @@ TO_PATCH = [
     'service_start',
     'relation_get',
     'relation_set',
+    'relation_ids',
+    'relation_id',
+    'local_unit',
+    'related_units',
     'https',
     'is_relation_made',
     'peer_store',
@@ -345,3 +349,23 @@ class TestKeystoneUtils(CharmTestCase):
         isfile.return_value = False
         self.subprocess.check_output.return_value = 'supersecretgen'
         self.assertEqual(utils.get_admin_passwd(), 'supersecretgen')
+
+    def test_is_db_ready(self):
+        self.relation_id.return_value = 'shared-db:0'
+        self.relation_ids.return_value = [self.relation_id.return_value]
+        self.local_unit.return_value = 'unit/0'
+        self.relation_get.return_value = 'unit/0'
+        self.assertTrue(utils.is_db_ready(use_current_context=True))
+
+        self.relation_ids.return_value = ['acme:0']
+        self.assertRaises(utils.is_db_ready, use_current_context=True)
+
+        self.related_units.return_value = ['unit/0']
+        self.relation_ids.return_value = [self.relation_id.return_value]
+        self.assertTrue(utils.is_db_ready())
+
+        self.relation_get.return_value = 'unit/1'
+        self.assertFalse(utils.is_db_ready())
+
+        self.related_units.return_value = []
+        self.assertTrue(utils.is_db_ready())

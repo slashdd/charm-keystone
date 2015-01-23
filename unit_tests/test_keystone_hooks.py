@@ -461,6 +461,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.get_netmask_for_address.return_value = '255.255.255.0'
         hooks.ha_joined()
         args = {
+            'relation_id': None,
             'corosync_bindiface': 'em0',
             'corosync_mcastport': '8080',
             'init_services': {'res_ks_haproxy': 'haproxy'},
@@ -486,6 +487,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.get_netmask_for_address.return_value = None
         hooks.ha_joined()
         args = {
+            'relation_id': None,
             'corosync_bindiface': 'em0',
             'corosync_mcastport': '8080',
             'init_services': {'res_ks_haproxy': 'haproxy'},
@@ -510,6 +512,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.get_netmask_for_address.return_value = '64'
         hooks.ha_joined()
         args = {
+            'relation_id': None,
             'corosync_bindiface': 'em0',
             'corosync_mcastport': '8080',
             'init_services': {'res_ks_haproxy': 'haproxy'},

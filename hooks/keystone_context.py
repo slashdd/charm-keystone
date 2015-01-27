@@ -72,17 +72,18 @@ class ApacheSSLContext(context.ApacheSSLContext):
         if not is_ssl_enabled():
             return
 
-        if not is_ssl_cert_master():
-            log("Not ssl-cert-master - skipping apache cert config until "
-                "master is elected", level=INFO)
-            return
-
+        # Ensure ssl dir exists whether master or not
         ssl_dir = os.path.join('/etc/apache2/ssl/', self.service_namespace)
         perms = 0o755
         mkdir(path=ssl_dir, owner=SSH_USER, group='keystone', perms=perms)
         # Ensure accessible by keystone ssh user and group (for sync)
         ensure_permissions(ssl_dir, user=SSH_USER, group='keystone',
                            perms=perms)
+
+        if not is_ssl_cert_master():
+            log("Not ssl-cert-master - skipping apache cert config until "
+                "master is elected", level=INFO)
+            return
 
         log("Creating apache ssl certs in %s" % (ssl_dir), level=INFO)
 

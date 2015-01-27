@@ -7,7 +7,8 @@ os.environ['JUJU_UNIT_NAME'] = 'keystone'
 with patch('charmhelpers.core.hookenv.config') as config:
     import keystone_utils as utils
 
-import keystone_hooks as hooks
+with patch.object(utils, 'register_configs'):
+    import keystone_hooks as hooks
 
 TO_PATCH = [
     'api_port',
@@ -369,3 +370,47 @@ class TestKeystoneUtils(CharmTestCase):
 
         self.related_units.return_value = []
         self.assertTrue(utils.is_db_ready())
+
+    @patch.object(utils, 'peer_units')
+    @patch.object(utils, 'is_elected_leader')
+    @patch.object(utils, 'oldest_peer')
+    @patch.object(utils, 'is_ssl_enabled')
+    def test_ensure_ssl_cert_master(self, mock_is_str_true, mock_oldest_peer,
+                                    mock_is_elected_leader, mock_peer_units):
+        self.relation_ids.return_value = ['cluster:0']
+        self.local_unit.return_value = 'unit/0'
+
+        mock_is_str_true.return_value = False
+        self.assertFalse(utils.ensure_ssl_cert_master())
+        self.assertFalse(self.relation_set.called)
+
+        mock_is_elected_leader.return_value = False
+        self.assertFalse(utils.ensure_ssl_cert_master())
+        self.assertFalse(self.relation_set.called)
+
+        mock_is_str_true.return_value = True
+        mock_is_elected_leader.return_value = False
+        mock_peer_units.return_value = ['unit/0']
+        self.assertFalse(utils.ensure_ssl_cert_master())
+        self.assertFalse(self.relation_set.called)
+
+        mock_peer_units.return_value = []
+        self.assertTrue(utils.ensure_ssl_cert_master())
+        settings = {'ssl-cert-master': 'unit/0'}
+        self.relation_set.assert_called_with(relation_id='cluster:0',
+                                             relation_settings=settings)
+        self.relation_set.reset_mock()
+
+        self.assertTrue(utils.ensure_ssl_cert_master(use_oldest_peer=True))
+        settings = {'ssl-cert-master': 'unit/0'}
+        self.relation_set.assert_called_with(relation_id='cluster:0',
+                                             relation_settings=settings)
+        self.relation_set.reset_mock()
+
+        mock_peer_units.return_value = ['unit/0']
+        self.assertFalse(utils.ensure_ssl_cert_master())
+        self.assertFalse(utils.ensure_ssl_cert_master(use_oldest_peer=True))
+        settings = {'ssl-cert-master': 'unit/0'}
+        self.relation_set.assert_called_with(relation_id='cluster:0',
+                                             relation_settings=settings)
+        self.relation_set.reset_mock()

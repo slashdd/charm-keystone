@@ -1,8 +1,13 @@
+import hashlib
 import os
 
 from charmhelpers.core.hookenv import config
 
-from charmhelpers.core.host import mkdir, write_file
+from charmhelpers.core.host import (
+    mkdir,
+    write_file,
+    service_restart,
+)
 
 from charmhelpers.contrib.openstack import context
 
@@ -29,9 +34,31 @@ class ApacheSSLContext(context.ApacheSSLContext):
 
     def __call__(self):
         # late import to work around circular dependency
-        from keystone_utils import determine_ports
+        from keystone_utils import (
+            determine_ports,
+            update_hash_from_path,
+        )
+
+        ssl_paths = [CA_CERT_PATH,
+                     os.path.join('/etc/apache2/ssl/',
+                                  self.service_namespace)]
+
         self.external_ports = determine_ports()
-        return super(ApacheSSLContext, self).__call__()
+        before = hashlib.sha256()
+        for path in ssl_paths:
+            update_hash_from_path(before, path)
+
+        ret = super(ApacheSSLContext, self).__call__()
+
+        after = hashlib.sha256()
+        for path in ssl_paths:
+            update_hash_from_path(after, path)
+
+        # Ensure that apache2 is restarted if these change
+        if before.hexdigest() != after.hexdigest():
+            service_restart('apache2')
+
+        return ret
 
     def configure_cert(self, cn):
         from keystone_utils import (
@@ -39,7 +66,16 @@ class ApacheSSLContext(context.ApacheSSLContext):
             get_ca,
             ensure_permissions,
             is_ssl_cert_master,
+            is_ssl_enabled,
         )
+
+        if not is_ssl_enabled():
+            return
+
+        if not is_ssl_cert_master():
+            log("Not ssl-cert-master - skipping apache cert config until "
+                "master is elected", level=INFO)
+            return
 
         ssl_dir = os.path.join('/etc/apache2/ssl/', self.service_namespace)
         perms = 0o755
@@ -47,11 +83,6 @@ class ApacheSSLContext(context.ApacheSSLContext):
         # Ensure accessible by keystone ssh user and group (for sync)
         ensure_permissions(ssl_dir, user=SSH_USER, group='keystone',
                            perms=perms)
-
-        if not is_ssl_cert_master():
-            log("Not ssl-cert-master - skipping apache cert config",
-                level=INFO)
-            return
 
         log("Creating apache ssl certs in %s" % (ssl_dir), level=INFO)
 
@@ -68,11 +99,15 @@ class ApacheSSLContext(context.ApacheSSLContext):
             get_ca,
             ensure_permissions,
             is_ssl_cert_master,
+            is_ssl_enabled,
         )
 
+        if not is_ssl_enabled():
+            return
+
         if not is_ssl_cert_master():
-            log("Not ssl-cert-master - skipping apache cert config",
-                level=INFO)
+            log("Not ssl-cert-master - skipping apache ca config until "
+                "master is elected", level=INFO)
             return
 
         ca = get_ca(user=SSH_USER)

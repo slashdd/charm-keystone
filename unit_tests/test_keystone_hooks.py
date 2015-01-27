@@ -446,7 +446,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.peer_echo.assert_called_with(includes=['foo_passwd',
                                                     'identity-service:16_foo'])
         ssh_authorized_peers.assert_called_with(
-            user=self.ssh_user, group='keystone',
+            user=self.ssh_user, group='juju_keystone',
             peer_interface='cluster', ensure_local_user=True)
         self.assertFalse(mock_synchronize_ca.called)
         self.assertTrue(configs.write_all.called)
@@ -621,7 +621,7 @@ class KeystoneRelationTests(CharmTestCase):
         hooks.upgrade_charm()
         self.assertTrue(self.apt_install.called)
         ssh_authorized_peers.assert_called_with(
-            user=self.ssh_user, group='keystone',
+            user=self.ssh_user, group='juju_keystone',
             peer_interface='cluster', ensure_local_user=True)
         self.assertTrue(mock_synchronize_ca.called)
         self.log.assert_called_with(
@@ -649,7 +649,7 @@ class KeystoneRelationTests(CharmTestCase):
         hooks.upgrade_charm()
         self.assertTrue(self.apt_install.called)
         ssh_authorized_peers.assert_called_with(
-            user=self.ssh_user, group='keystone',
+            user=self.ssh_user, group='juju_keystone',
             peer_interface='cluster', ensure_local_user=True)
         self.assertFalse(self.log.called)
         self.assertFalse(self.ensure_initial_admin.called)

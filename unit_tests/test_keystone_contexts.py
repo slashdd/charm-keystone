@@ -16,6 +16,26 @@ class TestKeystoneContexts(CharmTestCase):
     def setUp(self):
         super(TestKeystoneContexts, self).setUp(context, TO_PATCH)
 
+    @patch.object(context, 'mkdir')
+    @patch('keystone_utils.determine_ports')
+    @patch('keystone_utils.is_ssl_cert_master')
+    @patch('keystone_utils.is_ssl_enabled')
+    @patch.object(context, 'log')
+    def test_apache_ssl_context_ssl_not_master(self,
+                                               mock_log,
+                                               mock_is_ssl_enabled,
+                                               mock_is_ssl_cert_master,
+                                               mock_determine_ports,
+                                               mock_mkdir):
+        mock_is_ssl_enabled.return_value = True
+        mock_is_ssl_cert_master.return_value = False
+
+        context.ApacheSSLContext().configure_cert('foo')
+        context.ApacheSSLContext().configure_ca()
+        self.assertFalse(mock_mkdir.called)
+
+    @patch('keystone_utils.is_ssl_cert_master')
+    @patch('keystone_utils.is_ssl_enabled')
     @patch('charmhelpers.contrib.openstack.context.config')
     @patch('charmhelpers.contrib.openstack.context.is_clustered')
     @patch('charmhelpers.contrib.openstack.context.determine_apache_port')
@@ -27,7 +47,11 @@ class TestKeystoneContexts(CharmTestCase):
                                                 mock_determine_api_port,
                                                 mock_determine_apache_port,
                                                 mock_is_clustered,
-                                                mock_config):
+                                                mock_config,
+                                                mock_is_ssl_enabled,
+                                                mock_is_ssl_cert_master):
+        mock_is_ssl_enabled.return_value = True
+        mock_is_ssl_cert_master.return_value = True
         mock_https.return_value = True
         mock_unit_get.return_value = '1.2.3.4'
         mock_determine_api_port.return_value = '12'

@@ -801,6 +801,17 @@ def is_ssl_cert_master():
     return master == local_unit()
 
 
+def is_ssl_enabled():
+    # Don't do anything if we are not in ssl/https mode
+    if (is_str_true(config('use-https')) or
+            is_str_true(config('https-service-endpoints'))):
+        log("SSL/HTTPS is enabled", level=DEBUG)
+        return True
+
+    log("SSL/HTTPS is NOT enabled", level=DEBUG)
+    return True
+
+
 def ensure_ssl_cert_master(use_oldest_peer=False):
     """Ensure that an ssl cert master has been elected.
 
@@ -808,19 +819,22 @@ def ensure_ssl_cert_master(use_oldest_peer=False):
     ignored since this could be called before the cluster is ready.
     """
     # Don't do anything if we are not in ssl/https mode
-    if not (is_str_true(config('use-https')) or
-            is_str_true(config('https-service-endpoints'))):
-        log("SSL/HTTPS is NOT enabled", level=DEBUG)
+    if not is_ssl_enabled():
         return False
 
-    if not peer_units():
-        log("Not syncing certs since there are no peer units.", level=INFO)
-        return False
-
+    elect = False
+    peers = peer_units()
+    master_override = False
     if use_oldest_peer:
-        elect = oldest_peer(peer_units())
+        elect = oldest_peer(peers)
     else:
         elect = is_elected_leader(CLUSTER_RES)
+
+    # If no peers we allow this unit to elect itsef as master and do
+    # sync immediately.
+    if not peers and not is_ssl_cert_master():
+        elect = True
+        master_override = True
 
     if elect:
         masters = []
@@ -840,12 +854,12 @@ def ensure_ssl_cert_master(use_oldest_peer=False):
 
             # Return now and wait for cluster-relation-changed (peer_echo) for
             # sync.
-            return False
+            return master_override
         elif len(set(masters)) != 1 and local_unit() not in masters:
-            log("Did not get concensus from peers on who is master (%s) - "
-                "waiting for current master to release before self-electing" %
-                (masters), level=INFO)
-            return False
+            log("Did not get consensus from peers on who is ssl-cert-master "
+                "(%s) - waiting for current master to release before "
+                "self-electing" % (masters), level=INFO)
+            return master_override
 
     if not is_ssl_cert_master():
         log("Not ssl cert master - skipping sync", level=INFO)
@@ -864,6 +878,8 @@ def synchronize_ca(fatal=False):
     leader stickiness while synchronisation is being carried out. This ensures
     that the last host to create and broadcast cetificates has the option to
     complete actions before electing the new leader as sync master.
+
+    Returns a dictionary of settings to be set on the cluster relation.
     """
     paths_to_sync = [SYNC_FLAGS_DIR]
 
@@ -881,7 +897,7 @@ def synchronize_ca(fatal=False):
 
     if not paths_to_sync:
         log("Nothing to sync - skipping", level=DEBUG)
-        return
+        return {}
 
     if not os.path.isdir(SYNC_FLAGS_DIR):
         mkdir(SYNC_FLAGS_DIR, SSH_USER, 'keystone', 0o775)
@@ -907,7 +923,7 @@ def synchronize_ca(fatal=False):
                 raise
             else:
                 log("Sync failed but fatal=False", level=INFO)
-                return
+                return {}
 
         hash2 = hashlib.sha256()
         for path in paths_to_sync:

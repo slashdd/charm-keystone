@@ -121,7 +121,7 @@ def config_changed():
     unison.ensure_user(user=SSH_USER, group='keystone')
     homedir = unison.get_homedir(SSH_USER)
     if not os.path.isdir(homedir):
-        mkdir(homedir, SSH_USER, 'keystone', 0o775)
+        mkdir(homedir, SSH_USER, 'juju_keystone', 0o775)
 
     if openstack_upgrade_available('keystone'):
         do_openstack_upgrade(configs=CONFIGS)
@@ -354,6 +354,10 @@ def apply_echo_filters(settings, echo_whitelist):
             'cluster-relation-departed')
 @restart_on_change(restart_map(), stopstart=True)
 def cluster_changed():
+    unison.ssh_authorized_peers(user=SSH_USER,
+                                group='juju_keystone',
+                                peer_interface='cluster',
+                                ensure_local_user=True)
     settings = relation_get()
     # NOTE(jamespage) re-echo passwords for peer storage
     echo_whitelist, overrides = \
@@ -366,10 +370,6 @@ def cluster_changed():
         peer_echo(includes=echo_whitelist)
 
     check_peer_actions()
-    unison.ssh_authorized_peers(user=SSH_USER,
-                                group='keystone',
-                                peer_interface='cluster',
-                                ensure_local_user=True)
 
     if is_elected_leader(CLUSTER_RES) or is_ssl_cert_master():
         units = get_ssl_sync_request_units()
@@ -499,7 +499,7 @@ def configure_https():
 def upgrade_charm():
     apt_install(filter_installed_packages(determine_packages()))
     unison.ssh_authorized_peers(user=SSH_USER,
-                                group='keystone',
+                                group='juju_keystone',
                                 peer_interface='cluster',
                                 ensure_local_user=True)
 

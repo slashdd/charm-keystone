@@ -892,6 +892,7 @@ def synchronize_ca(fatal=False):
     elif is_str_true(config('use-https')):
         log("Syncing keystone-endpoint certs since use-https=True",
             level=DEBUG)
+        paths_to_sync.append(SSL_DIR)
         paths_to_sync.append(APACHE_SSL_DIR)
         paths_to_sync.append(CA_CERT_PATH)
 

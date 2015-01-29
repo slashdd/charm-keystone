@@ -19,7 +19,7 @@ u = OpenStackAmuletUtils(ERROR)
 class KeystoneBasicDeployment(OpenStackAmuletDeployment):
     """Amulet tests on a basic keystone deployment."""
 
-    def __init__(self, series=None, openstack=None, source=None, stable=False):
+    def __init__(self, series=None, openstack=None, source=None, stable=True):
         """Deploy the entire test environment."""
         super(KeystoneBasicDeployment, self).__init__(series, openstack, source, stable)
         self._add_services()

@@ -1408,9 +1408,8 @@ def is_db_ready(use_current_context=False, db_rel=None):
                     if allowed_units and local_unit() in allowed_units.split():
                         return True
 
-                    # If relation has units
-                    return False
+                    rel_has_units = True
 
-    # If neither relation has units then we are probably in sqllite mode return
-    # True.
+    # If neither relation has units then we are probably in sqlite mode so
+    # return True.
     return not rel_has_units

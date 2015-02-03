@@ -934,6 +934,8 @@ def synchronize_ca(fatal=False):
     create_peer_service_actions('restart', ['apache2'])
     create_peer_actions(['update-ca-certificates'])
 
+    cluster_rel_settings = {}
+
     retries = 3
     while True:
         hash1 = hashlib.sha256()
@@ -945,6 +947,8 @@ def synchronize_ca(fatal=False):
             if synced_units:
                 # Format here needs to match that used when peers request sync
                 synced_units = [u.replace('/', '-') for u in synced_units]
+                cluster_rel_settings['ssl-synced-units'] = \
+                    json.dumps(synced_units)
         except:
             if fatal:
                 raise
@@ -973,10 +977,10 @@ def synchronize_ca(fatal=False):
     hash = hash1.hexdigest()
     log("Sending restart-services-trigger=%s to all peers" % (hash),
         level=DEBUG)
+    cluster_rel_settings['restart-services-trigger'] = hash
 
     log("Sync complete", level=DEBUG)
-    return {'restart-services-trigger': hash,
-            'ssl-synced-units': json.dumps(synced_units)}
+    return cluster_rel_settings
 
 
 def clear_ssl_synced_units():

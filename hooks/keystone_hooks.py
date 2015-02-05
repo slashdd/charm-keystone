@@ -67,6 +67,7 @@ from keystone_utils import (
     is_str_true,
     is_ssl_cert_master,
     is_db_ready,
+    clear_ssl_synced_units,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -150,11 +151,8 @@ def config_changed():
         admin_relation_changed(rid)
 
     # Ensure sync request is sent out (needed for upgrade to ssl from non-ssl)
-    settings = {}
-    append_ssl_sync_request(settings)
-    if settings:
-        for rid in relation_ids('cluster'):
-            relation_set(relation_id=rid, relation_settings=settings)
+    send_ssl_sync_request()
+
     for r_id in relation_ids('ha'):
         ha_joined(relation_id=r_id)
 
@@ -283,15 +281,39 @@ def identity_changed(relation_id=None, remote_unit=None):
         send_notifications(notifications)
 
 
-def append_ssl_sync_request(settings):
-    """Add request to be synced to relation settings.
+def send_ssl_sync_request():
+    """Set sync request on cluster relation.
 
-    This will be consumed by cluster-relation-changed ssl master.
+    Value set equals number of ssl configs currently enabled so that if they
+    change, we ensure that certs are synced. This setting is consumed by
+    cluster-relation-changed ssl master. We also clear the 'synced' set to
+    guarantee that a sync will occur.
+
+    Note the we do nothing if the setting is already applied.
     """
-    if (is_str_true(config('use-https')) or
-            is_str_true(config('https-service-endpoints'))):
-        unit = local_unit().replace('/', '-')
-        settings['ssl-sync-required-%s' % (unit)] = '1'
+    unit = local_unit().replace('/', '-')
+    count = 0
+    if is_str_true(config('use-https')):
+        count += 1
+
+    if is_str_true(config('https-service-endpoints')):
+        count += 2
+
+    if count:
+        key = 'ssl-sync-required-%s' % (unit)
+        settings = {key: count}
+        prev = 0
+        rid = None
+        for rid in relation_ids('cluster'):
+            for unit in related_units(rid):
+                _prev = relation_get(rid=rid, unit=unit, attribute=key) or 0
+                if _prev and _prev > prev:
+                    prev = _prev
+
+        if rid and prev < count:
+            clear_ssl_synced_units()
+            log("Setting %s=%s" % (key, count), level=DEBUG)
+            relation_set(relation_id=rid, relation_settings=settings)
 
 
 @hooks.hook('cluster-relation-joined')
@@ -314,9 +336,8 @@ def cluster_joined():
         private_addr = get_ipv6_addr(exc_list=[config('vip')])[0]
         settings['private-address'] = private_addr
 
-    append_ssl_sync_request(settings)
-
     relation_set(relation_settings=settings)
+    send_ssl_sync_request()
 
 
 def apply_echo_filters(settings, echo_whitelist):

@@ -188,10 +188,9 @@ def pgsql_db_joined():
     relation_set(database=config('database'))
 
 
-def update_all_identity_relation_units():
+def update_all_identity_relation_units(check_db_ready=True):
     CONFIGS.write_all()
-
-    if not is_db_ready():
+    if check_db_ready and not is_db_ready():
         log('Allowed_units list provided and this unit not present',
             level=INFO)
         return
@@ -233,7 +232,7 @@ def db_changed():
 
             # Ensure any existing service entries are updated in the
             # new database backend
-            update_all_identity_relation_units()
+            update_all_identity_relation_units(check_db_ready=False)
 
 
 @hooks.hook('pgsql-db-relation-changed')

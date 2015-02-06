@@ -251,6 +251,7 @@ def pgsql_db_changed():
 
 
 @hooks.hook('identity-service-relation-changed')
+@restart_on_change(restart_map())
 @synchronize_ca_if_changed()
 def identity_changed(relation_id=None, remote_unit=None):
     CONFIGS.write_all()

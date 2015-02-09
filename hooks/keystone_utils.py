@@ -21,7 +21,6 @@ from charmhelpers.contrib.hahelpers.cluster import(
     determine_api_port,
     https,
     peer_units,
-    oldest_peer,
 )
 
 from charmhelpers.contrib.openstack import context, templating
@@ -764,13 +763,26 @@ def create_peer_actions(actions):
 def unison_sync(paths_to_sync):
     """Do unison sync and retry a few times if it fails since peers may not be
     ready for sync.
+
+    Returns list of synced units or None if one or more peers was not synced.
     """
     log('Synchronizing CA (%s) to all peers.' % (', '.join(paths_to_sync)),
         level=INFO)
     keystone_gid = grp.getgrnam('keystone').gr_gid
+
+    # NOTE(dosaboy): This will sync to all peers who have already provided
+    # their ssh keys. If any existing peers have not provided their keys yet,
+    # they will be silently ignored.
     unison.sync_to_peers(peer_interface='cluster', paths=paths_to_sync,
                          user=SSH_USER, verbose=True, gid=keystone_gid,
                          fatal=True)
+
+    synced_units = peer_units()
+    if len(unison.collect_authed_hosts('cluster')) != len(synced_units):
+        log("Not all peer units synced due to missing public keys", level=INFO)
+        return None
+    else:
+        return synced_units
 
 
 def get_ssl_sync_request_units():
@@ -791,14 +803,22 @@ def get_ssl_sync_request_units():
     return units
 
 
-def is_ssl_cert_master():
+def is_ssl_cert_master(votes=None):
     """Return True if this unit is ssl cert master."""
     master = None
     for rid in relation_ids('cluster'):
         master = relation_get(attribute='ssl-cert-master', rid=rid,
                               unit=local_unit())
 
-    return master == local_unit()
+    if master == local_unit():
+        votes = votes or get_ssl_cert_master_votes()
+        if not peer_units() or (len(votes) == 1 and master in votes):
+            return True
+
+        log("Did not get consensus from peers on who is ssl-cert-master "
+            "(%s)" % (votes), level=INFO)
+
+    return False
 
 
 def is_ssl_enabled():
@@ -812,7 +832,21 @@ def is_ssl_enabled():
     return True
 
 
-def ensure_ssl_cert_master(use_oldest_peer=False):
+def get_ssl_cert_master_votes():
+    """Returns a list of unique votes."""
+    votes = []
+    # Gather election results from peers. These will need to be consistent.
+    for rid in relation_ids('cluster'):
+        for unit in related_units(rid):
+            m = relation_get(rid=rid, unit=unit,
+                             attribute='ssl-cert-master')
+            if m is not None:
+                votes.append(m)
+
+    return list(set(votes))
+
+
+def ensure_ssl_cert_master():
     """Ensure that an ssl cert master has been elected.
 
     Normally the cluster leader will take control but we allow for this to be
@@ -822,31 +856,19 @@ def ensure_ssl_cert_master(use_oldest_peer=False):
     if not is_ssl_enabled():
         return False
 
-    elect = False
-    peers = peer_units()
     master_override = False
-    if use_oldest_peer:
-        elect = oldest_peer(peers)
-    else:
-        elect = is_elected_leader(CLUSTER_RES)
+    elect = is_elected_leader(CLUSTER_RES)
 
     # If no peers we allow this unit to elect itsef as master and do
     # sync immediately.
-    if not peers and not is_ssl_cert_master():
+    if not peer_units():
         elect = True
         master_override = True
 
     if elect:
-        masters = []
-        for rid in relation_ids('cluster'):
-            for unit in related_units(rid):
-                m = relation_get(rid=rid, unit=unit,
-                                 attribute='ssl-cert-master')
-                if m is not None:
-                    masters.append(m)
-
+        votes = get_ssl_cert_master_votes()
         # We expect all peers to echo this setting
-        if not masters or 'unknown' in masters:
+        if not votes or 'unknown' in votes:
             log("Notifying peers this unit is ssl-cert-master", level=INFO)
             for rid in relation_ids('cluster'):
                 settings = {'ssl-cert-master': local_unit()}
@@ -855,10 +877,11 @@ def ensure_ssl_cert_master(use_oldest_peer=False):
             # Return now and wait for cluster-relation-changed (peer_echo) for
             # sync.
             return master_override
-        elif len(set(masters)) != 1 and local_unit() not in masters:
-            log("Did not get consensus from peers on who is ssl-cert-master "
-                "(%s) - waiting for current master to release before "
-                "self-electing" % (masters), level=INFO)
+        elif not is_ssl_cert_master(votes):
+            if not master_override:
+                log("Conscensus not reached - current master will need to "
+                    "release", level=INFO)
+
             return master_override
 
     if not is_ssl_cert_master():
@@ -887,14 +910,17 @@ def synchronize_ca(fatal=False):
         log("Syncing all endpoint certs since https-service-endpoints=True",
             level=DEBUG)
         paths_to_sync.append(SSL_DIR)
-        paths_to_sync.append(APACHE_SSL_DIR)
         paths_to_sync.append(CA_CERT_PATH)
-    elif is_str_true(config('use-https')):
+
+    if is_str_true(config('use-https')):
         log("Syncing keystone-endpoint certs since use-https=True",
             level=DEBUG)
         paths_to_sync.append(SSL_DIR)
         paths_to_sync.append(APACHE_SSL_DIR)
         paths_to_sync.append(CA_CERT_PATH)
+
+    # Ensure unique
+    paths_to_sync = list(set(paths_to_sync))
 
     if not paths_to_sync:
         log("Nothing to sync - skipping", level=DEBUG)
@@ -908,8 +934,7 @@ def synchronize_ca(fatal=False):
     create_peer_service_actions('restart', ['apache2'])
     create_peer_actions(['update-ca-certificates'])
 
-    # Format here needs to match that used when peers request sync
-    synced_units = [unit.replace('/', '-') for unit in peer_units()]
+    cluster_rel_settings = {}
 
     retries = 3
     while True:
@@ -918,7 +943,12 @@ def synchronize_ca(fatal=False):
             update_hash_from_path(hash1, path)
 
         try:
-            unison_sync(paths_to_sync)
+            synced_units = unison_sync(paths_to_sync)
+            if synced_units:
+                # Format here needs to match that used when peers request sync
+                synced_units = [u.replace('/', '-') for u in synced_units]
+                cluster_rel_settings['ssl-synced-units'] = \
+                    json.dumps(synced_units)
         except:
             if fatal:
                 raise
@@ -947,10 +977,22 @@ def synchronize_ca(fatal=False):
     hash = hash1.hexdigest()
     log("Sending restart-services-trigger=%s to all peers" % (hash),
         level=DEBUG)
+    cluster_rel_settings['restart-services-trigger'] = hash
 
     log("Sync complete", level=DEBUG)
-    return {'restart-services-trigger': hash,
-            'ssl-synced-units': json.dumps(synced_units)}
+    return cluster_rel_settings
+
+
+def clear_ssl_synced_units():
+    """Clear the 'synced' units record on the cluster relation.
+
+    If new unit sync reauests are set this will ensure that a sync occurs when
+    the sync master receives the requests.
+    """
+    log("Clearing ssl sync units", level=DEBUG)
+    for rid in relation_ids('cluster'):
+        relation_set(relation_id=rid,
+                     relation_settings={'ssl-synced-units': None})
 
 
 def update_hash_from_path(hash, path, recurse_depth=10):
@@ -1058,11 +1100,11 @@ def get_ca(user='keystone', group='keystone'):
                                  '%s' % SSL_DIR])
         subprocess.check_output(['chmod', '-R', 'g+rwx', '%s' % SSL_DIR])
 
-        # Ensure a master has been elected and prefer this unit. Note that we
-        # prefer oldest peer as predicate since this action i normally only
-        # performed once at deploy time when the oldest peer should be the
-        # first to be ready.
-        ensure_ssl_cert_master(use_oldest_peer=True)
+        # Ensure a master is elected. This should cover the following cases:
+        # * single unit == 'oldest' unit is elected as master
+        # * multi unit + not clustered == 'oldest' unit is elcted as master
+        # * multi unit + clustered == cluster leader is elected as master
+        ensure_ssl_cert_master()
 
         ssl.CA_SINGLETON.append(ca)
 

@@ -33,6 +33,10 @@ from charmhelpers.core.host import (
     restart_on_change,
 )
 
+from charmhelpers.core.strutils import (
+    bool_from_string,
+)
+
 from charmhelpers.fetch import (
     apt_install, apt_update,
     filter_installed_packages
@@ -65,7 +69,6 @@ from keystone_utils import (
     CA_CERT_PATH,
     ensure_permissions,
     get_ssl_sync_request_units,
-    is_str_true,
     is_ssl_cert_master,
     is_db_ready,
     clear_ssl_synced_units,
@@ -301,10 +304,10 @@ def send_ssl_sync_request():
     """
     unit = local_unit().replace('/', '-')
     count = 0
-    if is_str_true(config('use-https')):
+    if bool_from_string(config('use-https')):
         count += 1
 
-    if is_str_true(config('https-service-endpoints')):
+    if bool_from_string(config('https-service-endpoints')):
         count += 2
 
     if count:

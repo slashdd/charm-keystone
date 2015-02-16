@@ -48,6 +48,10 @@ from charmhelpers.core.host import (
     write_file,
 )
 
+from charmhelpers.core.strutils import (
+    bool_from_string,
+)
+
 import charmhelpers.contrib.unison as unison
 
 from charmhelpers.core.decorators import (
@@ -224,13 +228,6 @@ valid_services = {
         "desc": "Ubuntu Product Streams"
     }
 }
-
-
-def is_str_true(value):
-    if value and value.lower() in ['true', 'yes']:
-        return True
-
-    return False
 
 
 def resource_map():
@@ -823,8 +820,8 @@ def is_ssl_cert_master(votes=None):
 
 def is_ssl_enabled():
     # Don't do anything if we are not in ssl/https mode
-    if (is_str_true(config('use-https')) or
-            is_str_true(config('https-service-endpoints'))):
+    if (bool_from_string(config('use-https')) or
+            bool_from_string(config('https-service-endpoints'))):
         log("SSL/HTTPS is enabled", level=DEBUG)
         return True
 
@@ -906,13 +903,13 @@ def synchronize_ca(fatal=False):
     """
     paths_to_sync = [SYNC_FLAGS_DIR]
 
-    if is_str_true(config('https-service-endpoints')):
+    if bool_from_string(config('https-service-endpoints')):
         log("Syncing all endpoint certs since https-service-endpoints=True",
             level=DEBUG)
         paths_to_sync.append(SSL_DIR)
         paths_to_sync.append(CA_CERT_PATH)
 
-    if is_str_true(config('use-https')):
+    if bool_from_string(config('use-https')):
         log("Syncing keystone-endpoint certs since use-https=True",
             level=DEBUG)
         paths_to_sync.append(SSL_DIR)
@@ -1150,7 +1147,7 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
             relation_data["auth_port"] = config('admin-port')
             relation_data["service_port"] = config('service-port')
             relation_data["region"] = config('region')
-            if is_str_true(config('https-service-endpoints')):
+            if bool_from_string(config('https-service-endpoints')):
                 # Pass CA cert as client will need it to
                 # verify https connections
                 ca = get_ca(user=SSH_USER)
@@ -1290,7 +1287,7 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         relation_data["auth_protocol"] = "http"
         relation_data["service_protocol"] = "http"
     # generate or get a new cert/key for service if set to manage certs.
-    if is_str_true(config('https-service-endpoints')):
+    if bool_from_string(config('https-service-endpoints')):
         ca = get_ca(user=SSH_USER)
         # NOTE(jamespage) may have multiple cns to deal with to iterate
         https_cns = set(https_cns)

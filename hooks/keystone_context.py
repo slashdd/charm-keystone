@@ -21,6 +21,10 @@ from charmhelpers.core.hookenv import (
     INFO,
 )
 
+from charmhelpers.core.strutils import (
+    bool_from_string,
+)
+
 from charmhelpers.contrib.hahelpers.apache import install_ca_cert
 
 CA_CERT_PATH = '/usr/local/share/ca-certificates/keystone_juju_ca_cert.crt'
@@ -179,8 +183,12 @@ class KeystoneContext(context.OSContextGenerator):
                                                 singlenode_mode=True)
         ctxt['public_port'] = determine_api_port(api_port('keystone-public'),
                                                  singlenode_mode=True)
-        ctxt['debug'] = config('debug') in ['yes', 'true', 'True']
-        ctxt['verbose'] = config('verbose') in ['yes', 'true', 'True']
+
+        debug = config('debug')
+        ctxt['debug'] = debug and bool_from_string(debug)
+        verbose = config('verbose')
+        ctxt['verbose'] = verbose and bool_from_string(verbose)
+
         ctxt['identity_backend'] = config('identity-backend')
         ctxt['assignment_backend'] = config('assignment-backend')
         if config('identity-backend') == 'ldap':
@@ -194,7 +202,8 @@ class KeystoneContext(context.OSContextGenerator):
                 flags = context.config_flags_parser(ldap_flags)
                 ctxt['ldap_config_flags'] = flags
 
-        if config('enable-pki') not in ['false', 'False', 'no', 'No']:
+        enable_pki = config('enable-pki')
+        if enable_pki and bool_from_string(enable_pki):
             ctxt['signing'] = True
 
         # Base endpoint URL's which are used in keystone responses
@@ -214,7 +223,7 @@ class KeystoneLoggingContext(context.OSContextGenerator):
     def __call__(self):
         ctxt = {}
         debug = config('debug')
-        if debug and debug.lower() in ['yes', 'true']:
+        if debug and bool_from_string(debug):
             ctxt['root_level'] = 'DEBUG'
 
         return ctxt

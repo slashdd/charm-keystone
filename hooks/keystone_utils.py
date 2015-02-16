@@ -231,10 +231,9 @@ valid_services = {
 
 
 def resource_map():
-    '''
-    Dynamically generate a map of resources that will be managed for a single
-    hook execution.
-    '''
+    """Dynamically generate a map of resources that will be managed for a
+    single hook execution.
+    """
     resource_map = deepcopy(BASE_RESOURCE_MAP)
 
     if os.path.exists('/etc/apache2/conf-available'):
@@ -260,7 +259,7 @@ def restart_map():
 
 
 def services():
-    ''' Returns a list of services associate with this charm '''
+    """Returns a list of services associate with this charm"""
     _services = []
     for v in restart_map().values():
         _services = _services + v
@@ -268,7 +267,7 @@ def services():
 
 
 def determine_ports():
-    '''Assemble a list of API ports for services we are managing'''
+    """Assemble a list of API ports for services we are managing"""
     ports = [config('admin-port'), config('service-port')]
     return list(set(ports))
 
@@ -319,7 +318,7 @@ def do_openstack_upgrade(configs):
 
 
 def migrate_database():
-    '''Runs keystone-manage to initialize a new database or migrate existing'''
+    """Runs keystone-manage to initialize a new database or migrate existing"""
     log('Migrating the keystone database.', level=INFO)
     service_stop('keystone')
     # NOTE(jamespage) > icehouse creates a log file as root so use
@@ -334,7 +333,7 @@ def migrate_database():
 # OLD
 
 def get_local_endpoint():
-    """ Returns the URL for the local end-point bypassing haproxy/ssl """
+    """Returns the URL for the local end-point bypassing haproxy/ssl"""
     if config('prefer-ipv6'):
         ipv6_addr = get_ipv6_addr(exc_list=[config('vip')])[0]
         endpoint_url = 'http://[%s]:{}/v2.0/' % ipv6_addr
@@ -435,7 +434,7 @@ def create_endpoint_template(region, service, publicurl, adminurl,
 
 
 def create_tenant(name):
-    """ creates a tenant if it does not already exist """
+    """Creates a tenant if it does not already exist"""
     import manager
     manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
                                       token=get_admin_token())
@@ -449,7 +448,7 @@ def create_tenant(name):
 
 
 def create_user(name, password, tenant):
-    """ creates a user if it doesn't already exist, as a member of tenant """
+    """Creates a user if it doesn't already exist, as a member of tenant"""
     import manager
     manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
                                       token=get_admin_token())
@@ -468,7 +467,7 @@ def create_user(name, password, tenant):
 
 
 def create_role(name, user=None, tenant=None):
-    """ creates a role if it doesn't already exist. grants role to user """
+    """Creates a role if it doesn't already exist. grants role to user"""
     import manager
     manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
                                       token=get_admin_token())
@@ -495,7 +494,7 @@ def create_role(name, user=None, tenant=None):
 
 
 def grant_role(user, role, tenant):
-    """grant user+tenant a specific role"""
+    """Grant user and tenant a specific role"""
     import manager
     manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
                                       token=get_admin_token())
@@ -642,7 +641,7 @@ def load_stored_passwords(path=SERVICE_PASSWD_PATH):
 
 
 def _migrate_service_passwords():
-    ''' Migrate on-disk service passwords to peer storage '''
+    """Migrate on-disk service passwords to peer storage"""
     if os.path.exists(SERVICE_PASSWD_PATH):
         log('Migrating on-disk stored passwords to peer storage')
         creds = load_stored_passwords()
@@ -819,7 +818,6 @@ def is_ssl_cert_master(votes=None):
 
 
 def is_ssl_enabled():
-    # Don't do anything if we are not in ssl/https mode
     if (bool_from_string(config('use-https')) or
             bool_from_string(config('https-service-endpoints'))):
         log("SSL/HTTPS is enabled", level=DEBUG)
@@ -1076,8 +1074,8 @@ def synchronize_ca_if_changed(force=False, fatal=False):
 
 
 def get_ca(user='keystone', group='keystone'):
-    """
-    Initialize a new CA object if one hasn't already been loaded.
+    """Initialize a new CA object if one hasn't already been loaded.
+
     This will create a new CA or load an existing one.
     """
     if not ssl.CA_SINGLETON:
@@ -1129,6 +1127,12 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
     single = set(['service', 'region', 'public_url', 'admin_url',
                   'internal_url'])
     https_cns = []
+
+    if https():
+        protocol = 'https'
+    else:
+        protocol = 'http'
+
     if single.issubset(settings):
         # other end of relation advertised only one endpoint
         if 'None' in settings.itervalues():
@@ -1138,22 +1142,22 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
             # Check if clustered and use vip + haproxy ports if so
             relation_data["auth_host"] = resolve_address(ADMIN)
             relation_data["service_host"] = resolve_address(PUBLIC)
-            if https():
-                relation_data["auth_protocol"] = "https"
-                relation_data["service_protocol"] = "https"
-            else:
-                relation_data["auth_protocol"] = "http"
-                relation_data["service_protocol"] = "http"
+            relation_data["auth_protocol"] = protocol
+            relation_data["service_protocol"] = protocol
             relation_data["auth_port"] = config('admin-port')
             relation_data["service_port"] = config('service-port')
             relation_data["region"] = config('region')
-            if bool_from_string(config('https-service-endpoints')):
+
+            https_service_endpoints = config('https-service-endpoints')
+            if (https_service_endpoints and
+                    bool_from_string(https_service_endpoints)):
                 # Pass CA cert as client will need it to
                 # verify https connections
                 ca = get_ca(user=SSH_USER)
                 ca_bundle = ca.get_ca_bundle()
                 relation_data['https_keystone'] = 'True'
                 relation_data['ca_cert'] = b64encode(ca_bundle)
+
             # Allow the remote service to request creation of any additional
             # roles. Currently used by Horizon
             for role in get_requested_roles(settings):
@@ -1181,8 +1185,8 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
             # NOTE(jamespage) internal IP for backwards compat for SSL certs
             internal_cn = urlparse.urlparse(settings['internal_url']).hostname
             https_cns.append(internal_cn)
-            https_cns.append(
-                urlparse.urlparse(settings['public_url']).hostname)
+            public_cn = urlparse.urlparse(settings['public_url']).hostname
+            https_cns.append(public_cn)
             https_cns.append(urlparse.urlparse(settings['admin_url']).hostname)
     else:
         # assemble multiple endpoints from relation data. service name
@@ -1208,6 +1212,7 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
             if ep not in endpoints:
                 endpoints[ep] = {}
             endpoints[ep][x] = v
+
         services = []
         https_cn = None
         for ep in endpoints:
@@ -1228,6 +1233,7 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
                 https_cns.append(internal_cn)
                 https_cns.append(urlparse.urlparse(ep['public_url']).hostname)
                 https_cns.append(urlparse.urlparse(ep['admin_url']).hostname)
+
         service_username = '_'.join(services)
 
         # If an admin username prefix is provided, ensure all services use it.
@@ -1253,8 +1259,7 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
     # Currently used by Swift and Ceilometer.
     for role in get_requested_roles(settings):
         log("Creating requested role: %s" % role)
-        create_role(role, service_username,
-                    config('service-tenant'))
+        create_role(role, service_username, config('service-tenant'))
 
     # As of https://review.openstack.org/#change,4675, all nodes hosting
     # an endpoint(s) needs a service username and password assigned to
@@ -1276,18 +1281,14 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         "https_keystone": "False",
         "ssl_cert": "",
         "ssl_key": "",
-        "ca_cert": ""
+        "ca_cert": "",
+        "auth_protocol": protocol,
+        "service_protocol": protocol,
     }
 
-    # Check if https is enabled
-    if https():
-        relation_data["auth_protocol"] = "https"
-        relation_data["service_protocol"] = "https"
-    else:
-        relation_data["auth_protocol"] = "http"
-        relation_data["service_protocol"] = "http"
     # generate or get a new cert/key for service if set to manage certs.
-    if bool_from_string(config('https-service-endpoints')):
+    https_service_endpoints = config('https-service-endpoints')
+    if https_service_endpoints and bool_from_string(https_service_endpoints):
         ca = get_ca(user=SSH_USER)
         # NOTE(jamespage) may have multiple cns to deal with to iterate
         https_cns = set(https_cns)
@@ -1295,6 +1296,7 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
             cert, key = ca.get_cert_and_key(common_name=https_cn)
             relation_data['ssl_cert_{}'.format(https_cn)] = b64encode(cert)
             relation_data['ssl_key_{}'.format(https_cn)] = b64encode(key)
+
         # NOTE(jamespage) for backwards compatibility
         cert, key = ca.get_cert_and_key(common_name=internal_cn)
         relation_data['ssl_cert'] = b64encode(cert)
@@ -1303,8 +1305,7 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         relation_data['ca_cert'] = b64encode(ca_bundle)
         relation_data['https_keystone'] = 'True'
 
-    peer_store_and_set(relation_id=relation_id,
-                       **relation_data)
+    peer_store_and_set(relation_id=relation_id, **relation_data)
 
 
 def ensure_valid_service(service):
@@ -1325,7 +1326,7 @@ def add_endpoint(region, service, publicurl, adminurl, internalurl):
 
 
 def get_requested_roles(settings):
-    ''' Retrieve any valid requested_roles from dict settings '''
+    """Retrieve any valid requested_roles from dict settings"""
     if ('requested_roles' in settings and
             settings['requested_roles'] not in ['None', None]):
         return settings['requested_roles'].split(',')
@@ -1334,6 +1335,7 @@ def get_requested_roles(settings):
 
 
 def setup_ipv6():
+    """Check ipv6-mode validity and setup dependencies"""
     ubuntu_rel = lsb_release()['DISTRIB_CODENAME'].lower()
     if ubuntu_rel < "trusty":
         raise Exception("IPv6 is not supported in the charms for Ubuntu "

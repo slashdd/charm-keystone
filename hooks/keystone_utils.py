@@ -315,7 +315,7 @@ def do_openstack_upgrade(configs):
 
     if is_elected_leader(CLUSTER_RES):
         if is_db_ready():
-            migrate_database(force=True)
+            migrate_database()
         else:
             log("Database not ready - deferring to shared-db relation",
                 level=INFO)
@@ -335,18 +335,16 @@ def is_db_initialised():
             db_initialised = relation_get(attribute='db-initialised',
                                           unit=unit, rid=rid)
             if db_initialised:
+                log("Database is initialised", level=DEBUG)
                 return True
 
+    log("Database is NOT initialised", level=DEBUG)
     return False
 
 
-def migrate_database(force=False):
+def migrate_database():
     """Runs keystone-manage to initialize a new database or migrate existing"""
-    if not force and is_db_initialised():
-        log('Keystone DB already migrated - skipping', level=INFO)
-        return
-
-    log('Migrating the keystone database. (force=%s)' % force, level=INFO)
+    log('Migrating the keystone database.', level=INFO)
     service_stop('keystone')
     # NOTE(jamespage) > icehouse creates a log file as root so use
     # sudo to execute as keystone otherwise keystone won't start
@@ -354,8 +352,8 @@ def migrate_database(force=False):
     cmd = ['sudo', '-u', 'keystone', 'keystone-manage', 'db_sync']
     subprocess.check_output(cmd)
     service_start('keystone')
-    set_db_initialised()
     time.sleep(10)
+    set_db_initialised()
 
 # OLD
 

@@ -18,6 +18,7 @@ from charmhelpers.core.hookenv import (
     log,
     local_unit,
     DEBUG,
+    INFO,
     WARNING,
     ERROR,
     relation_get,
@@ -187,8 +188,13 @@ def pgsql_db_joined():
     relation_set(database=config('database'))
 
 
-def update_all_identity_relation_units():
+def update_all_identity_relation_units(check_db_ready=True):
     CONFIGS.write_all()
+    if check_db_ready and not is_db_ready():
+        log('Allowed_units list provided and this unit not present',
+            level=INFO)
+        return
+
     try:
         migrate_database()
     except Exception as exc:
@@ -220,11 +226,13 @@ def db_changed():
             # units acl entry has been added. So, if the db supports passing
             # a list of permitted units then check if we're in the list.
             if not is_db_ready(use_current_context=True):
-                log('Allowed_units list provided and this unit not present')
+                log('Allowed_units list provided and this unit not present',
+                    level=INFO)
                 return
+
             # Ensure any existing service entries are updated in the
             # new database backend
-            update_all_identity_relation_units()
+            update_all_identity_relation_units(check_db_ready=False)
 
 
 @hooks.hook('pgsql-db-relation-changed')
@@ -242,13 +250,13 @@ def pgsql_db_changed():
 
 
 @hooks.hook('identity-service-relation-changed')
+@restart_on_change(restart_map())
 @synchronize_ca_if_changed()
 def identity_changed(relation_id=None, remote_unit=None):
     CONFIGS.write_all()
 
     notifications = {}
     if is_elected_leader(CLUSTER_RES):
-
         if not is_db_ready():
             log("identity-service-relation-changed hook fired before db "
                 "ready - deferring until db ready", level=WARNING)
@@ -476,6 +484,11 @@ def ha_changed():
 
     clustered = relation_get('clustered')
     if clustered and is_elected_leader(CLUSTER_RES):
+        if not is_db_ready():
+                log('Allowed_units list provided and this unit not present',
+                    level=INFO)
+                return
+
         ensure_initial_admin(config)
         log('Cluster configured, notifying other services and updating '
             'keystone endpoint configuration')

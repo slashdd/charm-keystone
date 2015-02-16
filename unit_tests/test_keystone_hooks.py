@@ -247,10 +247,13 @@ class KeystoneRelationTests(CharmTestCase):
 
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
+    @patch.object(hooks, 'is_db_ready')
     @patch.object(hooks, 'CONFIGS')
     @patch.object(hooks, 'identity_changed')
     def test_postgresql_db_changed(self, identity_changed, configs,
+                                   mock_is_db_ready,
                                    mock_ensure_ssl_cert_master, mock_log):
+        mock_is_db_ready.return_value = True
         mock_ensure_ssl_cert_master.return_value = False
         self.relation_ids.return_value = ['identity-service:0']
         self.related_units.return_value = ['unit/0']
@@ -266,6 +269,7 @@ class KeystoneRelationTests(CharmTestCase):
 
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
+    @patch.object(hooks, 'is_db_ready')
     @patch.object(hooks, 'peer_units')
     @patch.object(hooks, 'ensure_permissions')
     @patch.object(hooks, 'admin_relation_changed')
@@ -279,7 +283,9 @@ class KeystoneRelationTests(CharmTestCase):
             self, configure_https, identity_changed,
             configs, get_homedir, ensure_user, cluster_joined,
             admin_relation_changed, ensure_permissions, mock_peer_units,
+            mock_is_db_ready,
             mock_ensure_ssl_cert_master, mock_log):
+        mock_is_db_ready.return_value = True
         self.openstack_upgrade_available.return_value = False
         self.is_elected_leader.return_value = True
         # avoid having to mock syncer
@@ -337,6 +343,7 @@ class KeystoneRelationTests(CharmTestCase):
 
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
+    @patch.object(hooks, 'is_db_ready')
     @patch.object(hooks, 'peer_units')
     @patch.object(hooks, 'ensure_permissions')
     @patch.object(hooks, 'admin_relation_changed')
@@ -346,12 +353,17 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(hooks, 'CONFIGS')
     @patch.object(hooks, 'identity_changed')
     @patch.object(hooks, 'configure_https')
-    def test_config_changed_with_openstack_upgrade(
-            self, configure_https, identity_changed,
-            configs, get_homedir, ensure_user, cluster_joined,
-            admin_relation_changed,
-            ensure_permissions, mock_peer_units, mock_ensure_ssl_cert_master,
-            mock_log):
+    def test_config_changed_with_openstack_upgrade(self, configure_https,
+                                                   identity_changed,
+                                                   configs, get_homedir,
+                                                   ensure_user, cluster_joined,
+                                                   admin_relation_changed,
+                                                   ensure_permissions,
+                                                   mock_peer_units,
+                                                   mock_is_db_ready,
+                                                   mock_ensure_ssl_cert_master,
+                                                   mock_log):
+        mock_is_db_ready.return_value = True
         self.openstack_upgrade_available.return_value = True
         self.is_elected_leader.return_value = True
         # avoid having to mock syncer
@@ -544,12 +556,15 @@ class KeystoneRelationTests(CharmTestCase):
 
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
+    @patch.object(hooks, 'is_db_ready')
     @patch.object(hooks, 'identity_changed')
     @patch.object(hooks, 'CONFIGS')
     def test_ha_relation_changed_clustered_leader(self, configs,
                                                   identity_changed,
+                                                  mock_is_db_ready,
                                                   mock_ensure_ssl_cert_master,
                                                   mock_log):
+        mock_is_db_ready.return_value = True
         mock_ensure_ssl_cert_master.return_value = False
         self.relation_get.return_value = True
         self.is_elected_leader.return_value = True

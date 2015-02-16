@@ -149,6 +149,7 @@ def config_changed():
     # Update relations since SSL may have been configured. If we have peer
     # units we can rely on the sync to do this in cluster relation.
     if is_elected_leader(CLUSTER_RES) and not peer_units():
+        migrate_database(force=True)
         update_all_identity_relation_units()
 
     for rid in relation_ids('identity-admin'):
@@ -198,17 +199,12 @@ def update_all_identity_relation_units(check_db_ready=True):
             level=INFO)
         return
 
-    try:
-        migrate_database()
-    except Exception as exc:
-        log("Database initialisation failed (%s) - db not ready?" % (exc),
-            level=WARNING)
-    else:
-        ensure_initial_admin(config)
-        log('Firing identity_changed hook for all related services.')
-        for rid in relation_ids('identity-service'):
-                for unit in related_units(rid):
-                    identity_changed(relation_id=rid, remote_unit=unit)
+    migrate_database()
+    ensure_initial_admin(config)
+    log('Firing identity_changed hook for all related services.')
+    for rid in relation_ids('identity-service'):
+            for unit in related_units(rid):
+                identity_changed(relation_id=rid, remote_unit=unit)
 
 
 @synchronize_ca_if_changed(force=True)
@@ -265,6 +261,7 @@ def identity_changed(relation_id=None, remote_unit=None):
                 "ready - deferring until db ready", level=WARNING)
             return
 
+        migrate_database()
         add_service_to_keystone(relation_id, remote_unit)
         settings = relation_get(rid=relation_id, unit=remote_unit)
         service = settings.get('service', None)
@@ -394,7 +391,7 @@ def cluster_changed():
     # NOTE(jamespage) re-echo passwords for peer storage
     echo_whitelist, overrides = \
         apply_echo_filters(settings, ['_passwd', 'identity-service:',
-                                      'ssl-cert-master'])
+                                      'ssl-cert-master', 'db-initialised'])
     log("Peer echo overrides: %s" % (overrides), level=DEBUG)
     relation_set(**overrides)
     if echo_whitelist:
@@ -546,6 +543,7 @@ def upgrade_charm():
     if is_elected_leader(CLUSTER_RES):
         log('Cluster leader - ensuring endpoint configuration is up to '
             'date', level=DEBUG)
+        migrate_database(force=True)
         time.sleep(10)
         update_all_identity_relation_units()
 

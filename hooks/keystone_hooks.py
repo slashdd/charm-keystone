@@ -146,11 +146,17 @@ def config_changed():
     update_nrpe_config()
     CONFIGS.write_all()
 
-    # Update relations since SSL may have been configured. If we have peer
-    # units we can rely on the sync to do this in cluster relation.
-    if is_elected_leader(CLUSTER_RES) and not peer_units():
-        migrate_database(force=True)
-        update_all_identity_relation_units()
+    if is_elected_leader(CLUSTER_RES):
+        if not is_db_ready():
+            log("Database not ready - skipping db migration and "
+                "identity-relation updates", level=INFO)
+        else:
+            migrate_database(force=True)
+            # Update relations since SSL may have been configured. If we have
+            # peer units we can rely on the sync to do this in cluster
+            # relation.
+            if not peer_units():
+                update_all_identity_relation_units()
 
     for rid in relation_ids('identity-admin'):
         admin_relation_changed(rid)
@@ -230,7 +236,7 @@ def db_changed():
                 return
 
             # Ensure any existing service entries are updated in the
-            # new database backend
+            # new database backend. Also avoid duplicate db ready check.
             update_all_identity_relation_units(check_db_ready=False)
 
 
@@ -489,6 +495,7 @@ def ha_changed():
                     level=INFO)
                 return
 
+        migrate_database()
         ensure_initial_admin(config)
         log('Cluster configured, notifying other services and updating '
             'keystone endpoint configuration')
@@ -543,6 +550,12 @@ def upgrade_charm():
     if is_elected_leader(CLUSTER_RES):
         log('Cluster leader - ensuring endpoint configuration is up to '
             'date', level=DEBUG)
+
+        if not is_db_ready():
+            log("Database not ready - deferring to shared-db relation",
+                level=INFO)
+            return
+
         migrate_database(force=True)
         time.sleep(10)
         update_all_identity_relation_units()

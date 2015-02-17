@@ -314,7 +314,32 @@ def do_openstack_upgrade(configs):
     configs.write_all()
 
     if is_elected_leader(CLUSTER_RES):
-        migrate_database()
+        if is_db_ready():
+            migrate_database()
+        else:
+            log("Database not ready - deferring to shared-db relation",
+                level=INFO)
+            return
+
+
+def set_db_initialised():
+    for rid in relation_ids('cluster'):
+        relation_set(relation_settings={'db-initialised': 'True'},
+                     relation_id=rid)
+
+
+def is_db_initialised():
+    for rid in relation_ids('cluster'):
+        units = related_units(rid) + [local_unit()]
+        for unit in units:
+            db_initialised = relation_get(attribute='db-initialised',
+                                          unit=unit, rid=rid)
+            if db_initialised:
+                log("Database is initialised", level=DEBUG)
+                return True
+
+    log("Database is NOT initialised", level=DEBUG)
+    return False
 
 
 def migrate_database():
@@ -328,9 +353,10 @@ def migrate_database():
     subprocess.check_output(cmd)
     service_start('keystone')
     time.sleep(10)
-
+    set_db_initialised()
 
 # OLD
+
 
 def get_local_endpoint():
     """Returns the URL for the local end-point bypassing haproxy/ssl"""

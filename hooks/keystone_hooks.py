@@ -4,7 +4,6 @@ import json
 import os
 import stat
 import sys
-import time
 
 from subprocess import check_call
 
@@ -72,6 +71,7 @@ from keystone_utils import (
     is_ssl_cert_master,
     is_db_ready,
     clear_ssl_synced_units,
+    is_db_initialised,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -198,17 +198,18 @@ def update_all_identity_relation_units(check_db_ready=True):
             level=INFO)
         return
 
-    try:
-        migrate_database()
-    except Exception as exc:
-        log("Database initialisation failed (%s) - db not ready?" % (exc),
-            level=WARNING)
-    else:
+    if not is_db_initialised():
+        log("Database not yet initialised - deferring identity-relation "
+            "updates", level=INFO)
+        return
+
+    if is_elected_leader(CLUSTER_RES):
         ensure_initial_admin(config)
-        log('Firing identity_changed hook for all related services.')
-        for rid in relation_ids('identity-service'):
-                for unit in related_units(rid):
-                    identity_changed(relation_id=rid, remote_unit=unit)
+
+    log('Firing identity_changed hook for all related services.')
+    for rid in relation_ids('identity-service'):
+            for unit in related_units(rid):
+                identity_changed(relation_id=rid, remote_unit=unit)
 
 
 @synchronize_ca_if_changed(force=True)
@@ -233,8 +234,9 @@ def db_changed():
                     level=INFO)
                 return
 
+            migrate_database()
             # Ensure any existing service entries are updated in the
-            # new database backend
+            # new database backend. Also avoid duplicate db ready check.
             update_all_identity_relation_units(check_db_ready=False)
 
 
@@ -247,9 +249,15 @@ def pgsql_db_changed():
     else:
         CONFIGS.write(KEYSTONE_CONF)
         if is_elected_leader(CLUSTER_RES):
+            if not is_db_ready(use_current_context=True):
+                log('Allowed_units list provided and this unit not present',
+                    level=INFO)
+                return
+
+            migrate_database()
             # Ensure any existing service entries are updated in the
-            # new database backend
-            update_all_identity_relation_units()
+            # new database backend. Also avoid duplicate db ready check.
+            update_all_identity_relation_units(check_db_ready=False)
 
 
 @hooks.hook('identity-service-relation-changed')
@@ -263,6 +271,11 @@ def identity_changed(relation_id=None, remote_unit=None):
         if not is_db_ready():
             log("identity-service-relation-changed hook fired before db "
                 "ready - deferring until db ready", level=WARNING)
+            return
+
+        if not is_db_initialised():
+            log("Database not yet initialised - deferring identity-relation "
+                "updates", level=INFO)
             return
 
         add_service_to_keystone(relation_id, remote_unit)
@@ -394,7 +407,7 @@ def cluster_changed():
     # NOTE(jamespage) re-echo passwords for peer storage
     echo_whitelist, overrides = \
         apply_echo_filters(settings, ['_passwd', 'identity-service:',
-                                      'ssl-cert-master'])
+                                      'ssl-cert-master', 'db-initialised'])
     log("Peer echo overrides: %s" % (overrides), level=DEBUG)
     relation_set(**overrides)
     if echo_whitelist:
@@ -487,15 +500,8 @@ def ha_changed():
 
     clustered = relation_get('clustered')
     if clustered and is_elected_leader(CLUSTER_RES):
-        if not is_db_ready():
-                log('Allowed_units list provided and this unit not present',
-                    level=INFO)
-                return
-
-        ensure_initial_admin(config)
         log('Cluster configured, notifying other services and updating '
             'keystone endpoint configuration')
-
         update_all_identity_relation_units()
 
 
@@ -546,7 +552,6 @@ def upgrade_charm():
     if is_elected_leader(CLUSTER_RES):
         log('Cluster leader - ensuring endpoint configuration is up to '
             'date', level=DEBUG)
-        time.sleep(10)
         update_all_identity_relation_units()
 
 

@@ -4,7 +4,6 @@ import json
 import os
 import stat
 import sys
-import time
 
 from subprocess import check_call
 
@@ -18,6 +17,7 @@ from charmhelpers.core.hookenv import (
     log,
     local_unit,
     DEBUG,
+    INFO,
     WARNING,
     ERROR,
     relation_get,
@@ -30,6 +30,10 @@ from charmhelpers.core.hookenv import (
 from charmhelpers.core.host import (
     mkdir,
     restart_on_change,
+)
+
+from charmhelpers.core.strutils import (
+    bool_from_string,
 )
 
 from charmhelpers.fetch import (
@@ -64,9 +68,12 @@ from keystone_utils import (
     CA_CERT_PATH,
     ensure_permissions,
     get_ssl_sync_request_units,
-    is_str_true,
     is_ssl_cert_master,
     is_db_ready,
+    clear_ssl_synced_units,
+    is_db_initialised,
+    is_pki_enabled,
+    ensure_pki_cert_permissions,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -110,7 +117,7 @@ def install():
 
 @hooks.hook('config-changed')
 @restart_on_change(restart_map())
-@synchronize_ca_if_changed()
+@synchronize_ca_if_changed(fatal=True)
 def config_changed():
     if config('prefer-ipv6'):
         setup_ipv6()
@@ -138,8 +145,12 @@ def config_changed():
 
     save_script_rc()
     configure_https()
+
     update_nrpe_config()
     CONFIGS.write_all()
+
+    if is_pki_enabled():
+        initialise_pki()
 
     # Update relations since SSL may have been configured. If we have peer
     # units we can rely on the sync to do this in cluster relation.
@@ -150,13 +161,26 @@ def config_changed():
         admin_relation_changed(rid)
 
     # Ensure sync request is sent out (needed for upgrade to ssl from non-ssl)
-    settings = {}
-    append_ssl_sync_request(settings)
-    if settings:
-        for rid in relation_ids('cluster'):
-            relation_set(relation_id=rid, relation_settings=settings)
+    send_ssl_sync_request()
+
     for r_id in relation_ids('ha'):
         ha_joined(relation_id=r_id)
+
+
+@synchronize_ca_if_changed(fatal=True)
+def initialise_pki():
+    """Create certs and keys required for PKI token signing.
+
+    NOTE: keystone.conf [signing] section must be up-to-date prior to
+          executing this.
+    """
+    if is_ssl_cert_master():
+        log("Ensuring PKI token certs created", level=DEBUG)
+        cmd = ['keystone-manage', 'pki_setup', '--keystone-user', 'keystone',
+               '--keystone-group', 'keystone']
+        check_call(cmd)
+
+    ensure_pki_cert_permissions()
 
 
 @hooks.hook('shared-db-relation-joined')
@@ -189,19 +213,25 @@ def pgsql_db_joined():
     relation_set(database=config('database'))
 
 
-def update_all_identity_relation_units():
+def update_all_identity_relation_units(check_db_ready=True):
     CONFIGS.write_all()
-    try:
-        migrate_database()
-    except Exception as exc:
-        log("Database initialisation failed (%s) - db not ready?" % (exc),
-            level=WARNING)
-    else:
+    if check_db_ready and not is_db_ready():
+        log('Allowed_units list provided and this unit not present',
+            level=INFO)
+        return
+
+    if not is_db_initialised():
+        log("Database not yet initialised - deferring identity-relation "
+            "updates", level=INFO)
+        return
+
+    if is_elected_leader(CLUSTER_RES):
         ensure_initial_admin(config)
-        log('Firing identity_changed hook for all related services.')
-        for rid in relation_ids('identity-service'):
-                for unit in related_units(rid):
-                    identity_changed(relation_id=rid, remote_unit=unit)
+
+    log('Firing identity_changed hook for all related services.')
+    for rid in relation_ids('identity-service'):
+            for unit in related_units(rid):
+                identity_changed(relation_id=rid, remote_unit=unit)
 
 
 @synchronize_ca_if_changed(force=True)
@@ -222,11 +252,14 @@ def db_changed():
             # units acl entry has been added. So, if the db supports passing
             # a list of permitted units then check if we're in the list.
             if not is_db_ready(use_current_context=True):
-                log('Allowed_units list provided and this unit not present')
+                log('Allowed_units list provided and this unit not present',
+                    level=INFO)
                 return
+
+            migrate_database()
             # Ensure any existing service entries are updated in the
-            # new database backend
-            update_all_identity_relation_units()
+            # new database backend. Also avoid duplicate db ready check.
+            update_all_identity_relation_units(check_db_ready=False)
 
 
 @hooks.hook('pgsql-db-relation-changed')
@@ -238,22 +271,33 @@ def pgsql_db_changed():
     else:
         CONFIGS.write(KEYSTONE_CONF)
         if is_elected_leader(CLUSTER_RES):
+            if not is_db_ready(use_current_context=True):
+                log('Allowed_units list provided and this unit not present',
+                    level=INFO)
+                return
+
+            migrate_database()
             # Ensure any existing service entries are updated in the
-            # new database backend
-            update_all_identity_relation_units()
+            # new database backend. Also avoid duplicate db ready check.
+            update_all_identity_relation_units(check_db_ready=False)
 
 
 @hooks.hook('identity-service-relation-changed')
+@restart_on_change(restart_map())
 @synchronize_ca_if_changed()
 def identity_changed(relation_id=None, remote_unit=None):
     CONFIGS.write_all()
 
     notifications = {}
     if is_elected_leader(CLUSTER_RES):
-
         if not is_db_ready():
             log("identity-service-relation-changed hook fired before db "
                 "ready - deferring until db ready", level=WARNING)
+            return
+
+        if not is_db_initialised():
+            log("Database not yet initialised - deferring identity-relation "
+                "updates", level=INFO)
             return
 
         add_service_to_keystone(relation_id, remote_unit)
@@ -283,15 +327,51 @@ def identity_changed(relation_id=None, remote_unit=None):
         send_notifications(notifications)
 
 
-def append_ssl_sync_request(settings):
-    """Add request to be synced to relation settings.
+def send_ssl_sync_request():
+    """Set sync request on cluster relation.
 
-    This will be consumed by cluster-relation-changed ssl master.
+    Value set equals number of ssl configs currently enabled so that if they
+    change, we ensure that certs are synced. This setting is consumed by
+    cluster-relation-changed ssl master. We also clear the 'synced' set to
+    guarantee that a sync will occur.
+
+    Note the we do nothing if the setting is already applied.
     """
-    if (is_str_true(config('use-https')) or
-            is_str_true(config('https-service-endpoints'))):
-        unit = local_unit().replace('/', '-')
-        settings['ssl-sync-required-%s' % (unit)] = '1'
+    unit = local_unit().replace('/', '-')
+    count = 0
+
+    use_https = config('use-https')
+    if use_https and bool_from_string(use_https):
+        count += 1
+
+    https_service_endpoints = config('https-service-endpoints')
+    if (https_service_endpoints and
+            bool_from_string(https_service_endpoints)):
+        count += 2
+
+    enable_pki = config('enable-pki')
+    if enable_pki and bool_from_string(enable_pki):
+        count += 3
+
+    enable_pkiz = config('enable-pkiz')
+    if enable_pkiz and bool_from_string(enable_pkiz):
+        count += 4
+
+    if count:
+        key = 'ssl-sync-required-%s' % (unit)
+        settings = {key: count}
+        prev = 0
+        rid = None
+        for rid in relation_ids('cluster'):
+            for unit in related_units(rid):
+                _prev = relation_get(rid=rid, unit=unit, attribute=key) or 0
+                if _prev and _prev > prev:
+                    prev = _prev
+
+        if rid and prev < count:
+            clear_ssl_synced_units()
+            log("Setting %s=%s" % (key, count), level=DEBUG)
+            relation_set(relation_id=rid, relation_settings=settings)
 
 
 @hooks.hook('cluster-relation-joined')
@@ -314,9 +394,8 @@ def cluster_joined():
         private_addr = get_ipv6_addr(exc_list=[config('vip')])[0]
         settings['private-address'] = private_addr
 
-    append_ssl_sync_request(settings)
-
     relation_set(relation_settings=settings)
+    send_ssl_sync_request()
 
 
 def apply_echo_filters(settings, echo_whitelist):
@@ -362,7 +441,7 @@ def cluster_changed():
     # NOTE(jamespage) re-echo passwords for peer storage
     echo_whitelist, overrides = \
         apply_echo_filters(settings, ['_passwd', 'identity-service:',
-                                      'ssl-cert-master'])
+                                      'ssl-cert-master', 'db-initialised'])
     log("Peer echo overrides: %s" % (overrides), level=DEBUG)
     relation_set(**overrides)
     if echo_whitelist:
@@ -378,6 +457,9 @@ def cluster_changed():
         if synced_units:
             synced_units = json.loads(synced_units)
             diff = set(units).symmetric_difference(set(synced_units))
+
+        if is_pki_enabled():
+            initialise_pki()
 
         if units and (not synced_units or diff):
             log("New peers joined and need syncing - %s" %
@@ -455,10 +537,8 @@ def ha_changed():
 
     clustered = relation_get('clustered')
     if clustered and is_elected_leader(CLUSTER_RES):
-        ensure_initial_admin(config)
         log('Cluster configured, notifying other services and updating '
             'keystone endpoint configuration')
-
         update_all_identity_relation_units()
 
 
@@ -509,7 +589,6 @@ def upgrade_charm():
     if is_elected_leader(CLUSTER_RES):
         log('Cluster leader - ensuring endpoint configuration is up to '
             'date', level=DEBUG)
-        time.sleep(10)
         update_all_identity_relation_units()
 
 

@@ -21,7 +21,6 @@ from charmhelpers.contrib.hahelpers.cluster import(
     determine_api_port,
     https,
     peer_units,
-    oldest_peer,
 )
 
 from charmhelpers.contrib.openstack import context, templating
@@ -47,6 +46,10 @@ from charmhelpers.contrib.openstack.utils import (
 from charmhelpers.core.host import (
     mkdir,
     write_file,
+)
+
+from charmhelpers.core.strutils import (
+    bool_from_string,
 )
 
 import charmhelpers.contrib.unison as unison
@@ -134,10 +137,13 @@ APACHE_24_CONF = '/etc/apache2/sites-available/openstack_https_frontend.conf'
 APACHE_SSL_DIR = '/etc/apache2/ssl/keystone'
 SYNC_FLAGS_DIR = '/var/lib/keystone/juju_sync_flags/'
 SSL_DIR = '/var/lib/keystone/juju_ssl/'
+PKI_CERTS_DIR = os.path.join(SSL_DIR, 'pki')
 SSL_CA_NAME = 'Ubuntu Cloud'
 CLUSTER_RES = 'grp_ks_vips'
 SSH_USER = 'juju_keystone'
+CA_CERT_PATH = '/usr/local/share/ca-certificates/keystone_juju_ca_cert.crt'
 SSL_SYNC_SEMAPHORE = threading.Semaphore()
+SSL_DIRS = [SSL_DIR, APACHE_SSL_DIR, CA_CERT_PATH]
 
 BASE_RESOURCE_MAP = OrderedDict([
     (KEYSTONE_CONF, {
@@ -168,8 +174,6 @@ BASE_RESOURCE_MAP = OrderedDict([
         'services': ['apache2'],
     }),
 ])
-
-CA_CERT_PATH = '/usr/local/share/ca-certificates/keystone_juju_ca_cert.crt'
 
 valid_services = {
     "nova": {
@@ -227,18 +231,18 @@ valid_services = {
 }
 
 
-def is_str_true(value):
-    if value and value.lower() in ['true', 'yes']:
-        return True
-
-    return False
+def ensure_pki_cert_permissions():
+    perms = 0o755
+    # Ensure accessible by unison user and group (for sync).
+    for path in glob.glob("%s/*" % PKI_CERTS_DIR):
+        ensure_permissions(path, user=SSH_USER, group='keystone', perms=perms,
+                           recurse=True)
 
 
 def resource_map():
-    '''
-    Dynamically generate a map of resources that will be managed for a single
-    hook execution.
-    '''
+    """Dynamically generate a map of resources that will be managed for a
+    single hook execution.
+    """
     resource_map = deepcopy(BASE_RESOURCE_MAP)
 
     if os.path.exists('/etc/apache2/conf-available'):
@@ -264,7 +268,7 @@ def restart_map():
 
 
 def services():
-    ''' Returns a list of services associate with this charm '''
+    """Returns a list of services associate with this charm"""
     _services = []
     for v in restart_map().values():
         _services = _services + v
@@ -272,7 +276,7 @@ def services():
 
 
 def determine_ports():
-    '''Assemble a list of API ports for services we are managing'''
+    """Assemble a list of API ports for services we are managing"""
     ports = [config('admin-port'), config('service-port')]
     return list(set(ports))
 
@@ -319,11 +323,36 @@ def do_openstack_upgrade(configs):
     configs.write_all()
 
     if is_elected_leader(CLUSTER_RES):
-        migrate_database()
+        if is_db_ready():
+            migrate_database()
+        else:
+            log("Database not ready - deferring to shared-db relation",
+                level=INFO)
+            return
+
+
+def set_db_initialised():
+    for rid in relation_ids('cluster'):
+        relation_set(relation_settings={'db-initialised': 'True'},
+                     relation_id=rid)
+
+
+def is_db_initialised():
+    for rid in relation_ids('cluster'):
+        units = related_units(rid) + [local_unit()]
+        for unit in units:
+            db_initialised = relation_get(attribute='db-initialised',
+                                          unit=unit, rid=rid)
+            if db_initialised:
+                log("Database is initialised", level=DEBUG)
+                return True
+
+    log("Database is NOT initialised", level=DEBUG)
+    return False
 
 
 def migrate_database():
-    '''Runs keystone-manage to initialize a new database or migrate existing'''
+    """Runs keystone-manage to initialize a new database or migrate existing"""
     log('Migrating the keystone database.', level=INFO)
     service_stop('keystone')
     # NOTE(jamespage) > icehouse creates a log file as root so use
@@ -333,12 +362,13 @@ def migrate_database():
     subprocess.check_output(cmd)
     service_start('keystone')
     time.sleep(10)
-
+    set_db_initialised()
 
 # OLD
 
+
 def get_local_endpoint():
-    """ Returns the URL for the local end-point bypassing haproxy/ssl """
+    """Returns the URL for the local end-point bypassing haproxy/ssl"""
     if config('prefer-ipv6'):
         ipv6_addr = get_ipv6_addr(exc_list=[config('vip')])[0]
         endpoint_url = 'http://[%s]:{}/v2.0/' % ipv6_addr
@@ -439,7 +469,7 @@ def create_endpoint_template(region, service, publicurl, adminurl,
 
 
 def create_tenant(name):
-    """ creates a tenant if it does not already exist """
+    """Creates a tenant if it does not already exist"""
     import manager
     manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
                                       token=get_admin_token())
@@ -453,7 +483,7 @@ def create_tenant(name):
 
 
 def create_user(name, password, tenant):
-    """ creates a user if it doesn't already exist, as a member of tenant """
+    """Creates a user if it doesn't already exist, as a member of tenant"""
     import manager
     manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
                                       token=get_admin_token())
@@ -472,7 +502,7 @@ def create_user(name, password, tenant):
 
 
 def create_role(name, user=None, tenant=None):
-    """ creates a role if it doesn't already exist. grants role to user """
+    """Creates a role if it doesn't already exist. grants role to user"""
     import manager
     manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
                                       token=get_admin_token())
@@ -499,7 +529,7 @@ def create_role(name, user=None, tenant=None):
 
 
 def grant_role(user, role, tenant):
-    """grant user+tenant a specific role"""
+    """Grant user and tenant a specific role"""
     import manager
     manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
                                       token=get_admin_token())
@@ -646,7 +676,7 @@ def load_stored_passwords(path=SERVICE_PASSWD_PATH):
 
 
 def _migrate_service_passwords():
-    ''' Migrate on-disk service passwords to peer storage '''
+    """Migrate on-disk service passwords to peer storage"""
     if os.path.exists(SERVICE_PASSWD_PATH):
         log('Migrating on-disk stored passwords to peer storage')
         creds = load_stored_passwords()
@@ -666,11 +696,25 @@ def get_service_password(service_username):
     return passwd
 
 
-def ensure_permissions(path, user=None, group=None, perms=None):
+def ensure_permissions(path, user=None, group=None, perms=None, recurse=False,
+                       maxdepth=50):
     """Set chownand chmod for path
 
     Note that -1 for uid or gid result in no change.
     """
+    if recurse:
+        if not maxdepth:
+            log("Max recursion depth reached - skipping further recursion")
+            return
+
+        paths = glob.glob("%s/*" % (path))
+        if len(paths) > 1:
+            for path in paths:
+                ensure_permissions(path, user=user, group=group, perms=perms,
+                                   recurse=recurse, maxdepth=maxdepth - 1)
+
+            return
+
     if user:
         uid = pwd.getpwnam(user).pw_uid
     else:
@@ -764,13 +808,26 @@ def create_peer_actions(actions):
 def unison_sync(paths_to_sync):
     """Do unison sync and retry a few times if it fails since peers may not be
     ready for sync.
+
+    Returns list of synced units or None if one or more peers was not synced.
     """
     log('Synchronizing CA (%s) to all peers.' % (', '.join(paths_to_sync)),
         level=INFO)
     keystone_gid = grp.getgrnam('keystone').gr_gid
+
+    # NOTE(dosaboy): This will sync to all peers who have already provided
+    # their ssh keys. If any existing peers have not provided their keys yet,
+    # they will be silently ignored.
     unison.sync_to_peers(peer_interface='cluster', paths=paths_to_sync,
                          user=SSH_USER, verbose=True, gid=keystone_gid,
                          fatal=True)
+
+    synced_units = peer_units()
+    if len(unison.collect_authed_hosts('cluster')) != len(synced_units):
+        log("Not all peer units synced due to missing public keys", level=INFO)
+        return None
+    else:
+        return synced_units
 
 
 def get_ssl_sync_request_units():
@@ -791,20 +848,31 @@ def get_ssl_sync_request_units():
     return units
 
 
-def is_ssl_cert_master():
+def is_ssl_cert_master(votes=None):
     """Return True if this unit is ssl cert master."""
     master = None
     for rid in relation_ids('cluster'):
         master = relation_get(attribute='ssl-cert-master', rid=rid,
                               unit=local_unit())
 
-    return master == local_unit()
+    if master == local_unit():
+        votes = votes or get_ssl_cert_master_votes()
+        if not peer_units() or (len(votes) == 1 and master in votes):
+            return True
+
+        log("Did not get consensus from peers on who is ssl-cert-master "
+            "(%s)" % (votes), level=INFO)
+
+    return False
 
 
 def is_ssl_enabled():
-    # Don't do anything if we are not in ssl/https mode
-    if (is_str_true(config('use-https')) or
-            is_str_true(config('https-service-endpoints'))):
+    use_https = config('use-https')
+    https_service_endpoints = config('https-service-endpoints')
+    if ((use_https and bool_from_string(use_https)) or
+            (https_service_endpoints and
+                bool_from_string(https_service_endpoints)) or
+            is_pki_enabled()):
         log("SSL/HTTPS is enabled", level=DEBUG)
         return True
 
@@ -812,7 +880,21 @@ def is_ssl_enabled():
     return True
 
 
-def ensure_ssl_cert_master(use_oldest_peer=False):
+def get_ssl_cert_master_votes():
+    """Returns a list of unique votes."""
+    votes = []
+    # Gather election results from peers. These will need to be consistent.
+    for rid in relation_ids('cluster'):
+        for unit in related_units(rid):
+            m = relation_get(rid=rid, unit=unit,
+                             attribute='ssl-cert-master')
+            if m is not None:
+                votes.append(m)
+
+    return list(set(votes))
+
+
+def ensure_ssl_cert_master():
     """Ensure that an ssl cert master has been elected.
 
     Normally the cluster leader will take control but we allow for this to be
@@ -822,31 +904,19 @@ def ensure_ssl_cert_master(use_oldest_peer=False):
     if not is_ssl_enabled():
         return False
 
-    elect = False
-    peers = peer_units()
     master_override = False
-    if use_oldest_peer:
-        elect = oldest_peer(peers)
-    else:
-        elect = is_elected_leader(CLUSTER_RES)
+    elect = is_elected_leader(CLUSTER_RES)
 
     # If no peers we allow this unit to elect itsef as master and do
     # sync immediately.
-    if not peers and not is_ssl_cert_master():
+    if not peer_units():
         elect = True
         master_override = True
 
     if elect:
-        masters = []
-        for rid in relation_ids('cluster'):
-            for unit in related_units(rid):
-                m = relation_get(rid=rid, unit=unit,
-                                 attribute='ssl-cert-master')
-                if m is not None:
-                    masters.append(m)
-
+        votes = get_ssl_cert_master_votes()
         # We expect all peers to echo this setting
-        if not masters or 'unknown' in masters:
+        if not votes or 'unknown' in votes:
             log("Notifying peers this unit is ssl-cert-master", level=INFO)
             for rid in relation_ids('cluster'):
                 settings = {'ssl-cert-master': local_unit()}
@@ -855,10 +925,11 @@ def ensure_ssl_cert_master(use_oldest_peer=False):
             # Return now and wait for cluster-relation-changed (peer_echo) for
             # sync.
             return master_override
-        elif len(set(masters)) != 1 and local_unit() not in masters:
-            log("Did not get consensus from peers on who is ssl-cert-master "
-                "(%s) - waiting for current master to release before "
-                "self-electing" % (masters), level=INFO)
+        elif not is_ssl_cert_master(votes):
+            if not master_override:
+                log("Conscensus not reached - current master will need to "
+                    "release", level=INFO)
+
             return master_override
 
     if not is_ssl_cert_master():
@@ -866,6 +937,16 @@ def ensure_ssl_cert_master(use_oldest_peer=False):
         return False
 
     return True
+
+
+def is_pki_enabled():
+    enable_pki = config('enable-pki')
+    enable_pkiz = config('enable-pkiz')
+    if (enable_pki and bool_from_string(enable_pki) or
+            enable_pkiz and bool_from_string(enable_pkiz)):
+        return True
+
+    return False
 
 
 def synchronize_ca(fatal=False):
@@ -883,18 +964,25 @@ def synchronize_ca(fatal=False):
     """
     paths_to_sync = [SYNC_FLAGS_DIR]
 
-    if is_str_true(config('https-service-endpoints')):
+    if bool_from_string(config('https-service-endpoints')):
         log("Syncing all endpoint certs since https-service-endpoints=True",
             level=DEBUG)
         paths_to_sync.append(SSL_DIR)
-        paths_to_sync.append(APACHE_SSL_DIR)
         paths_to_sync.append(CA_CERT_PATH)
-    elif is_str_true(config('use-https')):
+
+    if bool_from_string(config('use-https')):
         log("Syncing keystone-endpoint certs since use-https=True",
             level=DEBUG)
         paths_to_sync.append(SSL_DIR)
         paths_to_sync.append(APACHE_SSL_DIR)
         paths_to_sync.append(CA_CERT_PATH)
+
+    if is_pki_enabled():
+        log("Syncing token certs", level=DEBUG)
+        paths_to_sync.append(PKI_CERTS_DIR)
+
+    # Ensure unique
+    paths_to_sync = list(set(paths_to_sync))
 
     if not paths_to_sync:
         log("Nothing to sync - skipping", level=DEBUG)
@@ -908,8 +996,7 @@ def synchronize_ca(fatal=False):
     create_peer_service_actions('restart', ['apache2'])
     create_peer_actions(['update-ca-certificates'])
 
-    # Format here needs to match that used when peers request sync
-    synced_units = [unit.replace('/', '-') for unit in peer_units()]
+    cluster_rel_settings = {}
 
     retries = 3
     while True:
@@ -918,12 +1005,17 @@ def synchronize_ca(fatal=False):
             update_hash_from_path(hash1, path)
 
         try:
-            unison_sync(paths_to_sync)
-        except:
+            synced_units = unison_sync(paths_to_sync)
+            if synced_units:
+                # Format here needs to match that used when peers request sync
+                synced_units = [u.replace('/', '-') for u in synced_units]
+                cluster_rel_settings['ssl-synced-units'] = \
+                    json.dumps(synced_units)
+        except Exception as exc:
             if fatal:
                 raise
             else:
-                log("Sync failed but fatal=False", level=INFO)
+                log("Sync failed but fatal=False - %s" % (exc), level=INFO)
                 return {}
 
         hash2 = hashlib.sha256()
@@ -947,10 +1039,22 @@ def synchronize_ca(fatal=False):
     hash = hash1.hexdigest()
     log("Sending restart-services-trigger=%s to all peers" % (hash),
         level=DEBUG)
+    cluster_rel_settings['restart-services-trigger'] = hash
 
     log("Sync complete", level=DEBUG)
-    return {'restart-services-trigger': hash,
-            'ssl-synced-units': json.dumps(synced_units)}
+    return cluster_rel_settings
+
+
+def clear_ssl_synced_units():
+    """Clear the 'synced' units record on the cluster relation.
+
+    If new unit sync reauests are set this will ensure that a sync occurs when
+    the sync master receives the requests.
+    """
+    log("Clearing ssl sync units", level=DEBUG)
+    for rid in relation_ids('cluster'):
+        relation_set(relation_id=rid,
+                     relation_settings={'ssl-synced-units': None})
 
 
 def update_hash_from_path(hash, path, recurse_depth=10):
@@ -992,16 +1096,14 @@ def synchronize_ca_if_changed(force=False, fatal=False):
 
                 peer_settings = {}
                 if not force:
-                    ssl_dirs = [SSL_DIR, APACHE_SSL_DIR, CA_CERT_PATH]
-
                     hash1 = hashlib.sha256()
-                    for path in ssl_dirs:
+                    for path in SSL_DIRS:
                         update_hash_from_path(hash1, path)
 
                     ret = f(*args, **kwargs)
 
                     hash2 = hashlib.sha256()
-                    for path in ssl_dirs:
+                    for path in SSL_DIRS:
                         update_hash_from_path(hash2, path)
 
                     if hash1.hexdigest() != hash2.hexdigest():
@@ -1037,13 +1139,18 @@ def synchronize_ca_if_changed(force=False, fatal=False):
 
 
 def get_ca(user='keystone', group='keystone'):
-    """
-    Initialize a new CA object if one hasn't already been loaded.
+    """Initialize a new CA object if one hasn't already been loaded.
+
     This will create a new CA or load an existing one.
     """
     if not ssl.CA_SINGLETON:
+        # Ensure unsion read/writable
+        perms = 0o755
         if not os.path.isdir(SSL_DIR):
-            os.mkdir(SSL_DIR)
+            mkdir(SSL_DIR, SSH_USER, 'keystone', perms)
+        else:
+            ensure_permissions(SSL_DIR, user=SSH_USER, group='keystone',
+                               perms=perms)
 
         d_name = '_'.join(SSL_CA_NAME.lower().split(' '))
         ca = ssl.JujuCA(name=SSL_CA_NAME, user=user, group=group,
@@ -1058,11 +1165,11 @@ def get_ca(user='keystone', group='keystone'):
                                  '%s' % SSL_DIR])
         subprocess.check_output(['chmod', '-R', 'g+rwx', '%s' % SSL_DIR])
 
-        # Ensure a master has been elected and prefer this unit. Note that we
-        # prefer oldest peer as predicate since this action i normally only
-        # performed once at deploy time when the oldest peer should be the
-        # first to be ready.
-        ensure_ssl_cert_master(use_oldest_peer=True)
+        # Ensure a master is elected. This should cover the following cases:
+        # * single unit == 'oldest' unit is elected as master
+        # * multi unit + not clustered == 'oldest' unit is elcted as master
+        # * multi unit + clustered == cluster leader is elected as master
+        ensure_ssl_cert_master()
 
         ssl.CA_SINGLETON.append(ca)
 
@@ -1090,6 +1197,12 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
     single = set(['service', 'region', 'public_url', 'admin_url',
                   'internal_url'])
     https_cns = []
+
+    if https():
+        protocol = 'https'
+    else:
+        protocol = 'http'
+
     if single.issubset(settings):
         # other end of relation advertised only one endpoint
         if 'None' in settings.itervalues():
@@ -1099,22 +1212,22 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
             # Check if clustered and use vip + haproxy ports if so
             relation_data["auth_host"] = resolve_address(ADMIN)
             relation_data["service_host"] = resolve_address(PUBLIC)
-            if https():
-                relation_data["auth_protocol"] = "https"
-                relation_data["service_protocol"] = "https"
-            else:
-                relation_data["auth_protocol"] = "http"
-                relation_data["service_protocol"] = "http"
+            relation_data["auth_protocol"] = protocol
+            relation_data["service_protocol"] = protocol
             relation_data["auth_port"] = config('admin-port')
             relation_data["service_port"] = config('service-port')
             relation_data["region"] = config('region')
-            if is_str_true(config('https-service-endpoints')):
+
+            https_service_endpoints = config('https-service-endpoints')
+            if (https_service_endpoints and
+                    bool_from_string(https_service_endpoints)):
                 # Pass CA cert as client will need it to
                 # verify https connections
                 ca = get_ca(user=SSH_USER)
                 ca_bundle = ca.get_ca_bundle()
                 relation_data['https_keystone'] = 'True'
                 relation_data['ca_cert'] = b64encode(ca_bundle)
+
             # Allow the remote service to request creation of any additional
             # roles. Currently used by Horizon
             for role in get_requested_roles(settings):
@@ -1142,8 +1255,8 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
             # NOTE(jamespage) internal IP for backwards compat for SSL certs
             internal_cn = urlparse.urlparse(settings['internal_url']).hostname
             https_cns.append(internal_cn)
-            https_cns.append(
-                urlparse.urlparse(settings['public_url']).hostname)
+            public_cn = urlparse.urlparse(settings['public_url']).hostname
+            https_cns.append(public_cn)
             https_cns.append(urlparse.urlparse(settings['admin_url']).hostname)
     else:
         # assemble multiple endpoints from relation data. service name
@@ -1169,6 +1282,7 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
             if ep not in endpoints:
                 endpoints[ep] = {}
             endpoints[ep][x] = v
+
         services = []
         https_cn = None
         for ep in endpoints:
@@ -1189,6 +1303,7 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
                 https_cns.append(internal_cn)
                 https_cns.append(urlparse.urlparse(ep['public_url']).hostname)
                 https_cns.append(urlparse.urlparse(ep['admin_url']).hostname)
+
         service_username = '_'.join(services)
 
         # If an admin username prefix is provided, ensure all services use it.
@@ -1214,8 +1329,7 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
     # Currently used by Swift and Ceilometer.
     for role in get_requested_roles(settings):
         log("Creating requested role: %s" % role)
-        create_role(role, service_username,
-                    config('service-tenant'))
+        create_role(role, service_username, config('service-tenant'))
 
     # As of https://review.openstack.org/#change,4675, all nodes hosting
     # an endpoint(s) needs a service username and password assigned to
@@ -1237,18 +1351,14 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         "https_keystone": "False",
         "ssl_cert": "",
         "ssl_key": "",
-        "ca_cert": ""
+        "ca_cert": "",
+        "auth_protocol": protocol,
+        "service_protocol": protocol,
     }
 
-    # Check if https is enabled
-    if https():
-        relation_data["auth_protocol"] = "https"
-        relation_data["service_protocol"] = "https"
-    else:
-        relation_data["auth_protocol"] = "http"
-        relation_data["service_protocol"] = "http"
     # generate or get a new cert/key for service if set to manage certs.
-    if is_str_true(config('https-service-endpoints')):
+    https_service_endpoints = config('https-service-endpoints')
+    if https_service_endpoints and bool_from_string(https_service_endpoints):
         ca = get_ca(user=SSH_USER)
         # NOTE(jamespage) may have multiple cns to deal with to iterate
         https_cns = set(https_cns)
@@ -1256,6 +1366,7 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
             cert, key = ca.get_cert_and_key(common_name=https_cn)
             relation_data['ssl_cert_{}'.format(https_cn)] = b64encode(cert)
             relation_data['ssl_key_{}'.format(https_cn)] = b64encode(key)
+
         # NOTE(jamespage) for backwards compatibility
         cert, key = ca.get_cert_and_key(common_name=internal_cn)
         relation_data['ssl_cert'] = b64encode(cert)
@@ -1264,8 +1375,7 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         relation_data['ca_cert'] = b64encode(ca_bundle)
         relation_data['https_keystone'] = 'True'
 
-    peer_store_and_set(relation_id=relation_id,
-                       **relation_data)
+    peer_store_and_set(relation_id=relation_id, **relation_data)
 
 
 def ensure_valid_service(service):
@@ -1286,7 +1396,7 @@ def add_endpoint(region, service, publicurl, adminurl, internalurl):
 
 
 def get_requested_roles(settings):
-    ''' Retrieve any valid requested_roles from dict settings '''
+    """Retrieve any valid requested_roles from dict settings"""
     if ('requested_roles' in settings and
             settings['requested_roles'] not in ['None', None]):
         return settings['requested_roles'].split(',')
@@ -1295,6 +1405,7 @@ def get_requested_roles(settings):
 
 
 def setup_ipv6():
+    """Check ipv6-mode validity and setup dependencies"""
     ubuntu_rel = lsb_release()['DISTRIB_CODENAME'].lower()
     if ubuntu_rel < "trusty":
         raise Exception("IPv6 is not supported in the charms for Ubuntu "
@@ -1408,9 +1519,8 @@ def is_db_ready(use_current_context=False, db_rel=None):
                     if allowed_units and local_unit() in allowed_units.split():
                         return True
 
-                    # If relation has units
-                    return False
+                    rel_has_units = True
 
-    # If neither relation has units then we are probably in sqllite mode return
-    # True.
+    # If neither relation has units then we are probably in sqlite mode so
+    # return True.
     return not rel_has_units

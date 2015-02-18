@@ -18,7 +18,12 @@ from charmhelpers.contrib.hahelpers.cluster import (
 
 from charmhelpers.core.hookenv import (
     log,
+    DEBUG,
     INFO,
+)
+
+from charmhelpers.core.strutils import (
+    bool_from_string,
 )
 
 from charmhelpers.contrib.hahelpers.apache import install_ca_cert
@@ -169,9 +174,8 @@ class KeystoneContext(context.OSContextGenerator):
 
     def __call__(self):
         from keystone_utils import (
-            api_port, set_admin_token,
-            endpoint_url, resolve_address,
-            PUBLIC, ADMIN
+            api_port, set_admin_token, endpoint_url, resolve_address,
+            PUBLIC, ADMIN, PKI_CERTS_DIR, SSH_USER, ensure_permissions,
         )
         ctxt = {}
         ctxt['token'] = set_admin_token(config('admin-token'))
@@ -179,8 +183,12 @@ class KeystoneContext(context.OSContextGenerator):
                                                 singlenode_mode=True)
         ctxt['public_port'] = determine_api_port(api_port('keystone-public'),
                                                  singlenode_mode=True)
-        ctxt['debug'] = config('debug') in ['yes', 'true', 'True']
-        ctxt['verbose'] = config('verbose') in ['yes', 'true', 'True']
+
+        debug = config('debug')
+        ctxt['debug'] = debug and bool_from_string(debug)
+        verbose = config('verbose')
+        ctxt['verbose'] = verbose and bool_from_string(verbose)
+
         ctxt['identity_backend'] = config('identity-backend')
         ctxt['assignment_backend'] = config('assignment-backend')
         if config('identity-backend') == 'ldap':
@@ -194,8 +202,37 @@ class KeystoneContext(context.OSContextGenerator):
                 flags = context.config_flags_parser(ldap_flags)
                 ctxt['ldap_config_flags'] = flags
 
-        if config('enable-pki') not in ['false', 'False', 'no', 'No']:
+        enable_pki = config('enable-pki')
+        enable_pkiz = config('enable-pkiz')
+        if enable_pki and bool_from_string(enable_pki):
             ctxt['signing'] = True
+            ctxt['token_provider'] = 'pki'
+        elif enable_pkiz and bool_from_string(enable_pkiz):
+            ctxt['token_provider'] = 'pkiz'
+
+        if 'token_provider' in ctxt:
+            log("Configuring PKI token cert paths", level=DEBUG)
+            certs = os.path.join(PKI_CERTS_DIR, 'certs')
+            privates = os.path.join(PKI_CERTS_DIR, 'privates')
+            for path in [PKI_CERTS_DIR, certs, privates]:
+                perms = 0o755
+                if not os.path.isdir(path):
+                    mkdir(path=path, owner=SSH_USER, group='keystone',
+                          perms=perms)
+                else:
+                    # Ensure accessible by ssh user and group (for sync).
+                    ensure_permissions(path, user=SSH_USER,
+                                       group='keystone', perms=perms)
+
+            signing_paths = {'certfile': os.path.join(certs,
+                                                      'signing_cert.pem'),
+                             'keyfile': os.path.join(privates,
+                                                     'signing_key.pem'),
+                             'ca_certs': os.path.join(certs, 'ca.pem'),
+                             'ca_key': os.path.join(certs, 'ca_key.pem')}
+
+            for key, val in signing_paths.iteritems():
+                ctxt[key] = val
 
         # Base endpoint URL's which are used in keystone responses
         # to unauthenticated requests to redirect clients to the
@@ -214,7 +251,7 @@ class KeystoneLoggingContext(context.OSContextGenerator):
     def __call__(self):
         ctxt = {}
         debug = config('debug')
-        if debug and debug.lower() in ['yes', 'true']:
+        if debug and bool_from_string(debug):
             ctxt['root_level'] = 'DEBUG'
 
         return ctxt

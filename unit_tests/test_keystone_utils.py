@@ -28,6 +28,7 @@ TO_PATCH = [
     'grant_role',
     'configure_installation_source',
     'is_elected_leader',
+    'is_ssl_cert_master',
     'https',
     'peer_store_and_set',
     'service_stop',
@@ -352,65 +353,169 @@ class TestKeystoneUtils(CharmTestCase):
         self.assertEqual(utils.get_admin_passwd(), 'supersecretgen')
 
     def test_is_db_ready(self):
+        allowed_units = None
+
+        def fake_rel_get(attribute=None, *args, **kwargs):
+            if attribute == 'allowed_units':
+                return allowed_units
+
+        self.relation_get.side_effect = fake_rel_get
+
         self.relation_id.return_value = 'shared-db:0'
-        self.relation_ids.return_value = [self.relation_id.return_value]
+        self.relation_ids.return_value = ['shared-db:0']
         self.local_unit.return_value = 'unit/0'
-        self.relation_get.return_value = 'unit/0'
+        allowed_units = 'unit/0'
         self.assertTrue(utils.is_db_ready(use_current_context=True))
 
         self.relation_ids.return_value = ['acme:0']
         self.assertRaises(utils.is_db_ready, use_current_context=True)
 
         self.related_units.return_value = ['unit/0']
-        self.relation_ids.return_value = [self.relation_id.return_value]
+        self.relation_ids.return_value = ['shared-db:0', 'shared-db:1']
         self.assertTrue(utils.is_db_ready())
 
-        self.relation_get.return_value = 'unit/1'
+        allowed_units = 'unit/1'
         self.assertFalse(utils.is_db_ready())
 
         self.related_units.return_value = []
         self.assertTrue(utils.is_db_ready())
 
     @patch.object(utils, 'peer_units')
-    @patch.object(utils, 'is_elected_leader')
-    @patch.object(utils, 'oldest_peer')
     @patch.object(utils, 'is_ssl_enabled')
-    def test_ensure_ssl_cert_master(self, mock_is_str_true, mock_oldest_peer,
-                                    mock_is_elected_leader, mock_peer_units):
+    def test_ensure_ssl_cert_master_no_ssl(self, mock_is_ssl_enabled,
+                                           mock_peer_units):
+        mock_is_ssl_enabled.return_value = False
+        self.assertFalse(utils.ensure_ssl_cert_master())
+        self.assertFalse(self.relation_set.called)
+
+    @patch.object(utils, 'peer_units')
+    @patch.object(utils, 'is_ssl_enabled')
+    def test_ensure_ssl_cert_master_ssl_no_peers(self, mock_is_ssl_enabled,
+                                                 mock_peer_units):
+        def mock_rel_get(unit=None, **kwargs):
+            return None
+
+        self.relation_get.side_effect = mock_rel_get
+        mock_is_ssl_enabled.return_value = True
         self.relation_ids.return_value = ['cluster:0']
         self.local_unit.return_value = 'unit/0'
-
-        mock_is_str_true.return_value = False
-        self.assertFalse(utils.ensure_ssl_cert_master())
-        self.assertFalse(self.relation_set.called)
-
-        mock_is_elected_leader.return_value = False
-        self.assertFalse(utils.ensure_ssl_cert_master())
-        self.assertFalse(self.relation_set.called)
-
-        mock_is_str_true.return_value = True
-        mock_is_elected_leader.return_value = False
-        mock_peer_units.return_value = ['unit/0']
-        self.assertFalse(utils.ensure_ssl_cert_master())
-        self.assertFalse(self.relation_set.called)
-
+        self.related_units.return_value = []
         mock_peer_units.return_value = []
+        # This should get ignored since we are overriding
+        self.is_ssl_cert_master.return_value = False
+        self.is_elected_leader.return_value = False
         self.assertTrue(utils.ensure_ssl_cert_master())
         settings = {'ssl-cert-master': 'unit/0'}
         self.relation_set.assert_called_with(relation_id='cluster:0',
                                              relation_settings=settings)
-        self.relation_set.reset_mock()
 
-        self.assertTrue(utils.ensure_ssl_cert_master(use_oldest_peer=True))
+    @patch.object(utils, 'peer_units')
+    @patch.object(utils, 'is_ssl_enabled')
+    def test_ensure_ssl_cert_master_ssl_master_no_peers(self,
+                                                        mock_is_ssl_enabled,
+                                                        mock_peer_units):
+        def mock_rel_get(unit=None, **kwargs):
+            if unit == 'unit/0':
+                return 'unit/0'
+
+            return None
+
+        self.relation_get.side_effect = mock_rel_get
+        mock_is_ssl_enabled.return_value = True
+        self.relation_ids.return_value = ['cluster:0']
+        self.local_unit.return_value = 'unit/0'
+        self.related_units.return_value = []
+        mock_peer_units.return_value = []
+        # This should get ignored since we are overriding
+        self.is_ssl_cert_master.return_value = False
+        self.is_elected_leader.return_value = False
+        self.assertTrue(utils.ensure_ssl_cert_master())
         settings = {'ssl-cert-master': 'unit/0'}
         self.relation_set.assert_called_with(relation_id='cluster:0',
                                              relation_settings=settings)
-        self.relation_set.reset_mock()
 
-        mock_peer_units.return_value = ['unit/0']
+    @patch.object(utils, 'peer_units')
+    @patch.object(utils, 'is_ssl_enabled')
+    def test_ensure_ssl_cert_master_ssl_not_leader(self, mock_is_ssl_enabled,
+                                                   mock_peer_units):
+        mock_is_ssl_enabled.return_value = True
+        self.relation_ids.return_value = ['cluster:0']
+        self.local_unit.return_value = 'unit/0'
+        mock_peer_units.return_value = ['unit/1']
+        self.is_ssl_cert_master.return_value = False
+        self.is_elected_leader.return_value = False
         self.assertFalse(utils.ensure_ssl_cert_master())
-        self.assertFalse(utils.ensure_ssl_cert_master(use_oldest_peer=True))
+        self.assertFalse(self.relation_set.called)
+
+    @patch.object(utils, 'peer_units')
+    @patch.object(utils, 'is_ssl_enabled')
+    def test_ensure_ssl_cert_master_is_leader_new_peer(self,
+                                                       mock_is_ssl_enabled,
+                                                       mock_peer_units):
+        def mock_rel_get(unit=None, **kwargs):
+            if unit == 'unit/0':
+                return 'unit/0'
+
+            return 'unknown'
+
+        self.relation_get.side_effect = mock_rel_get
+        mock_is_ssl_enabled.return_value = True
+        self.relation_ids.return_value = ['cluster:0']
+        self.local_unit.return_value = 'unit/0'
+        mock_peer_units.return_value = ['unit/1']
+        self.related_units.return_value = ['unit/1']
+        self.is_ssl_cert_master.return_value = False
+        self.is_elected_leader.return_value = True
+        self.assertFalse(utils.ensure_ssl_cert_master())
         settings = {'ssl-cert-master': 'unit/0'}
         self.relation_set.assert_called_with(relation_id='cluster:0',
                                              relation_settings=settings)
-        self.relation_set.reset_mock()
+
+    @patch.object(utils, 'peer_units')
+    @patch.object(utils, 'is_ssl_enabled')
+    def test_ensure_ssl_cert_master_is_leader_no_new_peer(self,
+                                                          mock_is_ssl_enabled,
+                                                          mock_peer_units):
+        def mock_rel_get(unit=None, **kwargs):
+            if unit == 'unit/0':
+                return 'unit/0'
+
+            return 'unit/0'
+
+        self.relation_get.side_effect = mock_rel_get
+        mock_is_ssl_enabled.return_value = True
+        self.relation_ids.return_value = ['cluster:0']
+        self.local_unit.return_value = 'unit/0'
+        mock_peer_units.return_value = ['unit/1']
+        self.related_units.return_value = ['unit/1']
+        self.is_ssl_cert_master.return_value = False
+        self.is_elected_leader.return_value = True
+        self.assertFalse(utils.ensure_ssl_cert_master())
+        self.assertFalse(self.relation_set.called)
+
+    @patch.object(utils, 'peer_units')
+    @patch.object(utils, 'is_ssl_enabled')
+    def test_ensure_ssl_cert_master_is_leader_bad_votes(self,
+                                                        mock_is_ssl_enabled,
+                                                        mock_peer_units):
+        counter = {0: 0}
+
+        def mock_rel_get(unit=None, **kwargs):
+            """Returns a mix of votes."""
+            if unit == 'unit/0':
+                return 'unit/0'
+
+            ret = 'unit/%d' % (counter[0])
+            counter[0] += 1
+            return ret
+
+        self.relation_get.side_effect = mock_rel_get
+        mock_is_ssl_enabled.return_value = True
+        self.relation_ids.return_value = ['cluster:0']
+        self.local_unit.return_value = 'unit/0'
+        mock_peer_units.return_value = ['unit/1']
+        self.related_units.return_value = ['unit/1']
+        self.is_ssl_cert_master.return_value = False
+        self.is_elected_leader.return_value = True
+        self.assertFalse(utils.ensure_ssl_cert_master())
+        self.assertFalse(self.relation_set.called)

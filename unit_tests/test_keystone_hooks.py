@@ -63,7 +63,6 @@ TO_PATCH = [
     'execd_preinstall',
     'mkdir',
     'os',
-    'time',
     # ip
     'get_iface_for_address',
     'get_netmask_for_address',
@@ -203,6 +202,7 @@ class KeystoneRelationTests(CharmTestCase):
         configs.write = MagicMock()
         hooks.pgsql_db_changed()
 
+    @patch.object(hooks, 'is_db_initialised')
     @patch.object(hooks, 'is_db_ready')
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
@@ -210,7 +210,9 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(hooks, 'identity_changed')
     def test_db_changed_allowed(self, identity_changed, configs,
                                 mock_ensure_ssl_cert_master,
-                                mock_log, mock_is_db_ready):
+                                mock_log, mock_is_db_ready,
+                                mock_is_db_initialised):
+        mock_is_db_initialised.return_value = True
         mock_is_db_ready.return_value = True
         mock_ensure_ssl_cert_master.return_value = False
         self.relation_ids.return_value = ['identity-service:0']
@@ -247,10 +249,15 @@ class KeystoneRelationTests(CharmTestCase):
 
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
+    @patch.object(hooks, 'is_db_initialised')
+    @patch.object(hooks, 'is_db_ready')
     @patch.object(hooks, 'CONFIGS')
     @patch.object(hooks, 'identity_changed')
     def test_postgresql_db_changed(self, identity_changed, configs,
+                                   mock_is_db_ready, mock_is_db_initialised,
                                    mock_ensure_ssl_cert_master, mock_log):
+        mock_is_db_initialised.return_value = True
+        mock_is_db_ready.return_value = True
         mock_ensure_ssl_cert_master.return_value = False
         self.relation_ids.return_value = ['identity-service:0']
         self.related_units.return_value = ['unit/0']
@@ -266,6 +273,10 @@ class KeystoneRelationTests(CharmTestCase):
 
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
+    @patch.object(hooks, 'is_pki_enabled')
+    @patch.object(hooks, 'is_ssl_cert_master')
+    @patch.object(hooks, 'is_db_initialised')
+    @patch.object(hooks, 'is_db_ready')
     @patch.object(hooks, 'peer_units')
     @patch.object(hooks, 'ensure_permissions')
     @patch.object(hooks, 'admin_relation_changed')
@@ -275,11 +286,24 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(hooks, 'CONFIGS')
     @patch.object(hooks, 'identity_changed')
     @patch.object(hooks, 'configure_https')
-    def test_config_changed_no_openstack_upgrade_leader(
-            self, configure_https, identity_changed,
-            configs, get_homedir, ensure_user, cluster_joined,
-            admin_relation_changed, ensure_permissions, mock_peer_units,
-            mock_ensure_ssl_cert_master, mock_log):
+    def test_config_changed_no_upgrade_leader(self, configure_https,
+                                              identity_changed,
+                                              configs, get_homedir,
+                                              ensure_user,
+                                              cluster_joined,
+                                              admin_relation_changed,
+                                              ensure_permissions,
+                                              mock_peer_units,
+                                              mock_is_db_ready,
+                                              mock_is_db_initialised,
+                                              mock_is_ssl_cert_master,
+                                              mock_is_pki_enabled,
+                                              mock_ensure_ssl_cert_master,
+                                              mock_log):
+        mock_is_pki_enabled.return_value = True
+        mock_is_ssl_cert_master.return_value = True
+        mock_is_db_initialised.return_value = True
+        mock_is_db_ready.return_value = True
         self.openstack_upgrade_available.return_value = False
         self.is_elected_leader.return_value = True
         # avoid having to mock syncer
@@ -296,7 +320,6 @@ class KeystoneRelationTests(CharmTestCase):
         configure_https.assert_called_with()
         self.assertTrue(configs.write_all.called)
 
-        self.migrate_database.assert_called_with()
         self.assertTrue(self.ensure_initial_admin.called)
         self.log.assert_called_with(
             'Firing identity_changed hook for all related services.')
@@ -307,6 +330,8 @@ class KeystoneRelationTests(CharmTestCase):
 
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
+    @patch.object(hooks, 'is_pki_enabled')
+    @patch.object(hooks, 'is_ssl_cert_master')
     @patch.object(hooks, 'ensure_permissions')
     @patch.object(hooks, 'cluster_joined')
     @patch.object(unison, 'ensure_user')
@@ -317,8 +342,10 @@ class KeystoneRelationTests(CharmTestCase):
     def test_config_changed_no_openstack_upgrade_not_leader(
             self, configure_https, identity_changed,
             configs, get_homedir, ensure_user, cluster_joined,
-            ensure_permissions, mock_ensure_ssl_cert_master,
-            mock_log):
+            ensure_permissions, mock_is_ssl_cert_master, mock_is_pki_enabled,
+            mock_ensure_ssl_cert_master, mock_log):
+        mock_is_pki_enabled.return_value = True
+        mock_is_ssl_cert_master.return_value = True
         self.openstack_upgrade_available.return_value = False
         self.is_elected_leader.return_value = False
         mock_ensure_ssl_cert_master.return_value = False
@@ -337,6 +364,10 @@ class KeystoneRelationTests(CharmTestCase):
 
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
+    @patch.object(hooks, 'is_pki_enabled')
+    @patch.object(hooks, 'is_ssl_cert_master')
+    @patch.object(hooks, 'is_db_initialised')
+    @patch.object(hooks, 'is_db_ready')
     @patch.object(hooks, 'peer_units')
     @patch.object(hooks, 'ensure_permissions')
     @patch.object(hooks, 'admin_relation_changed')
@@ -346,12 +377,23 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(hooks, 'CONFIGS')
     @patch.object(hooks, 'identity_changed')
     @patch.object(hooks, 'configure_https')
-    def test_config_changed_with_openstack_upgrade(
-            self, configure_https, identity_changed,
-            configs, get_homedir, ensure_user, cluster_joined,
-            admin_relation_changed,
-            ensure_permissions, mock_peer_units, mock_ensure_ssl_cert_master,
-            mock_log):
+    def test_config_changed_with_openstack_upgrade(self, configure_https,
+                                                   identity_changed,
+                                                   configs, get_homedir,
+                                                   ensure_user, cluster_joined,
+                                                   admin_relation_changed,
+                                                   ensure_permissions,
+                                                   mock_peer_units,
+                                                   mock_is_db_ready,
+                                                   mock_is_db_initialised,
+                                                   mock_is_ssl_cert_master,
+                                                   mock_is_pki_enabled,
+                                                   mock_ensure_ssl_cert_master,
+                                                   mock_log):
+        mock_is_pki_enabled.return_value = True
+        mock_is_ssl_cert_master.return_value = True
+        mock_is_db_ready.return_value = True
+        mock_is_db_initialised.return_value = True
         self.openstack_upgrade_available.return_value = True
         self.is_elected_leader.return_value = True
         # avoid having to mock syncer
@@ -370,7 +412,6 @@ class KeystoneRelationTests(CharmTestCase):
         configure_https.assert_called_with()
         self.assertTrue(configs.write_all.called)
 
-        self.migrate_database.assert_called_with()
         self.assertTrue(self.ensure_initial_admin.called)
         self.log.assert_called_with(
             'Firing identity_changed hook for all related services.')
@@ -379,6 +420,7 @@ class KeystoneRelationTests(CharmTestCase):
             remote_unit='unit/0')
         admin_relation_changed.assert_called_with('identity-service:0')
 
+    @patch.object(hooks, 'is_db_initialised')
     @patch.object(hooks, 'is_db_ready')
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
@@ -386,7 +428,9 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(hooks, 'send_notifications')
     def test_identity_changed_leader(self, mock_send_notifications,
                                      mock_hashlib, mock_ensure_ssl_cert_master,
-                                     mock_log, mock_is_db_ready):
+                                     mock_log, mock_is_db_ready,
+                                     mock_is_db_initialised):
+        mock_is_db_initialised.return_value = True
         mock_is_db_ready.return_value = True
         mock_ensure_ssl_cert_master.return_value = False
         hooks.identity_changed(
@@ -544,12 +588,18 @@ class KeystoneRelationTests(CharmTestCase):
 
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
+    @patch.object(hooks, 'is_db_ready')
+    @patch.object(hooks, 'is_db_initialised')
     @patch.object(hooks, 'identity_changed')
     @patch.object(hooks, 'CONFIGS')
     def test_ha_relation_changed_clustered_leader(self, configs,
                                                   identity_changed,
+                                                  mock_is_db_initialised,
+                                                  mock_is_db_ready,
                                                   mock_ensure_ssl_cert_master,
                                                   mock_log):
+        mock_is_db_initialised.return_value = True
+        mock_is_db_ready.return_value = True
         mock_ensure_ssl_cert_master.return_value = False
         self.relation_get.return_value = True
         self.is_elected_leader.return_value = True
@@ -595,6 +645,8 @@ class KeystoneRelationTests(CharmTestCase):
         cmd = ['a2dissite', 'openstack_https_frontend']
         self.check_call.assert_called_with(cmd)
 
+    @patch.object(hooks, 'is_db_ready')
+    @patch.object(hooks, 'is_db_initialised')
     @patch('keystone_utils.log')
     @patch('keystone_utils.relation_ids')
     @patch('keystone_utils.is_elected_leader')
@@ -608,7 +660,11 @@ class KeystoneRelationTests(CharmTestCase):
                                   mock_ensure_ssl_cert_master,
                                   mock_is_elected_leader,
                                   mock_relation_ids,
-                                  mock_log):
+                                  mock_log,
+                                  mock_is_db_ready,
+                                  mock_is_db_initialised):
+        mock_is_db_initialised.return_value = True
+        mock_is_db_ready.return_value = True
         mock_is_elected_leader.return_value = False
         mock_relation_ids.return_value = []
         mock_ensure_ssl_cert_master.return_value = True

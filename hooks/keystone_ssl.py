@@ -113,15 +113,16 @@ CA_SINGLETON = []
 
 
 def init_ca(ca_dir, common_name, org_name=ORG_NAME, org_unit_name=ORG_UNIT):
-    print 'Ensuring certificate authority exists at %s.' % ca_dir
+    log('Ensuring certificate authority exists at %s.' % ca_dir, level=DEBUG)
     if not os.path.exists(ca_dir):
-        print 'Initializing new certificate authority at %s' % ca_dir
+        log('Initializing new certificate authority at %s' % ca_dir,
+            level=DEBUG)
         os.mkdir(ca_dir)
 
     for i in ['certs', 'crl', 'newcerts', 'private']:
         d = os.path.join(ca_dir, i)
         if not os.path.exists(d):
-            print 'Creating %s.' % d
+            log('Creating %s.' % d, level=DEBUG)
             os.mkdir(d)
     os.chmod(os.path.join(ca_dir, 'private'), 0o710)
 
@@ -132,9 +133,11 @@ def init_ca(ca_dir, common_name, org_name=ORG_NAME, org_unit_name=ORG_UNIT):
     if not os.path.isfile(os.path.join(ca_dir, 'index.txt')):
         with open(os.path.join(ca_dir, 'index.txt'), 'wb') as out:
             out.write('')
-    if not os.path.isfile(os.path.join(ca_dir, 'ca.cnf')):
-        print 'Creating new CA config in %s' % ca_dir
-        with open(os.path.join(ca_dir, 'ca.cnf'), 'wb') as out:
+
+    conf = os.path.join(ca_dir, 'ca.cnf')
+    if not os.path.isfile(conf):
+        log('Creating new CA config in %s' % ca_dir, level=DEBUG)
+        with open(conf, 'wb') as out:
             out.write(CA_CONFIG % locals())
 
 
@@ -144,40 +147,42 @@ def root_ca_crt_key(ca_dir):
     key = os.path.join(ca_dir, 'private', 'cacert.key')
     for f in [crt, key]:
         if not os.path.isfile(f):
-            print 'Missing %s, will re-initialize cert+key.' % f
+            log('Missing %s, will re-initialize cert+key.' % f, level=DEBUG)
             init = True
         else:
-            print 'Found %s.' % f
+            log('Found %s.' % f, level=DEBUG)
+
     if init:
-        cmd = ['openssl', 'req', '-config', os.path.join(ca_dir, 'ca.cnf'),
+        conf = os.path.join(ca_dir, 'ca.cnf')
+        cmd = ['openssl', 'req', '-config', conf,
                '-x509', '-nodes', '-newkey', 'rsa', '-days', '21360',
                '-keyout', key, '-out', crt, '-outform', 'PEM']
         subprocess.check_call(cmd)
+
     return crt, key
 
 
 def intermediate_ca_csr_key(ca_dir):
-    print 'Creating new intermediate CSR.'
+    log('Creating new intermediate CSR.', level=DEBUG)
     key = os.path.join(ca_dir, 'private', 'cacert.key')
     csr = os.path.join(ca_dir, 'cacert.csr')
-    cmd = ['openssl', 'req', '-config', os.path.join(ca_dir, 'ca.cnf'),
-           '-sha1', '-newkey', 'rsa', '-nodes', '-keyout', key, '-out',
-           csr, '-outform',
-           'PEM']
+    conf = os.path.join(ca_dir, 'ca.cnf')
+    cmd = ['openssl', 'req', '-config', conf, '-sha1', '-newkey', 'rsa',
+           '-nodes', '-keyout', key, '-out', csr, '-outform', 'PEM']
     subprocess.check_call(cmd)
     return csr, key
 
 
 def sign_int_csr(ca_dir, csr, common_name):
-    print 'Signing certificate request %s.' % csr
-    crt = os.path.join(ca_dir, 'certs',
-                       '%s.crt' % os.path.basename(csr).split('.')[0])
+    log('Signing certificate request %s.' % csr, level=DEBUG)
+    crt_name = os.path.basename(csr).split('.')[0]
+    crt = os.path.join(ca_dir, 'certs', '%s.crt' % crt_name)
     subj = '/O=%s/OU=%s/CN=%s' % (ORG_NAME, ORG_UNIT, common_name)
-    cmd = ['openssl', 'ca', '-batch', '-config',
-           os.path.join(ca_dir, 'ca.cnf'),
-           '-extensions', 'ca_extensions', '-days', CA_EXPIRY, '-notext',
-           '-in', csr, '-out', crt, '-subj', subj, '-batch']
-    print ' '.join(cmd)
+    conf = os.path.join(ca_dir, 'ca.cnf')
+    cmd = ['openssl', 'ca', '-batch', '-config', conf, '-extensions',
+           'ca_extensions', '-days', CA_EXPIRY, '-notext', '-in', csr, '-out',
+           crt, '-subj', subj, '-batch']
+    log("Executing: %s" % ' '.join(cmd), level=DEBUG)
     subprocess.check_call(cmd)
     return crt
 
@@ -187,19 +192,20 @@ def init_root_ca(ca_dir, common_name):
     return root_ca_crt_key(ca_dir)
 
 
-def init_intermediate_ca(ca_dir, common_name, root_ca_dir,
-                         org_name=ORG_NAME, org_unit_name=ORG_UNIT):
+def init_intermediate_ca(ca_dir, common_name, root_ca_dir, org_name=ORG_NAME,
+                         org_unit_name=ORG_UNIT):
     init_ca(ca_dir, common_name)
     if not os.path.isfile(os.path.join(ca_dir, 'cacert.pem')):
         csr, key = intermediate_ca_csr_key(ca_dir)
         crt = sign_int_csr(root_ca_dir, csr, common_name)
         shutil.copy(crt, os.path.join(ca_dir, 'cacert.pem'))
     else:
-        print 'Intermediate CA certificate already exists.'
+        log('Intermediate CA certificate already exists.', level=DEBUG)
 
-    if not os.path.isfile(os.path.join(ca_dir, 'signing.cnf')):
-        print 'Creating new signing config in %s' % ca_dir
-        with open(os.path.join(ca_dir, 'signing.cnf'), 'wb') as out:
+    conf = os.path.join(ca_dir, 'signing.cnf')
+    if not os.path.isfile(conf):
+        log('Creating new signing config in %s' % ca_dir, level=DEBUG)
+        with open(conf, 'wb') as out:
             out.write(SIGNING_CONFIG % locals())
 
 
@@ -212,7 +218,7 @@ def create_certificate(ca_dir, service):
            key, '-out', csr, '-subj', subj]
     subprocess.check_call(cmd)
     crt = sign_int_csr(ca_dir, csr, common_name)
-    print 'Signed new CSR, crt @ %s' % crt
+    log('Signed new CSR, crt @ %s' % crt, level=DEBUG)
     return
 
 
@@ -221,13 +227,14 @@ def update_bundle(bundle_file, new_bundle):
     if os.path.isfile(bundle_file):
         current = open(bundle_file, 'r').read().strip()
         if new_bundle == current:
-            print 'CA Bundle @ %s is up to date.' % bundle_file
+            log('CA Bundle @ %s is up to date.' % bundle_file, level=DEBUG)
             return
-        else:
-            print 'Updating CA bundle @ %s.' % bundle_file
+
+        log('Updating CA bundle @ %s.' % bundle_file, level=DEBUG)
 
     with open(bundle_file, 'wb') as out:
         out.write(new_bundle)
+
     subprocess.check_call(['update-ca-certificates'])
 
 
@@ -250,15 +257,19 @@ def tar_directory(path):
 class JujuCA(object):
 
     def __init__(self, name, ca_dir, root_ca_dir, user, group):
-        root_crt, root_key = init_root_ca(root_ca_dir,
-                                          '%s Certificate Authority' % name)
-        init_intermediate_ca(ca_dir,
-                             '%s Intermediate Certificate Authority' % name,
-                             root_ca_dir)
+        # Root CA
+        cn = '%s Certificate Authority' % name
+        root_crt, root_key = init_root_ca(root_ca_dir, cn)
+        # Intermediate CA
+        cn = '%s Intermediate Certificate Authority' % name
+        init_intermediate_ca(ca_dir, cn, root_ca_dir)
+
+        # Create dirs
         cmd = ['chown', '-R', '%s.%s' % (user, group), ca_dir]
         subprocess.check_call(cmd)
         cmd = ['chown', '-R', '%s.%s' % (user, group), root_ca_dir]
         subprocess.check_call(cmd)
+
         self.ca_dir = ca_dir
         self.root_ca_dir = root_ca_dir
         self.user = user
@@ -268,8 +279,8 @@ class JujuCA(object):
     def _sign_csr(self, csr, service, common_name):
         subj = '/O=%s/OU=%s/CN=%s' % (ORG_NAME, ORG_UNIT, common_name)
         crt = os.path.join(self.ca_dir, 'certs', '%s.crt' % common_name)
-        cmd = ['openssl', 'ca', '-config',
-               os.path.join(self.ca_dir, 'signing.cnf'), '-extensions',
+        conf = os.path.join(self.ca_dir, 'signing.cnf')
+        cmd = ['openssl', 'ca', '-config', conf, '-extensions',
                'req_extensions', '-days', '365', '-notext', '-in', csr,
                '-out', crt, '-batch', '-subj', subj]
         subprocess.check_call(cmd)
@@ -288,10 +299,16 @@ class JujuCA(object):
         log('Signed new CSR, crt @ %s' % crt, level=DEBUG)
         return crt, key
 
+    def get_key_path(self, cn):
+        return os.path.join(self.ca_dir, 'certs', '%s.key' % cn)
+
+    def get_cert_path(self, cn):
+        return os.path.join(self.ca_dir, 'certs', '%s.crt' % cn)
+
     def get_cert_and_key(self, common_name):
         log('Getting certificate and key for %s.' % common_name, level=DEBUG)
-        keypath = os.path.join(self.ca_dir, 'certs', '%s.key' % common_name)
-        crtpath = os.path.join(self.ca_dir, 'certs', '%s.crt' % common_name)
+        keypath = self.get_key_path(common_name)
+        crtpath = self.get_cert_path(common_name)
         if os.path.isfile(crtpath):
             log('Found existing certificate for %s.' % common_name,
                 level=DEBUG)
@@ -324,8 +341,24 @@ class JujuCA(object):
         crt, key = self._create_certificate(common_name, common_name)
         return open(crt, 'r').read(), open(key, 'r').read()
 
+    @property
+    def ca_cert_path(self):
+        return os.path.join(self.ca_dir, 'cacert.pem')
+
+    @property
+    def ca_key_path(self):
+        return os.path.join(self.ca_dir, 'private',  'cacert.key')
+
+    @property
+    def root_ca_cert_path(self):
+        return os.path.join(self.root_ca_dir, 'cacert.pem')
+
+    @property
+    def root_ca_key_path(self):
+        return os.path.join(self.root_ca_dir, 'private',  'cacert.key')
+
     def get_ca_bundle(self):
-        int_cert = open(os.path.join(self.ca_dir, 'cacert.pem')).read()
-        root_cert = open(os.path.join(self.root_ca_dir, 'cacert.pem')).read()
+        int_cert = open(self.ca_cert_path).read()
+        root_cert = open(self.root_ca_cert_path).read()
         # NOTE: ordering of certs in bundle matters!
         return int_cert + root_cert

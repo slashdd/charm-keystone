@@ -273,6 +273,7 @@ class KeystoneRelationTests(CharmTestCase):
 
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
+    @patch.object(hooks, 'ensure_ssl_dir')
     @patch.object(hooks, 'is_pki_enabled')
     @patch.object(hooks, 'is_ssl_cert_master')
     @patch.object(hooks, 'is_db_initialised')
@@ -298,6 +299,7 @@ class KeystoneRelationTests(CharmTestCase):
                                               mock_is_db_initialised,
                                               mock_is_ssl_cert_master,
                                               mock_is_pki_enabled,
+                                              mock_ensure_ssl_dir,
                                               mock_ensure_ssl_cert_master,
                                               mock_log):
         mock_is_pki_enabled.return_value = True
@@ -330,6 +332,7 @@ class KeystoneRelationTests(CharmTestCase):
 
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
+    @patch.object(hooks, 'ensure_ssl_dir')
     @patch.object(hooks, 'is_pki_enabled')
     @patch.object(hooks, 'is_ssl_cert_master')
     @patch.object(hooks, 'ensure_permissions')
@@ -343,6 +346,7 @@ class KeystoneRelationTests(CharmTestCase):
             self, configure_https, identity_changed,
             configs, get_homedir, ensure_user, cluster_joined,
             ensure_permissions, mock_is_ssl_cert_master, mock_is_pki_enabled,
+            mock_ensure_ssl_dir,
             mock_ensure_ssl_cert_master, mock_log):
         mock_is_pki_enabled.return_value = True
         mock_is_ssl_cert_master.return_value = True
@@ -364,6 +368,7 @@ class KeystoneRelationTests(CharmTestCase):
 
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
+    @patch.object(hooks, 'ensure_ssl_dir')
     @patch.object(hooks, 'is_pki_enabled')
     @patch.object(hooks, 'is_ssl_cert_master')
     @patch.object(hooks, 'is_db_initialised')
@@ -388,6 +393,7 @@ class KeystoneRelationTests(CharmTestCase):
                                                    mock_is_db_initialised,
                                                    mock_is_ssl_cert_master,
                                                    mock_is_pki_enabled,
+                                                   mock_ensure_ssl_dir,
                                                    mock_ensure_ssl_cert_master,
                                                    mock_log):
         mock_is_pki_enabled.return_value = True

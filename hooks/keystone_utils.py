@@ -231,7 +231,7 @@ valid_services = {
 }
 
 
-def ensure_pki_cert_permissions():
+def ensure_pki_dir_permissions():
     perms = 0o755
     # Ensure accessible by unison user and group (for sync).
     for path in glob.glob("%s/*" % PKI_CERTS_DIR):
@@ -772,7 +772,7 @@ def check_peer_actions():
                     subprocess.check_call(['update-ca-certificates'])
                 elif action == 'ensure-pki-permissions':
                     log("Running %s" % (action), level=DEBUG)
-                    ensure_pki_cert_permissions()
+                    ensure_pki_dir_permissions()
                 else:
                     log("Unknown action flag=%s" % (flag), level=WARNING)
 
@@ -1153,32 +1153,29 @@ def synchronize_ca_if_changed(force=False, fatal=False):
     return inner_synchronize_ca_if_changed1
 
 
+def ensure_ssl_dir():
+    """Ensure juju ssl dir exists and is unsion read/writable."""
+    perms = 0o755
+    if not os.path.isdir(SSL_DIR):
+        mkdir(SSL_DIR, SSH_USER, 'keystone', perms)
+    else:
+        ensure_permissions(SSL_DIR, user=SSH_USER, group='keystone',
+                           perms=perms)
+
+
 def get_ca(user='keystone', group='keystone'):
     """Initialize a new CA object if one hasn't already been loaded.
 
     This will create a new CA or load an existing one.
     """
     if not ssl.CA_SINGLETON:
-        # Ensure unsion read/writable
-        perms = 0o755
-        if not os.path.isdir(SSL_DIR):
-            mkdir(SSL_DIR, SSH_USER, 'keystone', perms)
-        else:
-            ensure_permissions(SSL_DIR, user=SSH_USER, group='keystone',
-                               perms=perms)
-
+        ensure_ssl_dir()
         d_name = '_'.join(SSL_CA_NAME.lower().split(' '))
         ca = ssl.JujuCA(name=SSL_CA_NAME, user=user, group=group,
                         ca_dir=os.path.join(SSL_DIR,
                                             '%s_intermediate_ca' % d_name),
                         root_ca_dir=os.path.join(SSL_DIR,
                                                  '%s_root_ca' % d_name))
-
-        # SSL_DIR is synchronized via all peers over unison+ssh, need
-        # to ensure permissions.
-        subprocess.check_output(['chown', '-R', '%s.%s' % (user, group),
-                                 '%s' % SSL_DIR])
-        subprocess.check_output(['chmod', '-R', 'g+rwx', '%s' % SSL_DIR])
 
         # Ensure a master is elected. This should cover the following cases:
         # * single unit == 'oldest' unit is elected as master

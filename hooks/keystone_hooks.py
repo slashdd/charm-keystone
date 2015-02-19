@@ -73,7 +73,8 @@ from keystone_utils import (
     clear_ssl_synced_units,
     is_db_initialised,
     is_pki_enabled,
-    ensure_pki_cert_permissions,
+    ensure_ssl_dir,
+    ensure_pki_dir_permissions,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -133,6 +134,9 @@ def config_changed():
     if openstack_upgrade_available('keystone'):
         do_openstack_upgrade(configs=CONFIGS)
 
+    # Ensure ssl dir exists and is unison-accessible
+    ensure_ssl_dir()
+
     check_call(['chmod', '-R', 'g+wrx', '/var/lib/keystone/'])
 
     # Ensure unison can write to certs dir.
@@ -180,7 +184,7 @@ def initialise_pki():
                '--keystone-group', 'keystone']
         check_call(cmd)
 
-    ensure_pki_cert_permissions()
+    ensure_pki_dir_permissions()
 
 
 @hooks.hook('shared-db-relation-joined')

@@ -582,7 +582,12 @@ def ensure_initial_admin(config):
     # Allow retry on fail since leader may not be ready yet.
     # NOTE(hopem): ks client may not be installed at module import time so we
     # use this wrapped approach instead.
-    from keystoneclient.apiclient.exceptions import InternalServerError
+    try:
+        from keystoneclient.apiclient.exceptions import InternalServerError
+    except:
+        # Backwards-compatibility for earlier versions of keystoneclient (< I)
+        from keystoneclient.exceptions import (ClientException as
+                                               InternalServerError)
 
     @retry_on_exception(3, base_delay=3, exc_type=InternalServerError)
     def _ensure_initial_admin(config):

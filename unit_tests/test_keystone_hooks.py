@@ -489,7 +489,6 @@ class KeystoneRelationTests(CharmTestCase):
             peer_interface='cluster', ensure_local_user=True)
 
     @patch.object(hooks, 'update_all_identity_relation_units')
-    @patch.object(hooks, 'apply_echo_filters')
     @patch.object(hooks, 'get_ssl_sync_request_units')
     @patch.object(hooks, 'is_ssl_cert_master')
     @patch.object(hooks, 'peer_units')
@@ -506,13 +505,11 @@ class KeystoneRelationTests(CharmTestCase):
                              mock_log, mock_config, mock_peer_units,
                              mock_is_ssl_cert_master,
                              mock_get_ssl_sync_request_units,
-                             mock_apply_echo_filters,
                              mock_update_all_identity_relation_units):
 
         relation_settings = {'foo_passwd': '123',
                              'identity-service:16_foo': 'bar'}
-        
-        mock_apply_echo_filters.return_value = (relation_settings.keys(), {})
+
         mock_is_ssl_cert_master.return_value = False
         mock_peer_units.return_value = ['unit/0']
         mock_ensure_ssl_cert_master.return_value = False
@@ -529,8 +526,9 @@ class KeystoneRelationTests(CharmTestCase):
         mock_config.return_value = None
 
         hooks.cluster_changed()
-        self.peer_echo.assert_called_with(includes=['foo_passwd',
-                                                    'identity-service:16_foo'])
+        whitelist = ['_passwd', 'identity-service:', 'ssl-cert-master',
+                     'db-initialised']
+        self.peer_echo.assert_called_with(includes=whitelist)
         ssh_authorized_peers.assert_called_with(
             user=self.ssh_user, group='juju_keystone',
             peer_interface='cluster', ensure_local_user=True)

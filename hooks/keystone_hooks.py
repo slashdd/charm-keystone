@@ -91,7 +91,6 @@ from charmhelpers.contrib.peerstorage import (
 )
 from charmhelpers.contrib.openstack.ip import (
     ADMIN,
-    PUBLIC,
     resolve_address,
 )
 from charmhelpers.contrib.network.ip import (
@@ -404,37 +403,6 @@ def cluster_joined():
     send_ssl_sync_request()
 
 
-def apply_echo_filters(settings, echo_whitelist):
-    """Filter settings to be peer_echo'ed.
-
-    We may have received some data that we don't want to re-echo so filter
-    out unwanted keys and provide overrides.
-
-    Returns:
-        tuple(filtered list of keys to be echoed, overrides for keys omitted)
-    """
-    filtered = []
-    overrides = {}
-    for key in settings.iterkeys():
-        for ekey in echo_whitelist:
-            if ekey in key:
-                if ekey == 'identity-service:':
-                    auth_host = resolve_address(ADMIN)
-                    service_host = resolve_address(PUBLIC)
-                    if (key.endswith('auth_host') and
-                            settings[key] != auth_host):
-                        overrides[key] = auth_host
-                        continue
-                    elif (key.endswith('service_host') and
-                            settings[key] != service_host):
-                        overrides[key] = service_host
-                        continue
-
-                filtered.append(key)
-
-    return filtered, overrides
-
-
 @hooks.hook('cluster-relation-changed',
             'cluster-relation-departed')
 @restart_on_change(restart_map(), stopstart=True)
@@ -443,13 +411,9 @@ def cluster_changed():
                                 group='juju_keystone',
                                 peer_interface='cluster',
                                 ensure_local_user=True)
-    settings = relation_get()
     # NOTE(jamespage) re-echo passwords for peer storage
-    echo_whitelist, overrides = \
-        apply_echo_filters(settings, ['_passwd', 'identity-service:',
-                                      'ssl-cert-master', 'db-initialised'])
-    log("Peer echo overrides: %s" % (overrides), level=DEBUG)
-    relation_set(**overrides)
+    echo_whitelist = ['_passwd', 'identity-service:', 'ssl-cert-master',
+                      'db-initialised']
     if echo_whitelist:
         log("Peer echo whitelist: %s" % (echo_whitelist), level=DEBUG)
         peer_echo(includes=echo_whitelist)

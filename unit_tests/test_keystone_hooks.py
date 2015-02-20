@@ -334,9 +334,11 @@ class KeystoneRelationTests(CharmTestCase):
 
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
+    @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(hooks, 'ensure_pki_dir_permissions')
     @patch.object(hooks, 'ensure_ssl_dir')
     @patch.object(hooks, 'is_pki_enabled')
+    @patch.object(hooks, 'peer_units')
     @patch.object(hooks, 'is_ssl_cert_master')
     @patch.object(hooks, 'ensure_permissions')
     @patch.object(hooks, 'cluster_joined')
@@ -351,13 +353,16 @@ class KeystoneRelationTests(CharmTestCase):
                                                   ensure_user, cluster_joined,
                                                   ensure_permissions,
                                                   mock_is_ssl_cert_master,
+                                                  mock_peer_units,
                                                   mock_is_pki_enabled,
                                                   mock_ensure_ssl_dir,
                                                   mock_ensure_pki_permissions,
+                                                  mock_update_all_id_rel_units,
                                                   mock_ensure_ssl_cert_master,
                                                   mock_log):
         mock_is_pki_enabled.return_value = True
         mock_is_ssl_cert_master.return_value = True
+        mock_peer_units.return_value = []
         self.openstack_upgrade_available.return_value = False
         self.is_elected_leader.return_value = False
         mock_ensure_ssl_cert_master.return_value = False
@@ -483,8 +488,12 @@ class KeystoneRelationTests(CharmTestCase):
             user=self.ssh_user, group='juju_keystone',
             peer_interface='cluster', ensure_local_user=True)
 
+    @patch.object(hooks, 'update_all_identity_relation_units')
+    @patch.object(hooks, 'apply_echo_filters')
+    @patch.object(hooks, 'get_ssl_sync_request_units')
     @patch.object(hooks, 'is_ssl_cert_master')
     @patch.object(hooks, 'peer_units')
+    @patch('keystone_utils.config')
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
     @patch('keystone_utils.synchronize_ca')
@@ -494,14 +503,31 @@ class KeystoneRelationTests(CharmTestCase):
     def test_cluster_changed(self, configs, ssh_authorized_peers,
                              check_peer_actions, mock_synchronize_ca,
                              mock_ensure_ssl_cert_master,
-                             mock_log, mock_peer_units,
-                             mock_is_ssl_cert_master):
+                             mock_log, mock_config, mock_peer_units,
+                             mock_is_ssl_cert_master,
+                             mock_get_ssl_sync_request_units,
+                             mock_apply_echo_filters,
+                             mock_update_all_identity_relation_units):
+
+        relation_settings = {'foo_passwd': '123',
+                             'identity-service:16_foo': 'bar'}
+        
+        mock_apply_echo_filters.return_value = (relation_settings.keys(), {})
         mock_is_ssl_cert_master.return_value = False
         mock_peer_units.return_value = ['unit/0']
         mock_ensure_ssl_cert_master.return_value = False
         self.is_elected_leader.return_value = False
-        self.relation_get.return_value = {'foo_passwd': '123',
-                                          'identity-service:16_foo': 'bar'}
+
+        def fake_rel_get(attribute=None, *args, **kwargs):
+            if not attribute:
+                return relation_settings
+
+            return relation_settings.get(attribute)
+
+        self.relation_get.side_effect = fake_rel_get
+
+        mock_config.return_value = None
+
         hooks.cluster_changed()
         self.peer_echo.assert_called_with(includes=['foo_passwd',
                                                     'identity-service:16_foo'])

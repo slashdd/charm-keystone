@@ -159,7 +159,7 @@ def config_changed():
 
     # Update relations since SSL may have been configured. If we have peer
     # units we can rely on the sync to do this in cluster relation.
-    if is_elected_leader(CLUSTER_RES) and not peer_units():
+    if not peer_units():
         update_all_identity_relation_units()
 
     for rid in relation_ids('identity-admin'):
@@ -326,6 +326,7 @@ def identity_changed(relation_id=None, remote_unit=None):
             peerdb_settings = peer_retrieve_by_prefix(rel_id)
             if 'service_password' in peerdb_settings:
                 relation_set(relation_id=rel_id, **peerdb_settings)
+
         log('Deferring identity_changed() to service leader.')
 
     if notifications:
@@ -455,27 +456,27 @@ def cluster_changed():
 
     check_peer_actions()
 
-    if is_elected_leader(CLUSTER_RES):
-        units = get_ssl_sync_request_units()
-        synced_units = relation_get(attribute='ssl-synced-units',
-                                    unit=local_unit())
-        if synced_units:
-            synced_units = json.loads(synced_units)
-            diff = set(units).symmetric_difference(set(synced_units))
+    units = get_ssl_sync_request_units()
+    synced_units = relation_get(attribute='ssl-synced-units',
+                                unit=local_unit())
+    if synced_units:
+        synced_units = json.loads(synced_units)
+        diff = set(units).symmetric_difference(set(synced_units))
 
-        if is_pki_enabled():
-            initialise_pki()
+    if is_pki_enabled():
+        initialise_pki()
 
-        if units and (not synced_units or diff):
-            log("New peers joined and need syncing - %s" %
-                (', '.join(units)), level=DEBUG)
-            update_all_identity_relation_units_force_sync()
-        else:
-            update_all_identity_relation_units()
+    if units and (not synced_units or diff):
+        log("New peers joined and need syncing - %s" %
+            (', '.join(units)), level=DEBUG)
+        update_all_identity_relation_units_force_sync()
+    else:
+        update_all_identity_relation_units()
 
-        for rid in relation_ids('identity-admin'):
-            admin_relation_changed(rid)
-    elif is_ssl_cert_master():
+    for rid in relation_ids('identity-admin'):
+        admin_relation_changed(rid)
+
+    if not is_elected_leader(CLUSTER_RES) and is_ssl_cert_master():
         # Sync and let go
         force_ssl_sync()
     else:

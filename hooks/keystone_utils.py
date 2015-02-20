@@ -1101,7 +1101,7 @@ def synchronize_ca_if_changed(force=False, fatal=False):
                     return f(*args, **kwargs)
 
                 if not ensure_ssl_cert_master():
-                    log("Not leader - ignoring sync", level=DEBUG)
+                    log("Not ssl-cert-master - ignoring sync", level=DEBUG)
                     return f(*args, **kwargs)
 
                 peer_settings = {}

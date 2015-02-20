@@ -1148,6 +1148,16 @@ def synchronize_ca_if_changed(force=False, fatal=False):
     return inner_synchronize_ca_if_changed1
 
 
+@synchronize_ca_if_changed(force=True, fatal=True)
+def force_ssl_sync():
+    """Force SSL sync to all peers.
+
+    This is useful if we need to relinquish ssl-cert-master status while
+    making sure that the new master has upt-o-date certs.
+    """
+    pass
+
+
 def ensure_ssl_dir():
     """Ensure juju ssl dir exists and is unsion read/writable."""
     perms = 0o755

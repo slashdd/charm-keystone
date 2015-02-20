@@ -75,6 +75,7 @@ from keystone_utils import (
     is_pki_enabled,
     ensure_ssl_dir,
     ensure_pki_dir_permissions,
+    force_ssl_sync,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -454,7 +455,7 @@ def cluster_changed():
 
     check_peer_actions()
 
-    if is_elected_leader(CLUSTER_RES) or is_ssl_cert_master():
+    if is_elected_leader(CLUSTER_RES):
         units = get_ssl_sync_request_units()
         synced_units = relation_get(attribute='ssl-synced-units',
                                     unit=local_unit())
@@ -474,6 +475,9 @@ def cluster_changed():
 
         for rid in relation_ids('identity-admin'):
             admin_relation_changed(rid)
+    elif is_ssl_cert_master():
+        # Sync and let go
+        force_ssl_sync()
     else:
         CONFIGS.write_all()
 

@@ -273,6 +273,7 @@ class KeystoneRelationTests(CharmTestCase):
 
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
+    @patch.object(hooks, 'ensure_pki_dir_permissions')
     @patch.object(hooks, 'ensure_ssl_dir')
     @patch.object(hooks, 'is_pki_enabled')
     @patch.object(hooks, 'is_ssl_cert_master')
@@ -300,6 +301,7 @@ class KeystoneRelationTests(CharmTestCase):
                                               mock_is_ssl_cert_master,
                                               mock_is_pki_enabled,
                                               mock_ensure_ssl_dir,
+                                              mock_ensure_pki_dir_permissions,
                                               mock_ensure_ssl_cert_master,
                                               mock_log):
         mock_is_pki_enabled.return_value = True
@@ -332,6 +334,7 @@ class KeystoneRelationTests(CharmTestCase):
 
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
+    @patch.object(hooks, 'ensure_pki_dir_permissions')
     @patch.object(hooks, 'ensure_ssl_dir')
     @patch.object(hooks, 'is_pki_enabled')
     @patch.object(hooks, 'is_ssl_cert_master')
@@ -342,12 +345,17 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(hooks, 'CONFIGS')
     @patch.object(hooks, 'identity_changed')
     @patch.object(hooks, 'configure_https')
-    def test_config_changed_no_openstack_upgrade_not_leader(
-            self, configure_https, identity_changed,
-            configs, get_homedir, ensure_user, cluster_joined,
-            ensure_permissions, mock_is_ssl_cert_master, mock_is_pki_enabled,
-            mock_ensure_ssl_dir,
-            mock_ensure_ssl_cert_master, mock_log):
+    def test_config_changed_no_upgrade_not_leader(self, configure_https,
+                                                  identity_changed,
+                                                  configs, get_homedir,
+                                                  ensure_user, cluster_joined,
+                                                  ensure_permissions,
+                                                  mock_is_ssl_cert_master,
+                                                  mock_is_pki_enabled,
+                                                  mock_ensure_ssl_dir,
+                                                  mock_ensure_pki_permissions,
+                                                  mock_ensure_ssl_cert_master,
+                                                  mock_log):
         mock_is_pki_enabled.return_value = True
         mock_is_ssl_cert_master.return_value = True
         self.openstack_upgrade_available.return_value = False
@@ -368,6 +376,7 @@ class KeystoneRelationTests(CharmTestCase):
 
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
+    @patch.object(hooks, 'ensure_pki_dir_permissions')
     @patch.object(hooks, 'ensure_ssl_dir')
     @patch.object(hooks, 'is_pki_enabled')
     @patch.object(hooks, 'is_ssl_cert_master')
@@ -394,6 +403,7 @@ class KeystoneRelationTests(CharmTestCase):
                                                    mock_is_ssl_cert_master,
                                                    mock_is_pki_enabled,
                                                    mock_ensure_ssl_dir,
+                                                   mock_ensure_pki_permissions,
                                                    mock_ensure_ssl_cert_master,
                                                    mock_log):
         mock_is_pki_enabled.return_value = True

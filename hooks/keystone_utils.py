@@ -231,14 +231,6 @@ valid_services = {
 }
 
 
-def ensure_pki_dir_permissions():
-    perms = 0o755
-    # Ensure accessible by unison user and group (for sync).
-    for path in glob.glob("%s/*" % PKI_CERTS_DIR):
-        ensure_permissions(path, user=SSH_USER, group='keystone', perms=perms,
-                           recurse=True)
-
-
 def resource_map():
     """Dynamically generate a map of resources that will be managed for a
     single hook execution.
@@ -702,19 +694,6 @@ def ensure_permissions(path, user=None, group=None, perms=None, recurse=False,
 
     Note that -1 for uid or gid result in no change.
     """
-    if recurse:
-        if not maxdepth:
-            log("Max recursion depth reached - skipping further recursion")
-            return
-
-        paths = glob.glob("%s/*" % (path))
-        if len(paths) > 1:
-            for path in paths:
-                ensure_permissions(path, user=user, group=group, perms=perms,
-                                   recurse=recurse, maxdepth=maxdepth - 1)
-
-            return
-
     if user:
         uid = pwd.getpwnam(user).pw_uid
     else:
@@ -729,6 +708,16 @@ def ensure_permissions(path, user=None, group=None, perms=None, recurse=False,
 
     if perms:
         os.chmod(path, perms)
+
+    if recurse:
+        if not maxdepth:
+            log("Max recursion depth reached - skipping further recursion")
+            return
+
+        paths = glob.glob("%s/*" % (path))
+        for path in paths:
+            ensure_permissions(path, user=user, group=group, perms=perms,
+                               recurse=recurse, maxdepth=maxdepth - 1)
 
 
 def check_peer_actions():
@@ -950,6 +939,12 @@ def is_pki_enabled():
         return True
 
     return False
+
+
+def ensure_pki_dir_permissions():
+    # Ensure accessible by unison user and group (for sync).
+    ensure_permissions(PKI_CERTS_DIR, user=SSH_USER, group='keystone',
+                       perms=0o755, recurse=True)
 
 
 def synchronize_ca(fatal=False):

@@ -203,12 +203,9 @@ class KeystoneContext(context.OSContextGenerator):
                 ctxt['ldap_config_flags'] = flags
 
         enable_pki = config('enable-pki')
-        enable_pkiz = config('enable-pkiz')
         if enable_pki and bool_from_string(enable_pki):
             ctxt['signing'] = True
             ctxt['token_provider'] = 'pki'
-        elif enable_pkiz and bool_from_string(enable_pkiz):
-            ctxt['token_provider'] = 'pkiz'
 
         if 'token_provider' in ctxt:
             log("Configuring PKI token cert paths", level=DEBUG)

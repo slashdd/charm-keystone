@@ -358,10 +358,6 @@ def send_ssl_sync_request():
     if enable_pki and bool_from_string(enable_pki):
         count += 3
 
-    enable_pkiz = config('enable-pkiz')
-    if enable_pkiz and bool_from_string(enable_pkiz):
-        count += 4
-
     if count:
         key = 'ssl-sync-required-%s' % (unit)
         settings = {key: count}

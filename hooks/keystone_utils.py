@@ -933,9 +933,7 @@ def ensure_ssl_cert_master():
 
 def is_pki_enabled():
     enable_pki = config('enable-pki')
-    enable_pkiz = config('enable-pkiz')
-    if (enable_pki and bool_from_string(enable_pki) or
-            enable_pkiz and bool_from_string(enable_pkiz)):
+    if enable_pki and bool_from_string(enable_pki):
         return True
 
     return False

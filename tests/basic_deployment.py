@@ -49,7 +49,12 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
     def _configure_services(self):
         """Configure all of the services."""
         keystone_config = {'admin-password': 'openstack',
-                           'admin-token': 'ubuntutesting'}
+                           'admin-token': 'ubuntutesting',
+                           # NOTE(coreycb): Added the following temporarily to test deploy from source
+                           'openstack-origin-git':
+                           "{'keystone':"
+                           "   {'repository': 'git://git.openstack.org/openstack/keystone.git',"
+                           "    'branch': 'stable/icehouse'}}"}
         mysql_config = {'dataset-size': '50%'}
         cinder_config = {'block-device': 'None'}
         configs = {'keystone': keystone_config,

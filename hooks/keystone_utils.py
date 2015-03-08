@@ -5,6 +5,7 @@ import os
 import uuid
 import urlparse
 import time
+import yaml
 
 from base64 import b64encode
 from collections import OrderedDict
@@ -993,11 +994,11 @@ def send_notifications(data, force=False):
         relation_set(relation_id=rid, relation_settings=_notifications)
 
 
-def git_install(file_name):
-    """Perform setup, and install git repos specified in yaml config file."""
+def git_install(projects):
+    """Perform setup, and install git repos specified in yaml parameter."""
     if git_install_requested():
         git_pre_install()
-        git_clone_and_install(file_name, core_project='keystone')
+        git_clone_and_install(yaml.load(projects), core_project='keystone')
         git_post_install()
 
 

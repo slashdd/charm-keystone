@@ -19,9 +19,12 @@ from charmhelpers.core.hookenv import relation_id as current_relation_id
 from charmhelpers.core.hookenv import (
     is_relation_made,
     relation_ids,
-    relation_get,
+    relation_get as _relation_get,
     local_unit,
-    relation_set,
+    relation_set as _relation_set,
+    leader_get,
+    leader_set,
+    is_leader,
 )
 
 
@@ -52,6 +55,28 @@ def some_hook():
     else:
         print "No peers joind the relation, cannot share key/values :("
 """
+
+
+def relation_set(relation_settings=None, relation_id=None, **kwargs):
+    try:
+        if relation_id and relation_id in relation_ids('cluster'):
+            return leader_set(settings=relation_settings, **kwargs)
+        else:
+            raise NotImplementedError
+    except NotImplementedError:
+        return _relation_set(relation_id=relation_id,
+                             relation_settings=relation_settings,
+                             **kwargs)
+
+
+def relation_get(attribute=None, rid=None, unit=None):
+    try:
+        if rid and rid in relation_ids('cluster'):
+            return leader_get(attribute)
+        else:
+            raise NotImplementedError
+    except NotImplementedError:
+        return _relation_get(attribute=attribute, rid=rid, unit=unit)
 
 
 def peer_retrieve(key, relation_name='cluster'):
@@ -102,6 +127,13 @@ def peer_echo(includes=None):
     This is a requirement to use the peerstorage module - it needs to be called
     from the peer relation's changed hook.
     """
+    try:
+        is_leader()
+    except NotImplementedError:
+        pass
+    else:
+        return  # NOOP if leader-election is supported
+
     rdata = relation_get()
     echo_data = {}
     if includes is None:

@@ -342,6 +342,9 @@ def is_db_initialised():
     return False
 
 
+# NOTE(jamespage): Retry deals with sync issues during one-shot HA deploys.
+#                  mysql might be restarting or suchlike.
+@retry_on_exception(5, base_delay=3, exc_type=subprocess.CalledProcessError)
 def migrate_database():
     """Runs keystone-manage to initialize a new database or migrate existing"""
     log('Migrating the keystone database.', level=INFO)

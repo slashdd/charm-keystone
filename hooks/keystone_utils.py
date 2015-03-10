@@ -230,6 +230,25 @@ valid_services = {
 }
 
 
+def filter_null(settings, null='__null__'):
+    """Replace null values with None in provided settings dict.
+
+    When storing values in the peer relation, it might be necessary at some
+    future point to flush these values. We therefore need to use a real
+    (non-None or empty string) value to represent an unset settings. This value
+    then needs to be converted to None when applying to a non-cluster relation
+    so that the value is actually unset.
+    """
+    filtered = {}
+    for k, v in settings.iteritems():
+        if v == null:
+            filtered[k] = None
+        else:
+            filtered[k] = v
+
+    return filtered
+
+
 def resource_map():
     """Dynamically generate a map of resources that will be managed for a
     single hook execution.
@@ -1294,6 +1313,9 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
     # we return a token, information about our API endpoints, and the generated
     # service credentials
     service_tenant = config('service-tenant')
+
+    # NOTE(dosaboy): we use __null__ to represent settings that are to be
+    # routed to relations via the cluster relation and set to None.
     relation_data = {
         "admin_token": token,
         "service_host": resolve_address(PUBLIC),
@@ -1304,10 +1326,10 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         "service_password": service_password,
         "service_tenant": service_tenant,
         "service_tenant_id": manager.resolve_tenant_id(service_tenant),
-        "https_keystone": "False",
-        "ssl_cert": "",
-        "ssl_key": "",
-        "ca_cert": "",
+        "https_keystone": '__null__',
+        "ssl_cert": '__null__',
+        "ssl_key": '__null__',
+        "ca_cert": '__null__',
         "auth_protocol": protocol,
         "service_protocol": protocol,
     }
@@ -1331,7 +1353,12 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         relation_data['ca_cert'] = b64encode(ca_bundle)
         relation_data['https_keystone'] = 'True'
 
-    peer_store_and_set(relation_id=relation_id, **relation_data)
+    # NOTE(dosaboy): '__null__' settings are for peer relation only so that
+    # settings can flushed so we filter them out for non-peer relation.
+    filtered = filter_null(relation_data)
+    relation_set(relation_id=relation_id, **filtered)
+    for rid in relation_ids('cluster'):
+        relation_set(relation_id=rid, **relation_data)
 
 
 def ensure_valid_service(service):

@@ -277,6 +277,7 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(hooks, 'ensure_ssl_dir')
     @patch.object(hooks, 'is_pki_enabled')
     @patch.object(hooks, 'is_ssl_cert_master')
+    @patch.object(hooks, 'send_ssl_sync_request')
     @patch.object(hooks, 'is_db_initialised')
     @patch.object(hooks, 'is_db_ready')
     @patch.object(hooks, 'peer_units')
@@ -298,6 +299,7 @@ class KeystoneRelationTests(CharmTestCase):
                                               mock_peer_units,
                                               mock_is_db_ready,
                                               mock_is_db_initialised,
+                                              mock_send_ssl_sync_request,
                                               mock_is_ssl_cert_master,
                                               mock_is_pki_enabled,
                                               mock_ensure_ssl_dir,
@@ -385,6 +387,7 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(hooks, 'ensure_ssl_dir')
     @patch.object(hooks, 'is_pki_enabled')
     @patch.object(hooks, 'is_ssl_cert_master')
+    @patch.object(hooks, 'send_ssl_sync_request')
     @patch.object(hooks, 'is_db_initialised')
     @patch.object(hooks, 'is_db_ready')
     @patch.object(hooks, 'peer_units')
@@ -405,6 +408,7 @@ class KeystoneRelationTests(CharmTestCase):
                                                    mock_peer_units,
                                                    mock_is_db_ready,
                                                    mock_is_db_initialised,
+                                                   mock_send_ssl_sync_request,
                                                    mock_is_ssl_cert_master,
                                                    mock_is_pki_enabled,
                                                    mock_ensure_ssl_dir,

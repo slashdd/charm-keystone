@@ -76,6 +76,7 @@ from keystone_utils import (
     ensure_ssl_dir,
     ensure_pki_dir_permissions,
     force_ssl_sync,
+    filter_null,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -164,7 +165,7 @@ def config_changed():
     for rid in relation_ids('identity-admin'):
         admin_relation_changed(rid)
 
-    # Ensure sync request is sent out (needed for upgrade to ssl from non-ssl)
+    # Ensure sync request is sent out (needed for any/all ssl change)
     send_ssl_sync_request()
 
     for r_id in relation_ids('ha'):
@@ -323,6 +324,8 @@ def identity_changed(relation_id=None, remote_unit=None):
         # with the info dies the settings die with it Bug# 1355848
         for rel_id in relation_ids('identity-service'):
             peerdb_settings = peer_retrieve_by_prefix(rel_id)
+            # Ensure the null'd settings are unset in the relation.
+            peerdb_settings = filter_null(peerdb_settings)
             if 'service_password' in peerdb_settings:
                 relation_set(relation_id=rel_id, **peerdb_settings)
 
@@ -358,21 +361,30 @@ def send_ssl_sync_request():
     if enable_pki and bool_from_string(enable_pki):
         count += 3
 
-    if count:
-        key = 'ssl-sync-required-%s' % (unit)
-        settings = {key: count}
-        prev = 0
-        rid = None
-        for rid in relation_ids('cluster'):
-            for unit in related_units(rid):
-                _prev = relation_get(rid=rid, unit=unit, attribute=key) or 0
-                if _prev and _prev > prev:
-                    prev = _prev
+    key = 'ssl-sync-required-%s' % (unit)
+    settings = {key: count}
 
-        if rid and prev < count:
-            clear_ssl_synced_units()
-            log("Setting %s=%s" % (key, count), level=DEBUG)
+    # If all ssl is disabled ensure this is set to 0 so that cluster hook runs
+    # and endpoints are updated.
+    if not count:
+        log("Setting %s=%s" % (key, count), level=DEBUG)
+        for rid in relation_ids('cluster'):
             relation_set(relation_id=rid, relation_settings=settings)
+
+        return
+
+    prev = 0
+    rid = None
+    for rid in relation_ids('cluster'):
+        for unit in related_units(rid):
+            _prev = relation_get(rid=rid, unit=unit, attribute=key) or 0
+            if _prev and _prev > prev:
+                prev = _prev
+
+    if rid and prev < count:
+        clear_ssl_synced_units()
+        log("Setting %s=%s" % (key, count), level=DEBUG)
+        relation_set(relation_id=rid, relation_settings=settings)
 
 
 @hooks.hook('cluster-relation-joined')
@@ -410,9 +422,8 @@ def cluster_changed():
     # NOTE(jamespage) re-echo passwords for peer storage
     echo_whitelist = ['_passwd', 'identity-service:', 'ssl-cert-master',
                       'db-initialised']
-    if echo_whitelist:
-        log("Peer echo whitelist: %s" % (echo_whitelist), level=DEBUG)
-        peer_echo(includes=echo_whitelist)
+    log("Peer echo whitelist: %s" % (echo_whitelist), level=DEBUG)
+    peer_echo(includes=echo_whitelist)
 
     check_peer_actions()
 
@@ -569,7 +580,9 @@ def update_nrpe_config():
     hostname = nrpe.get_nagios_hostname()
     current_unit = nrpe.get_nagios_unit_name()
     nrpe_setup = nrpe.NRPE(hostname=hostname)
+    nrpe.copy_nrpe_checks()
     nrpe.add_init_service_checks(nrpe_setup, services(), current_unit)
+    nrpe.add_haproxy_checks(nrpe_setup, current_unit)
     nrpe_setup.write()
 
 

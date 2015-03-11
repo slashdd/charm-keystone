@@ -869,7 +869,7 @@ def is_ssl_enabled():
         return True
 
     log("SSL/HTTPS is NOT enabled", level=DEBUG)
-    return True
+    return False
 
 
 def get_ssl_cert_master_votes():

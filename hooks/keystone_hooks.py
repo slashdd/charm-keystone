@@ -427,15 +427,17 @@ def cluster_changed():
 
     check_peer_actions()
 
+    if is_pki_enabled():
+        initialise_pki()
+
+    # Figure out if we need to mandate a sync
     units = get_ssl_sync_request_units()
     synced_units = relation_get(attribute='ssl-synced-units',
                                 unit=local_unit())
+    diff = None
     if synced_units:
         synced_units = json.loads(synced_units)
         diff = set(units).symmetric_difference(set(synced_units))
-
-    if is_pki_enabled():
-        initialise_pki()
 
     if units and (not synced_units or diff):
         log("New peers joined and need syncing - %s" %
@@ -448,7 +450,8 @@ def cluster_changed():
         admin_relation_changed(rid)
 
     if not is_elected_leader(CLUSTER_RES) and is_ssl_cert_master():
-        # Sync and let go
+        # Force and sync and trigger a sync master re-election since we are not
+        # leader anymore.
         force_ssl_sync()
     else:
         CONFIGS.write_all()

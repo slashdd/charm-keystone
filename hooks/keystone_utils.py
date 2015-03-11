@@ -1170,9 +1170,9 @@ def force_ssl_sync():
     """Force SSL sync to all peers.
 
     This is useful if we need to relinquish ssl-cert-master status while
-    making sure that the new master has upt-o-date certs.
+    making sure that the new master has up-to-date certs.
     """
-    pass
+    return
 
 
 def ensure_ssl_dir():

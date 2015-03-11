@@ -16,6 +16,32 @@ class TestKeystoneContexts(CharmTestCase):
     def setUp(self):
         super(TestKeystoneContexts, self).setUp(context, TO_PATCH)
 
+    @patch.object(context, 'mkdir')
+    @patch('keystone_utils.get_ca')
+    @patch('keystone_utils.ensure_permissions')
+    @patch('keystone_utils.determine_ports')
+    @patch('keystone_utils.is_ssl_cert_master')
+    @patch('keystone_utils.is_ssl_enabled')
+    @patch.object(context, 'log')
+    def test_apache_ssl_context_ssl_not_master(self,
+                                               mock_log,
+                                               mock_is_ssl_enabled,
+                                               mock_is_ssl_cert_master,
+                                               mock_determine_ports,
+                                               mock_ensure_permissions,
+                                               mock_get_ca,
+                                               mock_mkdir):
+        mock_is_ssl_enabled.return_value = True
+        mock_is_ssl_cert_master.return_value = False
+
+        context.ApacheSSLContext().configure_cert('foo')
+        context.ApacheSSLContext().configure_ca()
+        self.assertTrue(mock_mkdir.called)
+        self.assertTrue(mock_ensure_permissions.called)
+        self.assertFalse(mock_get_ca.called)
+
+    @patch('keystone_utils.is_ssl_cert_master')
+    @patch('keystone_utils.is_ssl_enabled')
     @patch('charmhelpers.contrib.openstack.context.config')
     @patch('charmhelpers.contrib.openstack.context.is_clustered')
     @patch('charmhelpers.contrib.openstack.context.determine_apache_port')
@@ -27,7 +53,11 @@ class TestKeystoneContexts(CharmTestCase):
                                                 mock_determine_api_port,
                                                 mock_determine_apache_port,
                                                 mock_is_clustered,
-                                                mock_config):
+                                                mock_config,
+                                                mock_is_ssl_enabled,
+                                                mock_is_ssl_cert_master):
+        mock_is_ssl_enabled.return_value = True
+        mock_is_ssl_cert_master.return_value = True
         mock_https.return_value = True
         mock_unit_get.return_value = '1.2.3.4'
         mock_determine_api_port.return_value = '12'
@@ -119,3 +149,13 @@ class TestKeystoneContexts(CharmTestCase):
         msg = "Multiple networks configured but net_type" \
               " is None (os-public-network)."
         mock_log.assert_called_with(msg, level="WARNING")
+
+    @patch.object(context, 'config')
+    def test_keystone_logger_context(self, mock_config):
+        ctxt = context.KeystoneLoggingContext()
+
+        mock_config.return_value = None
+        self.assertEqual({}, ctxt())
+
+        mock_config.return_value = 'True'
+        self.assertEqual({'root_level': 'DEBUG'}, ctxt())

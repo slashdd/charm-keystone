@@ -1,17 +1,31 @@
+import hashlib
+import os
+
 from charmhelpers.core.hookenv import config
 
-from charmhelpers.core.host import mkdir, write_file
+from charmhelpers.core.host import (
+    mkdir,
+    write_file,
+    service_restart,
+)
 
 from charmhelpers.contrib.openstack import context
 
 from charmhelpers.contrib.hahelpers.cluster import (
     determine_apache_port,
-    determine_api_port
+    determine_api_port,
+)
+
+from charmhelpers.core.hookenv import (
+    log,
+    INFO,
+)
+
+from charmhelpers.core.strutils import (
+    bool_from_string,
 )
 
 from charmhelpers.contrib.hahelpers.apache import install_ca_cert
-
-import os
 
 CA_CERT_PATH = '/usr/local/share/ca-certificates/keystone_juju_ca_cert.crt'
 
@@ -24,25 +38,88 @@ class ApacheSSLContext(context.ApacheSSLContext):
 
     def __call__(self):
         # late import to work around circular dependency
-        from keystone_utils import determine_ports
+        from keystone_utils import (
+            determine_ports,
+            update_hash_from_path,
+        )
+
+        ssl_paths = [CA_CERT_PATH,
+                     os.path.join('/etc/apache2/ssl/',
+                                  self.service_namespace)]
+
         self.external_ports = determine_ports()
-        return super(ApacheSSLContext, self).__call__()
+        before = hashlib.sha256()
+        for path in ssl_paths:
+            update_hash_from_path(before, path)
+
+        ret = super(ApacheSSLContext, self).__call__()
+
+        after = hashlib.sha256()
+        for path in ssl_paths:
+            update_hash_from_path(after, path)
+
+        # Ensure that apache2 is restarted if these change
+        if before.hexdigest() != after.hexdigest():
+            service_restart('apache2')
+
+        return ret
 
     def configure_cert(self, cn):
-        from keystone_utils import SSH_USER, get_ca
+        from keystone_utils import (
+            SSH_USER,
+            get_ca,
+            ensure_permissions,
+            is_ssl_cert_master,
+            is_ssl_enabled,
+        )
+
+        if not is_ssl_enabled():
+            return
+
+        # Ensure ssl dir exists whether master or not
         ssl_dir = os.path.join('/etc/apache2/ssl/', self.service_namespace)
-        mkdir(path=ssl_dir)
+        perms = 0o755
+        mkdir(path=ssl_dir, owner=SSH_USER, group='keystone', perms=perms)
+        # Ensure accessible by keystone ssh user and group (for sync)
+        ensure_permissions(ssl_dir, user=SSH_USER, group='keystone',
+                           perms=perms)
+
+        if not is_ssl_cert_master():
+            log("Not ssl-cert-master - skipping apache cert config until "
+                "master is elected", level=INFO)
+            return
+
+        log("Creating apache ssl certs in %s" % (ssl_dir), level=INFO)
+
         ca = get_ca(user=SSH_USER)
         cert, key = ca.get_cert_and_key(common_name=cn)
         write_file(path=os.path.join(ssl_dir, 'cert_{}'.format(cn)),
-                   content=cert)
+                   content=cert, owner=SSH_USER, group='keystone', perms=0o644)
         write_file(path=os.path.join(ssl_dir, 'key_{}'.format(cn)),
-                   content=key)
+                   content=key, owner=SSH_USER, group='keystone', perms=0o644)
 
     def configure_ca(self):
-        from keystone_utils import SSH_USER, get_ca
+        from keystone_utils import (
+            SSH_USER,
+            get_ca,
+            ensure_permissions,
+            is_ssl_cert_master,
+            is_ssl_enabled,
+        )
+
+        if not is_ssl_enabled():
+            return
+
+        if not is_ssl_cert_master():
+            log("Not ssl-cert-master - skipping apache ca config until "
+                "master is elected", level=INFO)
+            return
+
         ca = get_ca(user=SSH_USER)
         install_ca_cert(ca.get_ca_bundle())
+        # Ensure accessible by keystone ssh user and group (unison)
+        ensure_permissions(CA_CERT_PATH, user=SSH_USER, group='keystone',
+                           perms=0o0644)
 
     def canonical_names(self):
         addresses = self.get_network_addresses()
@@ -106,8 +183,12 @@ class KeystoneContext(context.OSContextGenerator):
                                                 singlenode_mode=True)
         ctxt['public_port'] = determine_api_port(api_port('keystone-public'),
                                                  singlenode_mode=True)
-        ctxt['debug'] = config('debug') in ['yes', 'true', 'True']
-        ctxt['verbose'] = config('verbose') in ['yes', 'true', 'True']
+
+        debug = config('debug')
+        ctxt['debug'] = debug and bool_from_string(debug)
+        verbose = config('verbose')
+        ctxt['verbose'] = verbose and bool_from_string(verbose)
+
         ctxt['identity_backend'] = config('identity-backend')
         ctxt['assignment_backend'] = config('assignment-backend')
         if config('identity-backend') == 'ldap':
@@ -121,7 +202,8 @@ class KeystoneContext(context.OSContextGenerator):
                 flags = context.config_flags_parser(ldap_flags)
                 ctxt['ldap_config_flags'] = flags
 
-        if config('enable-pki') not in ['false', 'False', 'no', 'No']:
+        enable_pki = config('enable-pki')
+        if enable_pki and bool_from_string(enable_pki):
             ctxt['signing'] = True
 
         # Base endpoint URL's which are used in keystone responses
@@ -133,4 +215,15 @@ class KeystoneContext(context.OSContextGenerator):
         ctxt['admin_endpoint'] = endpoint_url(
             resolve_address(ADMIN),
             api_port('keystone-admin')).rstrip('v2.0')
+        return ctxt
+
+
+class KeystoneLoggingContext(context.OSContextGenerator):
+
+    def __call__(self):
+        ctxt = {}
+        debug = config('debug')
+        if debug and bool_from_string(debug):
+            ctxt['root_level'] = 'DEBUG'
+
         return ctxt

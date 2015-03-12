@@ -138,7 +138,7 @@ APACHE_24_CONF = '/etc/apache2/sites-available/openstack_https_frontend.conf'
 APACHE_SSL_DIR = '/etc/apache2/ssl/keystone'
 SYNC_FLAGS_DIR = '/var/lib/keystone/juju_sync_flags/'
 SYNC_DIR = '/var/lib/keystone/juju_sync/'
-SYNC_ARCHIVE = 'juju-ssl-sync.tar'
+SSL_SYNC_ARCHIVE = os.path.join(SYNC_DIR, 'juju-ssl-sync.tar')
 SSL_DIR = '/var/lib/keystone/juju_ssl/'
 SSL_CA_NAME = 'Ubuntu Cloud'
 CLUSTER_RES = 'grp_ks_vips'
@@ -952,16 +952,12 @@ def ensure_ssl_cert_master():
 def stage_paths_for_sync(paths):
     shutil.rmtree(SYNC_DIR)
     ensure_ssl_dirs()
-    archive = os.path.join(SYNC_DIR, SYNC_ARCHIVE)
-
-    with tarfile.open(archive, 'w') as fd:
+    with tarfile.open(SSL_SYNC_ARCHIVE, 'w') as fd:
         for path in paths:
             fd.add(path)
 
     ensure_permissions(SYNC_DIR, user=SSH_USER, group='keystone',
                        perms=0o755, recurse=True)
-
-    return [SYNC_DIR]
 
 
 def update_certs_if_available(f):
@@ -1022,17 +1018,15 @@ def synchronize_ca(fatal=False):
     create_peer_service_actions('restart', ['apache2'])
     create_peer_actions(['update-ca-certificates'])
 
-    paths_to_sync = stage_paths_for_sync(list(set(paths_to_sync)))
-    cluster_rel_settings = {'ssl-cert-available-updates':
-                            json.dumps(paths_to_sync)}
-
-    paths_to_sync.append(SYNC_FLAGS_DIR)
+    paths_to_sync = list(set(paths_to_sync))
+    stage_paths_for_sync(paths_to_sync)
+    cluster_rel_settings = {'ssl-cert-available-updates': SSL_SYNC_ARCHIVE}
 
     hash1 = hashlib.sha256()
     for path in paths_to_sync:
         update_hash_from_path(hash1, path)
 
-    synced_units = unison_sync(paths_to_sync)
+    synced_units = unison_sync([SSL_SYNC_ARCHIVE, SYNC_FLAGS_DIR])
     if synced_units:
         # Format here needs to match that used when peers request sync
         synced_units = [u.replace('/', '-') for u in synced_units]

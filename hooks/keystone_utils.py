@@ -976,7 +976,7 @@ def update_certs_if_available(f):
             for path in files:
                 ensure_permissions(path, user='keystone', group='keystone',
                                    perms=0o644, recurse=True)
-            os.path.rename(path, "%s.complete" % (path))
+            os.rename(path, "%s.complete" % (path))
         else:
             log("No cert updates available", level=DEBUG)
 

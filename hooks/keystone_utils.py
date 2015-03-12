@@ -966,11 +966,10 @@ def journalize_paths(dirs, journal_ext='sync_journal'):
         src = path.rstrip('/')
         if os.path.isdir(src):
             dst = os.path.join(SYNC_DIR, src.lstrip('/'))
-            shutil.copytree(src, dst)
         else:
             dst = os.path.join(SYNC_DIR, src.lstrip('/'))
-            shutil.copy(src, dst)
 
+        shutil.copytree(src, dst)
         ensure_permissions(SYNC_DIR, user=SSH_USER, group='keystone',
                            perms=0o755, recurse=True)
         journalized.append(dst)

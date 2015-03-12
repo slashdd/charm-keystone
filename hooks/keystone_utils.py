@@ -970,7 +970,7 @@ def update_certs_if_available(f):
         if path and os.path.exists(path):
             log("Updating certs from '%s'" % (path), level=DEBUG)
             with tarfile.open(path) as fd:
-                files = fd.list(verbose=False)
+                files = ["/%s" % m.name for m in fd.getmembers()]
                 fd.extractall(path='/')
 
             for path in files:

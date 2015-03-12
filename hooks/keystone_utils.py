@@ -711,11 +711,12 @@ def ensure_ssl_dirs():
                     (stat.S_IWGRP | stat.S_IXGRP)), base=8)
     ensure_permissions(path, group='keystone', perms=perms)
 
-    path = SYNC_FLAGS_DIR
-    if not os.path.isdir(path):
-        mkdir(path, SSH_USER, 'juju_keystone', 0o775)
-    else:
-        ensure_permissions(path, user=SSH_USER, group='keystone', perms=0o755)
+    for path in [SYNC_FLAGS_DIR, SYNC_DIR]:
+        if not os.path.isdir(path):
+            mkdir(path, SSH_USER, 'juju_keystone', 0o775)
+        else:
+            ensure_permissions(path, user=SSH_USER, group='keystone',
+                               perms=0o755)
 
 
 def ensure_permissions(path, user=None, group=None, perms=None, recurse=False,

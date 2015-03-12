@@ -452,7 +452,7 @@ class KeystoneRelationTests(CharmTestCase):
 
     @patch.object(hooks, 'is_ssl_cert_master')
     @patch.object(hooks, 'peer_units')
-    @patch('keystone_utils.peer_retrieve')
+    @patch('keystone_utils.relation_ids')
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
     @patch('keystone_utils.synchronize_ca')
@@ -462,12 +462,12 @@ class KeystoneRelationTests(CharmTestCase):
     def test_cluster_changed(self, configs, ssh_authorized_peers,
                              check_peer_actions, mock_synchronize_ca,
                              mock_ensure_ssl_cert_master,
-                             mock_log, mock_peer_retrieve, mock_peer_units,
+                             mock_log, mock_relation_ids, mock_peer_units,
                              mock_is_ssl_cert_master):
         mock_is_ssl_cert_master.return_value = False
         mock_peer_units.return_value = ['unit/0']
         mock_ensure_ssl_cert_master.return_value = False
-        mock_peer_retrieve.return_value = None
+        mock_relation_ids.return_value = []
         self.is_elected_leader.return_value = False
         hooks.cluster_changed()
         whitelist = ['_passwd', 'identity-service:', 'ssl-cert-master',

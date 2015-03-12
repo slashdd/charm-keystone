@@ -962,7 +962,11 @@ def stage_paths_for_sync(paths):
 
 def update_certs_if_available(f):
     def _inner_update_certs_if_available(*args, **kwargs):
-        path = peer_retrieve('ssl-cert-available-updates')
+        path = None
+        for rid in relation_ids('cluster'):
+            path = relation_get(attribute='ssl-cert-available-updates',
+                                rid=rid, unit=local_unit())
+
         if path and os.path.exists(path):
             log("Updating certs from '%s'" % (path), level=DEBUG)
             with tarfile.open(path) as fd:

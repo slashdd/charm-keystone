@@ -2,7 +2,6 @@
 import hashlib
 import json
 import os
-import stat
 import sys
 
 from subprocess import check_call
@@ -65,13 +64,14 @@ from keystone_utils import (
     setup_ipv6,
     send_notifications,
     check_peer_actions,
-    CA_CERT_PATH,
-    ensure_permissions,
     get_ssl_sync_request_units,
     is_ssl_cert_master,
     is_db_ready,
     clear_ssl_synced_units,
     is_db_initialised,
+    update_certs_if_available,
+    filter_null,
+    ensure_ssl_dirs,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -87,7 +87,6 @@ from charmhelpers.contrib.peerstorage import (
 )
 from charmhelpers.contrib.openstack.ip import (
     ADMIN,
-    PUBLIC,
     resolve_address,
 )
 from charmhelpers.contrib.network.ip import (
@@ -133,13 +132,7 @@ def config_changed():
 
     check_call(['chmod', '-R', 'g+wrx', '/var/lib/keystone/'])
 
-    # Ensure unison can write to certs dir.
-    # FIXME: need to a better way around this e.g. move cert to it's own dir
-    # and give that unison permissions.
-    path = os.path.dirname(CA_CERT_PATH)
-    perms = int(oct(stat.S_IMODE(os.stat(path).st_mode) |
-                    (stat.S_IWGRP | stat.S_IXGRP)), base=8)
-    ensure_permissions(path, group='keystone', perms=perms)
+    ensure_ssl_dirs()
 
     save_script_rc()
     configure_https()
@@ -154,7 +147,7 @@ def config_changed():
     for rid in relation_ids('identity-admin'):
         admin_relation_changed(rid)
 
-    # Ensure sync request is sent out (needed for upgrade to ssl from non-ssl)
+    # Ensure sync request is sent out (needed for any/all ssl change)
     send_ssl_sync_request()
 
     for r_id in relation_ids('ha'):
@@ -297,6 +290,8 @@ def identity_changed(relation_id=None, remote_unit=None):
         # with the info dies the settings die with it Bug# 1355848
         for rel_id in relation_ids('identity-service'):
             peerdb_settings = peer_retrieve_by_prefix(rel_id)
+            # Ensure the null'd settings are unset in the relation.
+            peerdb_settings = filter_null(peerdb_settings)
             if 'service_password' in peerdb_settings:
                 relation_set(relation_id=rel_id, **peerdb_settings)
         log('Deferring identity_changed() to service leader.')
@@ -323,21 +318,30 @@ def send_ssl_sync_request():
     if bool_from_string(config('https-service-endpoints')):
         count += 2
 
-    if count:
-        key = 'ssl-sync-required-%s' % (unit)
-        settings = {key: count}
-        prev = 0
-        rid = None
-        for rid in relation_ids('cluster'):
-            for unit in related_units(rid):
-                _prev = relation_get(rid=rid, unit=unit, attribute=key) or 0
-                if _prev and _prev > prev:
-                    prev = _prev
+    key = 'ssl-sync-required-%s' % (unit)
+    settings = {key: count}
 
-        if rid and prev < count:
-            clear_ssl_synced_units()
-            log("Setting %s=%s" % (key, count), level=DEBUG)
+    # If all ssl is disabled ensure this is set to 0 so that cluster hook runs
+    # and endpoints are updated.
+    if not count:
+        log("Setting %s=%s" % (key, count), level=DEBUG)
+        for rid in relation_ids('cluster'):
             relation_set(relation_id=rid, relation_settings=settings)
+
+        return
+
+    prev = 0
+    rid = None
+    for rid in relation_ids('cluster'):
+        for unit in related_units(rid):
+            _prev = relation_get(rid=rid, unit=unit, attribute=key) or 0
+            if _prev and _prev > prev:
+                prev = _prev
+
+    if rid and prev < count:
+        clear_ssl_synced_units()
+        log("Setting %s=%s" % (key, count), level=DEBUG)
+        relation_set(relation_id=rid, relation_settings=settings)
 
 
 @hooks.hook('cluster-relation-joined')
@@ -364,55 +368,20 @@ def cluster_joined():
     send_ssl_sync_request()
 
 
-def apply_echo_filters(settings, echo_whitelist):
-    """Filter settings to be peer_echo'ed.
-
-    We may have received some data that we don't want to re-echo so filter
-    out unwanted keys and provide overrides.
-
-    Returns:
-        tuple(filtered list of keys to be echoed, overrides for keys omitted)
-    """
-    filtered = []
-    overrides = {}
-    for key in settings.iterkeys():
-        for ekey in echo_whitelist:
-            if ekey in key:
-                if ekey == 'identity-service:':
-                    auth_host = resolve_address(ADMIN)
-                    service_host = resolve_address(PUBLIC)
-                    if (key.endswith('auth_host') and
-                            settings[key] != auth_host):
-                        overrides[key] = auth_host
-                        continue
-                    elif (key.endswith('service_host') and
-                            settings[key] != service_host):
-                        overrides[key] = service_host
-                        continue
-
-                filtered.append(key)
-
-    return filtered, overrides
-
-
 @hooks.hook('cluster-relation-changed',
             'cluster-relation-departed')
 @restart_on_change(restart_map(), stopstart=True)
+@update_certs_if_available
 def cluster_changed():
     unison.ssh_authorized_peers(user=SSH_USER,
                                 group='juju_keystone',
                                 peer_interface='cluster',
                                 ensure_local_user=True)
-    settings = relation_get()
     # NOTE(jamespage) re-echo passwords for peer storage
-    echo_whitelist, overrides = \
-        apply_echo_filters(settings, ['_passwd', 'identity-service:',
-                                      'ssl-cert-master', 'db-initialised'])
-    log("Peer echo overrides: %s" % (overrides), level=DEBUG)
-    relation_set(**overrides)
-    if echo_whitelist:
-        log("Peer echo whitelist: %s" % (echo_whitelist), level=DEBUG)
-        peer_echo(includes=echo_whitelist)
+    echo_whitelist = ['_passwd', 'identity-service:', 'ssl-cert-master',
+                      'db-initialised', 'ssl-cert-available-updates']
+    log("Peer echo whitelist: %s" % (echo_whitelist), level=DEBUG)
+    peer_echo(includes=echo_whitelist, force=True)
 
     check_peer_actions()
 
@@ -545,6 +514,8 @@ def upgrade_charm():
                                 group='juju_keystone',
                                 peer_interface='cluster',
                                 ensure_local_user=True)
+
+    ensure_ssl_dirs()
 
     CONFIGS.write_all()
     update_nrpe_config()

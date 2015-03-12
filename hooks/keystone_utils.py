@@ -6,6 +6,8 @@ import json
 import os
 import pwd
 import re
+import shutil
+import stat
 import subprocess
 import threading
 import time
@@ -71,7 +73,6 @@ from charmhelpers.core.hookenv import (
     DEBUG,
     INFO,
     WARNING,
-    ERROR,
 )
 
 from charmhelpers.fetch import (
@@ -136,6 +137,7 @@ APACHE_24_CONF = '/etc/apache2/sites-available/openstack_https_frontend.conf'
 
 APACHE_SSL_DIR = '/etc/apache2/ssl/keystone'
 SYNC_FLAGS_DIR = '/var/lib/keystone/juju_sync_flags/'
+SYNC_DIR = '/var/lib/keystone/juju_sync/'
 SSL_DIR = '/var/lib/keystone/juju_ssl/'
 SSL_CA_NAME = 'Ubuntu Cloud'
 CLUSTER_RES = 'grp_ks_vips'
@@ -230,6 +232,25 @@ valid_services = {
 }
 
 
+def filter_null(settings, null='__null__'):
+    """Replace null values with None in provided settings dict.
+
+    When storing values in the peer relation, it might be necessary at some
+    future point to flush these values. We therefore need to use a real
+    (non-None or empty string) value to represent an unset settings. This value
+    then needs to be converted to None when applying to a non-cluster relation
+    so that the value is actually unset.
+    """
+    filtered = {}
+    for k, v in settings.iteritems():
+        if v == null:
+            filtered[k] = None
+        else:
+            filtered[k] = v
+
+    return filtered
+
+
 def resource_map():
     """Dynamically generate a map of resources that will be managed for a
     single hook execution.
@@ -322,26 +343,20 @@ def do_openstack_upgrade(configs):
             return
 
 
-def set_db_initialised():
-    for rid in relation_ids('cluster'):
-        relation_set(relation_settings={'db-initialised': 'True'},
-                     relation_id=rid)
-
-
 def is_db_initialised():
-    for rid in relation_ids('cluster'):
-        units = related_units(rid) + [local_unit()]
-        for unit in units:
-            db_initialised = relation_get(attribute='db-initialised',
-                                          unit=unit, rid=rid)
-            if db_initialised:
-                log("Database is initialised", level=DEBUG)
-                return True
+    if relation_ids('cluster'):
+        inited = peer_retrieve('db-initialised')
+        if inited and bool_from_string(inited):
+            log("Database is initialised", level=DEBUG)
+            return True
 
     log("Database is NOT initialised", level=DEBUG)
     return False
 
 
+# NOTE(jamespage): Retry deals with sync issues during one-shot HA deploys.
+#                  mysql might be restarting or suchlike.
+@retry_on_exception(5, base_delay=3, exc_type=subprocess.CalledProcessError)
 def migrate_database():
     """Runs keystone-manage to initialize a new database or migrate existing"""
     log('Migrating the keystone database.', level=INFO)
@@ -353,7 +368,7 @@ def migrate_database():
     subprocess.check_output(cmd)
     service_start('keystone')
     time.sleep(10)
-    set_db_initialised()
+    peer_store('db-initialised', 'True')
 
 # OLD
 
@@ -687,7 +702,24 @@ def get_service_password(service_username):
     return passwd
 
 
-def ensure_permissions(path, user=None, group=None, perms=None):
+def ensure_ssl_dirs():
+    # Ensure unison can write to certs dir.
+    # FIXME: need to a better way around this e.g. move cert to it's own dir
+    # and give that unison permissions.
+    path = os.path.dirname(CA_CERT_PATH)
+    perms = int(oct(stat.S_IMODE(os.stat(path).st_mode) |
+                    (stat.S_IWGRP | stat.S_IXGRP)), base=8)
+    ensure_permissions(path, group='keystone', perms=perms)
+
+    path = SYNC_FLAGS_DIR
+    if not os.path.isdir(path):
+        mkdir(path, SSH_USER, 'juju_keystone', 0o775)
+    else:
+        ensure_permissions(path, user=SSH_USER, group='keystone', perms=0o755)
+
+
+def ensure_permissions(path, user=None, group=None, perms=None, recurse=False,
+                       maxdepth=50):
     """Set chownand chmod for path
 
     Note that -1 for uid or gid result in no change.
@@ -706,6 +738,16 @@ def ensure_permissions(path, user=None, group=None, perms=None):
 
     if perms:
         os.chmod(path, perms)
+
+    if recurse:
+        if not maxdepth:
+            log("Max recursion depth reached - skipping further recursion")
+            return
+
+        paths = glob.glob("%s/*" % (path))
+        for path in paths:
+            ensure_permissions(path, user=user, group=group, perms=perms,
+                               recurse=recurse, maxdepth=maxdepth - 1)
 
 
 def check_peer_actions():
@@ -850,7 +892,7 @@ def is_ssl_enabled():
         return True
 
     log("SSL/HTTPS is NOT enabled", level=DEBUG)
-    return True
+    return False
 
 
 def get_ssl_cert_master_votes():
@@ -912,6 +954,55 @@ def ensure_ssl_cert_master():
     return True
 
 
+def journalize_paths(dirs, journal_ext='sync_journal'):
+    journalized = []
+
+    # Cleanout
+    shutil.rmtree(SYNC_DIR)
+    ensure_ssl_dirs()
+
+    for path in dirs:
+        src = path.rstrip('/')
+        if os.path.isdir(src):
+            dst = os.path.join(SYNC_DIR, src.lstrip('/'))
+            shutil.copytree(src, dst)
+        else:
+            dst = os.path.join(SYNC_DIR, src.lstrip('/'))
+            shutil.copy(src, dst)
+
+        ensure_permissions(SYNC_DIR, user=SSH_USER, group='keystone',
+                           perms=0o755, recurse=True)
+        journalized.append(dst)
+
+    return journalized
+
+
+def update_certs_from_journaled(paths):
+    for path in glob.glob("%s/*" % SYNC_DIR):
+        src = path
+        dst = path.lstrip(SYNC_DIR.rstrip('/'))
+
+        if os.path.isdir(src):
+            if os.path.exists(dst):
+                shutil.rmtree(dst)
+        else:
+            if os.path.exists(dst):
+                os.unlink(dst)
+
+        os.rename(src, dst)
+
+
+def update_certs_if_available(f):
+    def _inner_update_certs_if_available(*args, **kwargs):
+        paths = peer_retrieve('ssl-cert-available-updates')
+        if paths:
+            update_certs_from_journaled(json.loads(paths))
+
+        return f(*args, **kwargs)
+
+    return _inner_update_certs_if_available
+
+
 def synchronize_ca(fatal=False):
     """Broadcast service credentials to peers.
 
@@ -940,9 +1031,6 @@ def synchronize_ca(fatal=False):
         paths_to_sync.append(APACHE_SSL_DIR)
         paths_to_sync.append(CA_CERT_PATH)
 
-    # Ensure unique
-    paths_to_sync = list(set(paths_to_sync))
-
     if not paths_to_sync:
         log("Nothing to sync - skipping", level=DEBUG)
         return {}
@@ -955,45 +1043,21 @@ def synchronize_ca(fatal=False):
     create_peer_service_actions('restart', ['apache2'])
     create_peer_actions(['update-ca-certificates'])
 
-    cluster_rel_settings = {}
+    # Ensure unique and journaled
+    paths_to_sync = journalize_paths(list(set(paths_to_sync)))
+    cluster_rel_settings = {'ssl-cert-available-updates':
+                            json.dumps(paths_to_sync)}
 
-    retries = 3
-    while True:
-        hash1 = hashlib.sha256()
-        for path in paths_to_sync:
-            update_hash_from_path(hash1, path)
+    hash1 = hashlib.sha256()
+    for path in paths_to_sync:
+        update_hash_from_path(hash1, path)
 
-        try:
-            synced_units = unison_sync(paths_to_sync)
-            if synced_units:
-                # Format here needs to match that used when peers request sync
-                synced_units = [u.replace('/', '-') for u in synced_units]
-                cluster_rel_settings['ssl-synced-units'] = \
-                    json.dumps(synced_units)
-        except:
-            if fatal:
-                raise
-            else:
-                log("Sync failed but fatal=False", level=INFO)
-                return {}
-
-        hash2 = hashlib.sha256()
-        for path in paths_to_sync:
-            update_hash_from_path(hash2, path)
-
-        # Detect whether someone else has synced to this unit while we did our
-        # transfer.
-        if hash1.hexdigest() != hash2.hexdigest():
-            retries -= 1
-            if retries > 0:
-                log("SSL dir contents changed during sync - retrying unison "
-                    "sync %s more times" % (retries), level=WARNING)
-            else:
-                log("SSL dir contents changed during sync - retries failed",
-                    level=ERROR)
-                return {}
-        else:
-            break
+    synced_units = unison_sync(paths_to_sync)
+    if synced_units:
+        # Format here needs to match that used when peers request sync
+        synced_units = [u.replace('/', '-') for u in synced_units]
+        cluster_rel_settings['ssl-synced-units'] = \
+            json.dumps(synced_units)
 
     hash = hash1.hexdigest()
     log("Sending restart-services-trigger=%s to all peers" % (hash),
@@ -1294,6 +1358,9 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
     # we return a token, information about our API endpoints, and the generated
     # service credentials
     service_tenant = config('service-tenant')
+
+    # NOTE(dosaboy): we use __null__ to represent settings that are to be
+    # routed to relations via the cluster relation and set to None.
     relation_data = {
         "admin_token": token,
         "service_host": resolve_address(PUBLIC),
@@ -1304,10 +1371,10 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         "service_password": service_password,
         "service_tenant": service_tenant,
         "service_tenant_id": manager.resolve_tenant_id(service_tenant),
-        "https_keystone": "False",
-        "ssl_cert": "",
-        "ssl_key": "",
-        "ca_cert": "",
+        "https_keystone": '__null__',
+        "ssl_cert": '__null__',
+        "ssl_key": '__null__',
+        "ca_cert": '__null__',
         "auth_protocol": protocol,
         "service_protocol": protocol,
     }
@@ -1331,7 +1398,12 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         relation_data['ca_cert'] = b64encode(ca_bundle)
         relation_data['https_keystone'] = 'True'
 
-    peer_store_and_set(relation_id=relation_id, **relation_data)
+    # NOTE(dosaboy): '__null__' settings are for peer relation only so that
+    # settings can flushed so we filter them out for non-peer relation.
+    filtered = filter_null(relation_data)
+    relation_set(relation_id=relation_id, **filtered)
+    for rid in relation_ids('cluster'):
+        relation_set(relation_id=rid, **relation_data)
 
 
 def ensure_valid_service(service):

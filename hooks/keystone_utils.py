@@ -1026,11 +1026,13 @@ def synchronize_ca(fatal=False):
     cluster_rel_settings = {'ssl-cert-available-updates':
                             json.dumps(paths_to_sync)}
 
+    paths_to_sync.append(SYNC_FLAGS_DIR)
+
     hash1 = hashlib.sha256()
     for path in paths_to_sync:
         update_hash_from_path(hash1, path)
 
-    synced_units = unison_sync([SYNC_DIR, SYNC_FLAGS_DIR])
+    synced_units = unison_sync(paths_to_sync)
     if synced_units:
         # Format here needs to match that used when peers request sync
         synced_units = [u.replace('/', '-') for u in synced_units]

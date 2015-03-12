@@ -7,8 +7,8 @@ import os
 import pwd
 import re
 import shutil
-import stat
 import subprocess
+import tarfile
 import threading
 import time
 import urlparse
@@ -138,6 +138,7 @@ APACHE_24_CONF = '/etc/apache2/sites-available/openstack_https_frontend.conf'
 APACHE_SSL_DIR = '/etc/apache2/ssl/keystone'
 SYNC_FLAGS_DIR = '/var/lib/keystone/juju_sync_flags/'
 SYNC_DIR = '/var/lib/keystone/juju_sync/'
+SYNC_ARCHIVE = 'juju-ssl-sync.tar'
 SSL_DIR = '/var/lib/keystone/juju_ssl/'
 SSL_CA_NAME = 'Ubuntu Cloud'
 CLUSTER_RES = 'grp_ks_vips'
@@ -703,14 +704,7 @@ def get_service_password(service_username):
 
 
 def ensure_ssl_dirs():
-    # Ensure unison can write to certs dir.
-    # FIXME: need to a better way around this e.g. move cert to it's own dir
-    # and give that unison permissions.
-    path = os.path.dirname(CA_CERT_PATH)
-    perms = int(oct(stat.S_IMODE(os.stat(path).st_mode) |
-                    (stat.S_IWGRP | stat.S_IXGRP)), base=8)
-    ensure_permissions(path, group='keystone', perms=perms)
-
+    """Ensure unison has access to these dirs."""
     for path in [SYNC_FLAGS_DIR, SYNC_DIR]:
         if not os.path.isdir(path):
             mkdir(path, SSH_USER, 'juju_keystone', 0o775)
@@ -955,50 +949,33 @@ def ensure_ssl_cert_master():
     return True
 
 
-def journalize_paths(dirs, journal_ext='sync_journal'):
-    journalized = []
-
-    # Cleanout
+def stage_paths_for_sync(paths):
     shutil.rmtree(SYNC_DIR)
     ensure_ssl_dirs()
+    archive = os.path.join(SYNC_DIR, SYNC_ARCHIVE)
 
-    for path in dirs:
-        src = path.rstrip('/')
-        if os.path.isdir(src):
-            dst = os.path.join(SYNC_DIR, src.lstrip('/'))
-            shutil.copytree(src, dst)
-        else:
-            dst = os.path.join(SYNC_DIR, src.lstrip('/'))
-            shutil.copytree(os.path.dirname(src), dst)
-            shutil.copy(src, dst)
-        
-        ensure_permissions(SYNC_DIR, user=SSH_USER, group='keystone',
-                           perms=0o755, recurse=True)
-        journalized.append(dst)
+    with tarfile.open(archive, 'w') as fd:
+        for path in paths:
+            fd.add(path)
 
-    return journalized
+    ensure_permissions(SYNC_DIR, user=SSH_USER, group='keystone',
+                       perms=0o755, recurse=True)
 
-
-def update_certs_from_journaled(paths):
-    for path in glob.glob("%s/*" % SYNC_DIR):
-        src = path
-        dst = path.lstrip(SYNC_DIR.rstrip('/'))
-
-        if os.path.isdir(src):
-            if os.path.exists(dst):
-                shutil.rmtree(dst)
-        else:
-            if os.path.exists(dst):
-                os.unlink(dst)
-
-        os.rename(src, dst)
+    return SYNC_DIR
 
 
 def update_certs_if_available(f):
     def _inner_update_certs_if_available(*args, **kwargs):
-        paths = peer_retrieve('ssl-cert-available-updates')
-        if paths:
-            update_certs_from_journaled(json.loads(paths))
+        path = peer_retrieve('ssl-cert-available-updates')
+        if path and os.path.exists(path):
+            log("Updating certs from '%s'" % (path), level=DEBUG)
+            with tarfile.open(path) as fd:
+                files = fd.list(versbose=False)
+                fd.extractall(path='/')
+
+            for path in files:
+                ensure_permissions(path, user='keystone', group='keystone',
+                                   perms=0o644, recurse=True)
 
         return f(*args, **kwargs)
 
@@ -1018,7 +995,7 @@ def synchronize_ca(fatal=False):
 
     Returns a dictionary of settings to be set on the cluster relation.
     """
-    paths_to_sync = [SYNC_FLAGS_DIR]
+    paths_to_sync = []
 
     if bool_from_string(config('https-service-endpoints')):
         log("Syncing all endpoint certs since https-service-endpoints=True",
@@ -1045,8 +1022,7 @@ def synchronize_ca(fatal=False):
     create_peer_service_actions('restart', ['apache2'])
     create_peer_actions(['update-ca-certificates'])
 
-    # Ensure unique and journaled
-    paths_to_sync = journalize_paths(list(set(paths_to_sync)))
+    paths_to_sync = stage_paths_for_sync(list(set(paths_to_sync)))
     cluster_rel_settings = {'ssl-cert-available-updates':
                             json.dumps(paths_to_sync)}
 
@@ -1054,7 +1030,7 @@ def synchronize_ca(fatal=False):
     for path in paths_to_sync:
         update_hash_from_path(hash1, path)
 
-    synced_units = unison_sync(paths_to_sync)
+    synced_units = unison_sync([SYNC_DIR, SYNC_FLAGS_DIR])
     if synced_units:
         # Format here needs to match that used when peers request sync
         synced_units = [u.replace('/', '-') for u in synced_units]

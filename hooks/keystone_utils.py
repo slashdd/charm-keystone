@@ -961,7 +961,7 @@ def stage_paths_for_sync(paths):
     ensure_permissions(SYNC_DIR, user=SSH_USER, group='keystone',
                        perms=0o755, recurse=True)
 
-    return SYNC_DIR
+    return [SYNC_DIR]
 
 
 def update_certs_if_available(f):

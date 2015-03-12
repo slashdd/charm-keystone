@@ -976,6 +976,9 @@ def update_certs_if_available(f):
             for path in files:
                 ensure_permissions(path, user='keystone', group='keystone',
                                    perms=0o644, recurse=True)
+            os.path.rename(path, "%s.complete" % (path))
+        else:
+            log("No cert updates available", level=DEBUG)
 
         return f(*args, **kwargs)
 
@@ -1024,11 +1027,13 @@ def synchronize_ca(fatal=False):
 
     paths_to_sync = list(set(paths_to_sync))
     stage_paths_for_sync(paths_to_sync)
-    cluster_rel_settings = {'ssl-cert-available-updates': SSL_SYNC_ARCHIVE}
 
     hash1 = hashlib.sha256()
     for path in paths_to_sync:
         update_hash_from_path(hash1, path)
+
+    cluster_rel_settings = {'ssl-cert-available-updates': SSL_SYNC_ARCHIVE,
+                            'sync-hash': hash1.hexdigest()}
 
     synced_units = unison_sync([SSL_SYNC_ARCHIVE, SYNC_FLAGS_DIR])
     if synced_units:
@@ -1037,10 +1042,10 @@ def synchronize_ca(fatal=False):
         cluster_rel_settings['ssl-synced-units'] = \
             json.dumps(synced_units)
 
-    hash = hash1.hexdigest()
-    log("Sending restart-services-trigger=%s to all peers" % (hash),
+    trigger = str(uuid.uuid4())
+    log("Sending restart-services-trigger=%s to all peers" % (trigger),
         level=DEBUG)
-    cluster_rel_settings['restart-services-trigger'] = hash
+    cluster_rel_settings['restart-services-trigger'] = trigger
 
     log("Sync complete", level=DEBUG)
     return cluster_rel_settings

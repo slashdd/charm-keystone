@@ -406,6 +406,14 @@ def cluster_changed():
         CONFIGS.write_all()
 
 
+@hooks.hook('leader-settings-changed')
+def leader_settings_changed():
+    log('Firing identity_changed hook for all related services.')
+    for rid in relation_ids('identity-service'):
+            for unit in related_units(rid):
+                identity_changed(relation_id=rid, remote_unit=unit)
+
+
 @hooks.hook('ha-relation-joined')
 def ha_joined(relation_id=None):
     cluster_config = get_hacluster_config()

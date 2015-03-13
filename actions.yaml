@@ -1,0 +1,2 @@
+git-reinstall:
+  description: Reinstall openstack-origin-git repos and restart services

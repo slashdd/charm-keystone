@@ -2,6 +2,7 @@ from mock import patch, call, MagicMock, Mock
 from test_utils import CharmTestCase
 import os
 import manager
+import yaml
 
 os.environ['JUJU_UNIT_NAME'] = 'keystone'
 with patch('charmhelpers.core.hookenv.config') as config:
@@ -112,12 +113,18 @@ class TestKeystoneUtils(CharmTestCase):
     def test_determine_packages(self, _config):
         _config.return_value = "None"
         result = utils.determine_packages()
-        ex = utils.BASE_PACKAGES + ['keystone']
+        ex = utils.BASE_PACKAGES + ['keystone', 'python-keystoneclient']
         self.assertEquals(set(ex), set(result))
 
     @patch('charmhelpers.contrib.openstack.utils.config')
     def test_determine_packages_git(self, _config):
-        _config.return_value = "config/git-juno-minimal.yaml"
+        openstack_origin_git = {
+            'keystone': {
+                'repository': 'git://git.openstack.org/openstack/keystone.git',
+                'branch': 'stable/icehouse'
+            }
+        }
+        _config.return_value = yaml.dump(openstack_origin_git)
         result = utils.determine_packages()
         ex = utils.BASE_PACKAGES + ['keystone'] + utils.BASE_GIT_PACKAGES
         for p in utils.GIT_PACKAGE_BLACKLIST:
@@ -546,11 +553,17 @@ class TestKeystoneUtils(CharmTestCase):
     @patch.object(utils, 'git_pre_install')
     def test_git_install(self, git_pre, git_post, git_clone_and_install,
                          git_requested):
-        file_name = 'config/git-tip-minimal.yaml'
+        openstack_origin_git = {
+            'keystone': {
+                'repository': 'git://git.openstack.org/openstack/keystone.git',
+                'branch': 'stable/icehouse'
+            }
+        }
+        git_yaml = yaml.dump(openstack_origin_git)
         git_requested.return_value = True
-        utils.git_install(file_name)
+        utils.git_install(git_yaml)
         self.assertTrue(git_pre.called)
-        git_clone_and_install.assert_called_with(file_name,
+        git_clone_and_install.assert_called_with(openstack_origin_git,
                                                  core_project='keystone')
         self.assertTrue(git_post.called)
 
@@ -581,18 +594,16 @@ class TestKeystoneUtils(CharmTestCase):
                                       '', owner='keystone', group='keystone',
                                       perms=0600)
 
-    @patch.object(utils, 'service_start')
+    @patch.object(utils, 'service_restart')
     @patch.object(utils, 'render')
     @patch('shutil.copyfile')
-    def test_git_post_install(self, copyfile, render, service_start):
+    def test_git_post_install(self, copyfile, render, service_restart):
         utils.git_post_install()
         expected = [
             call('/mnt/openstack-git/keystone.git/etc/keystone-paste.ini',
                  '/etc/keystone/keystone-paste.ini'),
             call('/mnt/openstack-git/keystone.git/etc/policy.json',
                  '/etc/keystone/policy.json'),
-            call('/mnt/openstack-git/keystone.git/etc/keystone.conf.sample',
-                 '/etc/keystone/keystone.conf'),
         ]
         copyfile.assert_has_calls(expected, any_order=True)
         keystone_context = {
@@ -610,4 +621,4 @@ class TestKeystoneUtils(CharmTestCase):
                  keystone_context, perms=0o644),
         ]
         self.assertEquals(render.call_args_list, expected)
-        service_start.assert_called_with('keystone')
+        service_restart.assert_called_with('keystone')

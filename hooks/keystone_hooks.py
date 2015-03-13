@@ -114,8 +114,7 @@ def install():
     apt_update()
     apt_install(determine_packages(), fatal=True)
 
-    # NOTE(coreycb): This is temporary for sstack proxy, unless we decide
-    # we need to code proxy support into the charms.
+    # NOTE(coreycb): This is temporary until bug #1431286 is fixed.
     os.environ["http_proxy"] = "http://squid.internal:3128"
     os.environ["https_proxy"] = "https://squid.internal:3128"
 
@@ -169,12 +168,6 @@ def config_changed():
 
     for r_id in relation_ids('ha'):
         ha_joined(relation_id=r_id)
-
-
-#TODO(coreycb): For deploy from git support, need to implement action-set
-#               and action-get to trigger re-install of git-installed
-#               services.  IIUC they'd be triggered via:
-#               juju do <action> <parameters>
 
 
 @hooks.hook('shared-db-relation-joined')

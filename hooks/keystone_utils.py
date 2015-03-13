@@ -47,11 +47,6 @@ from charmhelpers.contrib.openstack.utils import (
     os_release,
     save_script_rc as _save_script_rc)
 
-from charmhelpers.core.host import (
-    mkdir,
-    write_file,
-)
-
 from charmhelpers.core.strutils import (
     bool_from_string,
 )
@@ -331,6 +326,7 @@ def determine_packages():
     if git_install_requested():
         packages.extend(BASE_GIT_PACKAGES)
         # don't include packages that will be installed from git
+        packages = list(set(packages))
         for p in GIT_PACKAGE_BLACKLIST:
             packages.remove(p)
 
@@ -903,7 +899,7 @@ def is_ssl_enabled():
         return True
 
     log("SSL/HTTPS is NOT enabled", level=DEBUG)
-    return True
+    return False
 
 
 def get_ssl_cert_master_votes():
@@ -1552,7 +1548,7 @@ def git_install(projects):
 
 
 def git_pre_install():
-    """Perform pre keystone installation setup."""
+    """Perform keystone pre-install setup."""
     dirs = [
         '/var/lib/keystone',
         '/var/lib/keystone/cache',
@@ -1576,13 +1572,10 @@ def git_pre_install():
 
 
 def git_post_install():
-    """Perform post keystone installation setup."""
+    """Perform keystone post-install setup."""
+    # NOTE(coreycb): Should the mount point be a config option?
     src_etc = os.path.join(charm_dir(), '/mnt/openstack-git/keystone.git/etc/')
     configs = {
-        'keystone': {
-            'src': os.path.join(src_etc, 'keystone.conf.sample'),
-            'dest': '/etc/keystone/keystone.conf',
-        },
         'policy': {
             'src': os.path.join(src_etc, 'policy.json'),
             'dest': '/etc/keystone/policy.json',
@@ -1610,4 +1603,4 @@ def git_post_install():
     render('upstart/keystone.upstart', '/etc/init/keystone.conf',
            keystone_context, perms=0o644)
 
-    service_start('keystone')
+    service_restart('keystone')

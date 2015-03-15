@@ -26,6 +26,6 @@ sync: bin/charm_helpers_sync.py
 	@$(PYTHON) bin/charm_helpers_sync.py -c charm-helpers-hooks.yaml
 	@$(PYTHON) bin/charm_helpers_sync.py -c charm-helpers-tests.yaml
 
-publish: lint test
+publish: lint unit_test
 	bzr push lp:charms/keystone
 	bzr push lp:charms/trusty/keystone

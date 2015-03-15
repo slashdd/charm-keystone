@@ -70,6 +70,10 @@ from keystone_utils import (
     clear_ssl_synced_units,
     is_db_initialised,
     update_certs_if_available,
+    is_pki_enabled,
+    ensure_ssl_dir,
+    ensure_pki_dir_permissions,
+    force_ssl_sync,
     filter_null,
     ensure_ssl_dirs,
 )
@@ -114,7 +118,7 @@ def install():
 
 @hooks.hook('config-changed')
 @restart_on_change(restart_map())
-@synchronize_ca_if_changed()
+@synchronize_ca_if_changed(fatal=True)
 def config_changed():
     if config('prefer-ipv6'):
         setup_ipv6()
@@ -130,18 +134,25 @@ def config_changed():
     if openstack_upgrade_available('keystone'):
         do_openstack_upgrade(configs=CONFIGS)
 
+    # Ensure ssl dir exists and is unison-accessible
+    ensure_ssl_dir()
+
     check_call(['chmod', '-R', 'g+wrx', '/var/lib/keystone/'])
 
     ensure_ssl_dirs()
 
     save_script_rc()
     configure_https()
+
     update_nrpe_config()
     CONFIGS.write_all()
 
+    if is_pki_enabled():
+        initialise_pki()
+
     # Update relations since SSL may have been configured. If we have peer
     # units we can rely on the sync to do this in cluster relation.
-    if is_elected_leader(CLUSTER_RES) and not peer_units():
+    if not peer_units():
         update_all_identity_relation_units()
 
     for rid in relation_ids('identity-admin'):
@@ -152,6 +163,22 @@ def config_changed():
 
     for r_id in relation_ids('ha'):
         ha_joined(relation_id=r_id)
+
+
+@synchronize_ca_if_changed(fatal=True)
+def initialise_pki():
+    """Create certs and keys required for PKI token signing.
+
+    NOTE: keystone.conf [signing] section must be up-to-date prior to
+          executing this.
+    """
+    if is_ssl_cert_master():
+        log("Ensuring PKI token certs created", level=DEBUG)
+        cmd = ['keystone-manage', 'pki_setup', '--keystone-user', 'keystone',
+               '--keystone-group', 'keystone']
+        check_call(cmd)
+
+    ensure_pki_dir_permissions()
 
 
 @hooks.hook('shared-db-relation-joined')
@@ -294,6 +321,7 @@ def identity_changed(relation_id=None, remote_unit=None):
             peerdb_settings = filter_null(peerdb_settings)
             if 'service_password' in peerdb_settings:
                 relation_set(relation_id=rel_id, **peerdb_settings)
+
         log('Deferring identity_changed() to service leader.')
 
     if notifications:
@@ -312,11 +340,19 @@ def send_ssl_sync_request():
     """
     unit = local_unit().replace('/', '-')
     count = 0
-    if bool_from_string(config('use-https')):
+
+    use_https = config('use-https')
+    if use_https and bool_from_string(use_https):
         count += 1
 
-    if bool_from_string(config('https-service-endpoints')):
+    https_service_endpoints = config('https-service-endpoints')
+    if (https_service_endpoints and
+            bool_from_string(https_service_endpoints)):
         count += 2
+
+    enable_pki = config('enable-pki')
+    if enable_pki and bool_from_string(enable_pki):
+        count += 3
 
     key = 'ssl-sync-required-%s' % (unit)
     settings = {key: count}
@@ -385,23 +421,32 @@ def cluster_changed():
 
     check_peer_actions()
 
-    if is_elected_leader(CLUSTER_RES) or is_ssl_cert_master():
-        units = get_ssl_sync_request_units()
-        synced_units = relation_get(attribute='ssl-synced-units',
-                                    unit=local_unit())
-        if synced_units:
-            synced_units = json.loads(synced_units)
-            diff = set(units).symmetric_difference(set(synced_units))
+    if is_pki_enabled():
+        initialise_pki()
 
-        if units and (not synced_units or diff):
-            log("New peers joined and need syncing - %s" %
-                (', '.join(units)), level=DEBUG)
-            update_all_identity_relation_units_force_sync()
-        else:
-            update_all_identity_relation_units()
+    # Figure out if we need to mandate a sync
+    units = get_ssl_sync_request_units()
+    synced_units = relation_get(attribute='ssl-synced-units',
+                                unit=local_unit())
+    diff = None
+    if synced_units:
+        synced_units = json.loads(synced_units)
+        diff = set(units).symmetric_difference(set(synced_units))
 
-        for rid in relation_ids('identity-admin'):
-            admin_relation_changed(rid)
+    if units and (not synced_units or diff):
+        log("New peers joined and need syncing - %s" %
+            (', '.join(units)), level=DEBUG)
+        update_all_identity_relation_units_force_sync()
+    else:
+        update_all_identity_relation_units()
+
+    for rid in relation_ids('identity-admin'):
+        admin_relation_changed(rid)
+
+    if not is_elected_leader(CLUSTER_RES) and is_ssl_cert_master():
+        # Force and sync and trigger a sync master re-election since we are not
+        # leader anymore.
+        force_ssl_sync()
     else:
         CONFIGS.write_all()
 

@@ -1020,8 +1020,7 @@ def synchronize_ca(fatal=False):
     for action, services in set(peer_service_actions):
         create_peer_service_actions(action, services)
 
-    for action in set(peer_actions):
-        create_peer_actions(action)
+    create_peer_actions(peer_actions)
 
     cluster_rel_settings = {}
 

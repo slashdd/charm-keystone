@@ -44,6 +44,7 @@ from charmhelpers.contrib.openstack.utils import (
     get_os_codename_install_source,
     git_install_requested,
     git_clone_and_install,
+    git_src_dir,
     os_release,
     save_script_rc as _save_script_rc)
 
@@ -1539,12 +1540,12 @@ def is_db_ready(use_current_context=False, db_rel=None):
     return not rel_has_units
 
 
-def git_install(projects):
+def git_install(projects_yaml):
     """Perform setup, and install git repos specified in yaml parameter."""
     if git_install_requested():
         git_pre_install()
-        git_clone_and_install(yaml.load(projects), core_project='keystone')
-        git_post_install()
+        git_clone_and_install(projects_yaml, core_project='keystone')
+        git_post_install(projects_yaml)
 
 
 def git_pre_install():
@@ -1571,10 +1572,9 @@ def git_pre_install():
         write_file(l, '', owner='keystone', group='keystone', perms=0600)
 
 
-def git_post_install():
+def git_post_install(projects_yaml):
     """Perform keystone post-install setup."""
-    # NOTE(coreycb): Should the mount point be a config option?
-    src_etc = os.path.join(charm_dir(), '/mnt/openstack-git/keystone.git/etc/')
+    src_etc = os.path.join(git_src_dir(projects_yaml, 'keystone'), 'etc')
     configs = {
         'policy': {
             'src': os.path.join(src_etc, 'policy.json'),

@@ -53,15 +53,21 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         keystone_config = {'admin-password': 'openstack',
                            'admin-token': 'ubuntutesting'}
         if self.git:
+            branch = 'stable/' + self._get_openstack_release_string()
             openstack_origin_git = {
-                'keystone': {
-                    'repository': 'git://git.openstack.org/openstack/keystone.git',
-                    'branch': 'stable/icehouse'
-                },
-                'requirements': {
+                'repositories': [
+                  {
+                    'name': 'requirements',
                     'repository': 'git://git.openstack.org/openstack/requirements.git',
-                    'branch': 'master'
-                },
+                    'branch': branch
+                  },
+                  {
+                    'name': 'keystone',
+                    'repository': 'git://git.openstack.org/openstack/keystone.git',
+                    'branch': branch
+                  },
+                ],
+                'directory': '/mnt/openstack-git',
             }
             keystone_config['openstack-origin-git'] = yaml.dump(openstack_origin_git)
 
@@ -347,3 +353,6 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         if ret:
             message = "keystone config error: {}".format(ret)
             amulet.raise_status(amulet.FAIL, msg=message)
+
+    def test_force_fail(self):
+        amulet.raise_status(amulet.FAIL, msg="Forced failure!")

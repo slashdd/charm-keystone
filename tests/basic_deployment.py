@@ -353,6 +353,3 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         if ret:
             message = "keystone config error: {}".format(ret)
             amulet.raise_status(amulet.FAIL, msg=message)
-
-    def test_force_fail(self):
-        amulet.raise_status(amulet.FAIL, msg="Forced failure!")

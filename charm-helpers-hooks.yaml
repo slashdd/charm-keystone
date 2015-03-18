@@ -1,5 +1,4 @@
-#branch: lp:charm-helpers
-branch: /home/ubuntu/src/charm-helpers
+branch: lp:charm-helpers
 destination: hooks/charmhelpers
 include:
     - core

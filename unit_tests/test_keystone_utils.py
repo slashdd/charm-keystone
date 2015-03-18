@@ -54,6 +54,15 @@ TO_PATCH = [
     'resolve_address',
 ]
 
+openstack_origin_git = \
+    """repositories:
+         - {name: requirements,
+            repository: 'git://git.openstack.org/openstack/requirements',
+            branch: stable/juno}
+         - {name: keystone,
+            repository: 'git://git.openstack.org/openstack/keystone',
+            branch: stable/juno}"""
+
 
 class TestKeystoneUtils(CharmTestCase):
 
@@ -118,13 +127,7 @@ class TestKeystoneUtils(CharmTestCase):
 
     @patch('charmhelpers.contrib.openstack.utils.config')
     def test_determine_packages_git(self, _config):
-        openstack_origin_git = {
-            'keystone': {
-                'repository': 'git://git.openstack.org/openstack/keystone.git',
-                'branch': 'stable/icehouse'
-            }
-        }
-        _config.return_value = yaml.dump(openstack_origin_git)
+        _config.return_value = openstack_origin_git
         result = utils.determine_packages()
         ex = utils.BASE_PACKAGES + ['keystone'] + utils.BASE_GIT_PACKAGES
         for p in utils.GIT_PACKAGE_BLACKLIST:
@@ -557,15 +560,9 @@ class TestKeystoneUtils(CharmTestCase):
     @patch.object(utils, 'git_pre_install')
     def test_git_install(self, git_pre, git_post, git_clone_and_install,
                          git_requested):
-        openstack_origin_git = {
-            'keystone': {
-                'repository': 'git://git.openstack.org/openstack/keystone.git',
-                'branch': 'stable/icehouse'
-            }
-        }
-        git_yaml = yaml.dump(openstack_origin_git)
+        projects_yaml = openstack_origin_git
         git_requested.return_value = True
-        utils.git_install(git_yaml)
+        utils.git_install(projects_yaml)
         self.assertTrue(git_pre.called)
         git_clone_and_install.assert_called_with(openstack_origin_git,
                                                  core_project='keystone')
@@ -598,15 +595,20 @@ class TestKeystoneUtils(CharmTestCase):
                                       '', owner='keystone', group='keystone',
                                       perms=0600)
 
+    @patch.object(utils, 'git_src_dir')
     @patch.object(utils, 'service_restart')
     @patch.object(utils, 'render')
+    @patch('os.path.join')
     @patch('shutil.copyfile')
-    def test_git_post_install(self, copyfile, render, service_restart):
-        utils.git_post_install()
+    def test_git_post_install(self, copyfile, join, render, service_restart,
+                              git_src_dir):
+        projects_yaml = openstack_origin_git
+        join.return_value = 'joined-string'
+        utils.git_post_install(projects_yaml)
         expected = [
-            call('/mnt/openstack-git/keystone.git/etc/keystone-paste.ini',
+            call('joined-string',
                  '/etc/keystone/keystone-paste.ini'),
-            call('/mnt/openstack-git/keystone.git/etc/policy.json',
+            call('joined-string',
                  '/etc/keystone/policy.json'),
         ]
         copyfile.assert_has_calls(expected, any_order=True)
@@ -621,8 +623,8 @@ class TestKeystoneUtils(CharmTestCase):
         expected = [
             call('logging.conf', '/etc/keystone/logging.conf', {},
                  perms=0o644),
-            call('upstart/keystone.upstart', '/etc/init/keystone.conf',
-                 keystone_context, perms=0o644),
+            call('git.upstart', '/etc/init/keystone.conf',
+                 keystone_context, perms=0o644, templates_dir='joined-string'),
         ]
         self.assertEquals(render.call_args_list, expected)
         service_restart.assert_called_with('keystone')

@@ -143,10 +143,7 @@ def config_changed():
 
     if git_install_requested():
         if config_value_changed('openstack-origin-git'):
-            log("opentack-origin-git changed!")
             git_install(config('openstack-origin-git'))
-        else:
-            log("opentack-origin-git DID NOT change!")
     else:
         if openstack_upgrade_available('keystone'):
             do_openstack_upgrade(configs=CONFIGS)

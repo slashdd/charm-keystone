@@ -1600,7 +1600,9 @@ def git_post_install(projects_yaml):
         'executable_name': '/usr/local/bin/keystone-all',
     }
 
-    render('upstart/keystone.upstart', '/etc/init/keystone.conf',
-           keystone_context, perms=0o644)
+    templates_dir = os.path.join(charm_dir(),
+           'hooks/charmhelpers/contrib/openstack/templates')
+    render('git.upstart', '/etc/init/keystone.conf', keystone_context,
+           perms=0o644, templates_dir=templates_dir)
 
     service_restart('keystone')

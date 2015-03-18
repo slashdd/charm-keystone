@@ -340,7 +340,7 @@ def config_value_changed(option):
     Determine if config value changed since last call to this function.
     """
     hook_data = unitdata.HookData()
-    with hook_data:
+    with hook_data():
         db = unitdata.kv()
         current = hookenv.execution_environment()['conf'][option]
         saved = db.get(option)

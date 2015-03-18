@@ -1,7 +1,7 @@
 import hashlib
 import os
 
-from charmhelpers.core.hookenv import config
+from base64 import b64decode
 
 from charmhelpers.core.host import (
     mkdir,
@@ -17,6 +17,7 @@ from charmhelpers.contrib.hahelpers.cluster import (
 )
 
 from charmhelpers.core.hookenv import (
+    config,
     log,
     DEBUG,
     INFO,
@@ -29,6 +30,13 @@ from charmhelpers.core.strutils import (
 from charmhelpers.contrib.hahelpers.apache import install_ca_cert
 
 CA_CERT_PATH = '/usr/local/share/ca-certificates/keystone_juju_ca_cert.crt'
+
+
+def is_cert_provided_in_config():
+    ca = config('ssl_ca')
+    cert = config('ssl_cert')
+    key = config('ssl_key')
+    return bool(ca and cert and key)
 
 
 class ApacheSSLContext(context.ApacheSSLContext):
@@ -71,11 +79,7 @@ class ApacheSSLContext(context.ApacheSSLContext):
             get_ca,
             ensure_permissions,
             is_ssl_cert_master,
-            is_ssl_enabled,
         )
-
-        if not is_ssl_enabled():
-            return
 
         # Ensure ssl dir exists whether master or not
         ssl_dir = os.path.join('/etc/apache2/ssl/', self.service_namespace)
@@ -85,15 +89,23 @@ class ApacheSSLContext(context.ApacheSSLContext):
         ensure_permissions(ssl_dir, user=SSH_USER, group='keystone',
                            perms=perms)
 
-        if not is_ssl_cert_master():
+        if not is_cert_provided_in_config() and not is_ssl_cert_master():
             log("Not ssl-cert-master - skipping apache cert config until "
                 "master is elected", level=INFO)
             return
 
         log("Creating apache ssl certs in %s" % (ssl_dir), level=INFO)
 
-        ca = get_ca(user=SSH_USER)
-        cert, key = ca.get_cert_and_key(common_name=cn)
+        cert = config('ssl_cert')
+        key = config('ssl_key')
+
+        if not (cert and key):
+            ca = get_ca(user=SSH_USER)
+            cert, key = ca.get_cert_and_key(common_name=cn)
+        else:
+            cert = b64decode(cert)
+            key = b64decode(key)
+
         write_file(path=os.path.join(ssl_dir, 'cert_{}'.format(cn)),
                    content=cert, owner=SSH_USER, group='keystone', perms=0o644)
         write_file(path=os.path.join(ssl_dir, 'key_{}'.format(cn)),
@@ -105,20 +117,22 @@ class ApacheSSLContext(context.ApacheSSLContext):
             get_ca,
             ensure_permissions,
             is_ssl_cert_master,
-            is_ssl_enabled,
         )
 
-        if not is_ssl_enabled():
-            return
-
-        if not is_ssl_cert_master():
+        if not is_cert_provided_in_config() and not is_ssl_cert_master():
             log("Not ssl-cert-master - skipping apache ca config until "
                 "master is elected", level=INFO)
             return
 
-        ca = get_ca(user=SSH_USER)
-        install_ca_cert(ca.get_ca_bundle())
+        ca_cert = config('ssl_ca')
+        if ca_cert is None:
+            ca = get_ca(user=SSH_USER)
+            ca_cert = ca.get_ca_bundle()
+        else:
+            ca_cert = b64decode(ca_cert)
+
         # Ensure accessible by keystone ssh user and group (unison)
+        install_ca_cert(ca_cert)
         ensure_permissions(CA_CERT_PATH, user=SSH_USER, group='keystone',
                            perms=0o0644)
 

@@ -30,9 +30,9 @@ options:
     default: None
     type: string
     description: |
-      Specifies a YAML-formatted two-dimensional array listing the git
+      Specifies a YAML-formatted dictionary listing the git
       repositories and branches from which to install OpenStack and
-      dependencies.
+      its dependencies.
 
       Note that the installed config files will be determined based on
       the OpenStack release of the openstack-origin option.

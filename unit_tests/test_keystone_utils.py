@@ -2,7 +2,6 @@ from mock import patch, call, MagicMock, Mock
 from test_utils import CharmTestCase
 import os
 import manager
-import yaml
 
 os.environ['JUJU_UNIT_NAME'] = 'keystone'
 with patch('charmhelpers.core.hookenv.config') as config:

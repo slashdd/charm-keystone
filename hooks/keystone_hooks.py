@@ -42,6 +42,7 @@ from charmhelpers.fetch import (
 )
 
 from charmhelpers.contrib.openstack.utils import (
+    config_value_changed,
     configure_installation_source,
     git_install_requested,
     openstack_upgrade_available,
@@ -136,7 +137,13 @@ def config_changed():
     if not os.path.isdir(homedir):
         mkdir(homedir, SSH_USER, 'juju_keystone', 0o775)
 
-    if not git_install_requested():
+    if git_install_requested():
+        if config_value_changed('openstack-origin-git'):
+            log("opentack-origin-git changed!")
+            git_install(config('openstack-origin-git'))
+        else:
+            log("opentack-origin-git DID NOT change!")
+    else:
         if openstack_upgrade_available('keystone'):
             do_openstack_upgrade(configs=CONFIGS)
 

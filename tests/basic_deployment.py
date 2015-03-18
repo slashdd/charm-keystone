@@ -58,12 +58,12 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
                 'repositories': [
                   {
                     'name': 'requirements',
-                    'repository': 'git://git.openstack.org/openstack/requirements.git',
+                    'repository': 'git://git.openstack.org/openstack/requirements',
                     'branch': branch
                   },
                   {
                     'name': 'keystone',
-                    'repository': 'git://git.openstack.org/openstack/keystone.git',
+                    'repository': 'git://git.openstack.org/openstack/keystone',
                     'branch': branch
                   },
                 ],

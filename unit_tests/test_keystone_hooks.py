@@ -100,16 +100,12 @@ class KeystoneRelationTests(CharmTestCase):
         repo = 'cloud:trusty-juno'
         openstack_origin_git = {
             'repositories': [
-              {
-                'name': 'requirements',
-                'repository': 'git://git.openstack.org/openstack/requirements',
-                'branch': 'stable/juno'
-              },
-              {
-                'name': 'keystone',
-                'repository': 'git://git.openstack.org/openstack/keystone',
-                'branch': 'stable/juno'
-              }
+                {'name': 'requirements',
+                 'repository': 'git://git.openstack.org/openstack/requirements',  # noqa
+                 'branch': 'stable/juno'},
+                {'name': 'keystone',
+                 'repository': 'git://git.openstack.org/openstack/keystone',
+                 'branch': 'stable/juno'}
             ],
             'directory': '/mnt/openstack-git',
         }
@@ -507,18 +503,20 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(hooks, 'CONFIGS')
     @patch.object(hooks, 'identity_changed')
     @patch.object(hooks, 'configure_https')
-    def test_config_changed_git_updated(self, configure_https, identity_changed,
+    def test_config_changed_git_updated(self, configure_https,
+                                        identity_changed,
                                         configs, get_homedir, ensure_user,
                                         cluster_joined, admin_relation_changed,
                                         ensure_permissions, mock_peer_units,
-                                        mock_is_db_ready, mock_is_db_initialised,
+                                        mock_is_db_ready,
+                                        mock_is_db_initialised,
                                         mock_send_ssl_sync_request,
-                                        mock_is_pki_enabled, mock_ensure_ssl_dir,
+                                        mock_is_pki_enabled,
+                                        mock_ensure_ssl_dir,
                                         mock_ensure_ssl_cert_master,
                                         mock_log, config_val_changed,
                                         git_requested):
         git_requested.return_value = True
-        config_val_changed = True
         mock_ensure_ssl_cert_master.return_value = False
         mock_is_pki_enabled.return_value = False
         self.openstack_upgrade_available.return_value = False
@@ -530,16 +528,12 @@ class KeystoneRelationTests(CharmTestCase):
         repo = 'cloud:trusty-juno'
         openstack_origin_git = {
             'repositories': [
-              {
-                'name': 'requirements',
-                'repository': 'git://git.openstack.org/openstack/requirements',
-                'branch': 'stable/juno'
-              },
-              {
-                'name': 'keystone',
-                'repository': 'git://git.openstack.org/openstack/keystone',
-                'branch': 'stable/juno'
-              }
+                {'name': 'requirements',
+                 'repository': 'git://git.openstack.org/openstack/requirements',  # noqa
+                 'branch': 'stable/juno'},
+                {'name': 'keystone',
+                 'repository': 'git://git.openstack.org/openstack/keystone',
+                 'branch': 'stable/juno'}
             ],
             'directory': '/mnt/openstack-git',
         }

@@ -12,7 +12,6 @@ import threading
 import time
 import urlparse
 import uuid
-import yaml
 
 from base64 import b64encode
 from collections import OrderedDict
@@ -1666,8 +1665,8 @@ def git_post_install(projects_yaml):
         'executable_name': '/usr/local/bin/keystone-all',
     }
 
-    templates_dir = os.path.join(charm_dir(),
-           'hooks/charmhelpers/contrib/openstack/templates')
+    templates_dir = 'hooks/charmhelpers/contrib/openstack/templates'
+    templates_dir = os.path.join(charm_dir(), templates_dir)
     render('git.upstart', '/etc/init/keystone.conf', keystone_context,
            perms=0o644, templates_dir=templates_dir)
 

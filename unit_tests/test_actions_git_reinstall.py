@@ -1,10 +1,8 @@
-import os
-import sys
-from mock import patch, call, MagicMock, Mock
+from mock import patch
 
 with patch('charmhelpers.core.hookenv.config') as config:
     config.return_value = 'keystone'
-    import keystone_utils as utils
+    import keystone_utils as utils  # noqa
 
 import git_reinstall
 
@@ -25,6 +23,7 @@ openstack_origin_git = \
          - {name: keystone,
             repository: 'git://git.openstack.org/openstack/keystone',
             branch: stable/juno}"""
+
 
 class TestKeystoneActions(CharmTestCase):
 
@@ -70,14 +69,14 @@ class TestKeystoneActions(CharmTestCase):
         e = OSError('something bad happened')
         git_install.side_effect = e
         traceback = (
-        "Traceback (most recent call last):\n"
-        "  File \"actions/git_reinstall.py\", line 33, in git_reinstall\n"
-        "    git_install(config(\'openstack-origin-git\'))\n"
-        "  File \"/usr/lib/python2.7/dist-packages/mock.py\", line 964, in __call__\n"
-        "    return _mock_self._mock_call(*args, **kwargs)\n"
-        "  File \"/usr/lib/python2.7/dist-packages/mock.py\", line 1019, in _mock_call\n"
-        "    raise effect\n"
-        "OSError: something bad happened\n")
+            "Traceback (most recent call last):\n"
+            "  File \"actions/git_reinstall.py\", line 33, in git_reinstall\n"
+            "    git_install(config(\'openstack-origin-git\'))\n"
+            "  File \"/usr/lib/python2.7/dist-packages/mock.py\", line 964, in __call__\n"  # noqa
+            "    return _mock_self._mock_call(*args, **kwargs)\n"
+            "  File \"/usr/lib/python2.7/dist-packages/mock.py\", line 1019, in _mock_call\n"  # noqa
+            "    raise effect\n"
+            "OSError: something bad happened\n")
 
         git_reinstall.git_reinstall()
 

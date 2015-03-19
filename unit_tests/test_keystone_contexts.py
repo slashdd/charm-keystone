@@ -6,8 +6,10 @@ from test_utils import (
 )
 
 TO_PATCH = [
+    'config',
     'determine_apache_port',
     'determine_api_port',
+    'is_cert_provided_in_config',
 ]
 
 
@@ -16,6 +18,7 @@ class TestKeystoneContexts(CharmTestCase):
     def setUp(self):
         super(TestKeystoneContexts, self).setUp(context, TO_PATCH)
 
+    @patch.object(context, 'is_cert_provided_in_config')
     @patch.object(context, 'mkdir')
     @patch('keystone_utils.get_ca')
     @patch('keystone_utils.ensure_permissions')
@@ -30,7 +33,9 @@ class TestKeystoneContexts(CharmTestCase):
                                                mock_determine_ports,
                                                mock_ensure_permissions,
                                                mock_get_ca,
-                                               mock_mkdir):
+                                               mock_mkdir,
+                                               mock_cert_provided_in_config):
+        mock_cert_provided_in_config.return_value = False
         mock_is_ssl_enabled.return_value = True
         mock_is_ssl_cert_master.return_value = False
 

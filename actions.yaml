@@ -1,2 +1,2 @@
 git-reinstall:
-  description: Reinstall openstack-origin-git repos and restart services
+  description: Reinstall keystone from the openstack-origin-git repositories.

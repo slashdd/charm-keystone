@@ -88,8 +88,7 @@ Additionally, the requirements repository must be specified first and the
 keystone repository must be specified last. All other repostories are installed
 in the order in which they are specified.
 
-NOTE(coreycb): The following is temporary to keep track of the full list of
-current tip repos (may not be up-to-date).
+The following is a full list of current tip repos (may not be up-to-date):
 
   openstack-origin-git:
       "repositories:

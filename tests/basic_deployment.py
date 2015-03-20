@@ -56,16 +56,12 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             branch = 'stable/' + self._get_openstack_release_string()
             openstack_origin_git = {
                 'repositories': [
-                  {
-                    'name': 'requirements',
-                    'repository': 'git://git.openstack.org/openstack/requirements',
-                    'branch': branch
-                  },
-                  {
-                    'name': 'keystone',
-                    'repository': 'git://git.openstack.org/openstack/keystone',
-                    'branch': branch
-                  },
+                    {'name': 'requirements',
+                     'repository': 'git://git.openstack.org/openstack/requirements',
+                     'branch': branch},
+                    {'name': 'keystone',
+                     'repository': 'git://git.openstack.org/openstack/keystone',
+                     'branch': branch},
                 ],
                 'directory': '/mnt/openstack-git',
             }

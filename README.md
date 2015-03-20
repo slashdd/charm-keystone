@@ -96,35 +96,35 @@ The following is a full list of current tip repos (may not be up-to-date):
             repository: 'git://git.openstack.org/openstack/requirements',
             branch: master}
          - {name: oslo-concurrency,
-            repository: 'git://git.openstack.org/openstack/oslo.concurrency.git',
+            repository: 'git://git.openstack.org/openstack/oslo.concurrency',
             branch: master}
          - {name: oslo-config,
-            repository: 'git://git.openstack.org/openstack/oslo.config.git',
+            repository: 'git://git.openstack.org/openstack/oslo.config',
             branch: master}
          - {name: oslo-db,
-            repository: 'git://git.openstack.org/openstack/oslo.db.git',
+            repository: 'git://git.openstack.org/openstack/oslo.db',
             branch: master}
          - {name: oslo-i18n,
-            repository: 'git://git.openstack.org/openstack/oslo.i18n.git',
+            repository: 'git://git.openstack.org/openstack/oslo.i18n',
             branch: master}
          - {name: oslo-serialization,
-            repository: 'git://git.openstack.org/openstack/oslo.serialization.git',
+            repository: 'git://git.openstack.org/openstack/oslo.serialization',
             branch: master}
          - {name: oslo-utils,
-            repository: 'git://git.openstack.org/openstack/oslo.utils.git',
+            repository: 'git://git.openstack.org/openstack/oslo.utils',
             branch: master}
          - {name: pbr,
-            repository: 'git://git.openstack.org/openstack-dev/pbr.git',
+            repository: 'git://git.openstack.org/openstack-dev/pbr',
             branch: master}
          - {name: python-keystoneclient,
-            repository: 'git://git.openstack.org/openstack/python-keystoneclient.git',
+            repository: 'git://git.openstack.org/openstack/python-keystoneclient',
             branch: master}
          - {name: sqlalchemy-migrate,
-            repository: 'git://git.openstack.org/stackforge/sqlalchemy-migrate.git',
+            repository: 'git://git.openstack.org/stackforge/sqlalchemy-migrate',
             branch: master}
          - {name: keystonemiddleware,
             repository: 'git://git.openstack.org/openstack/keystonemiddleware',
             branch: master}
          - {name: keystone,
-            repository: 'git://git.openstack.org/openstack/keystone.git',
+            repository: 'git://git.openstack.org/openstack/keystone',
             branch: master}"

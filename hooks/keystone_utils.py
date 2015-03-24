@@ -186,7 +186,11 @@ valid_services = {
     },
     "cinder": {
         "type": "volume",
-        "desc": "Cinder Volume Service"
+        "desc": "Cinder Volume Service v1"
+    },
+    "cinderv2": {
+        "type": "volumev2",
+        "desc": "Cinder Volume Service v2"
     },
     "ec2": {
         "type": "ec2",

@@ -1564,6 +1564,11 @@ def is_db_ready(use_current_context=False, db_rel=None):
         allowed_units = relation_get(attribute=key)
         if allowed_units and local_unit() in allowed_units.split():
             return True
+
+        # We are in shared-db rel but don't yet have permissions
+        log("%s does not yet have db permissions" % (local_unit()),
+            level=DEBUG)
+        return False
     else:
         for rel in db_rels:
             for rid in relation_ids(rel):

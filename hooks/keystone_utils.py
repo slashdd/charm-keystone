@@ -983,7 +983,7 @@ def synchronize_ca(fatal=False):
     Returns a dictionary of settings to be set on the cluster relation.
     """
     paths_to_sync = [SYNC_FLAGS_DIR]
-    peer_service_actions = []
+    peer_service_actions = {'restart': []}
     peer_actions = []
 
     if bool_from_string(config('https-service-endpoints')):
@@ -993,7 +993,7 @@ def synchronize_ca(fatal=False):
         paths_to_sync.append(CA_CERT_PATH)
         # We need to restart peer apache services to ensure they have picked up
         # new ssl keys.
-        peer_service_actions.append(('restart', ('apache2')))
+        peer_service_actions['restart'].append('apache2')
         peer_actions.append('update-ca-certificates')
 
     if bool_from_string(config('use-https')):
@@ -1004,7 +1004,7 @@ def synchronize_ca(fatal=False):
         paths_to_sync.append(CA_CERT_PATH)
         # We need to restart peer apache services to ensure they have picked up
         # new ssl keys.
-        peer_service_actions.append(('restart', ('apache2')))
+        peer_service_actions['restart'].append('apache2')
         peer_actions.append('update-ca-certificates')
 
     if is_pki_enabled():
@@ -1022,8 +1022,8 @@ def synchronize_ca(fatal=False):
     if not os.path.isdir(SYNC_FLAGS_DIR):
         mkdir(SYNC_FLAGS_DIR, SSH_USER, 'keystone', 0o775)
 
-    for action, services in set(peer_service_actions):
-        create_peer_service_actions(action, services)
+    for action, services in peer_service_actions.iteritems():
+        create_peer_service_actions(action, set(services))
 
     create_peer_actions(peer_actions)
 

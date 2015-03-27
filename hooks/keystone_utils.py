@@ -968,11 +968,11 @@ def stage_paths_for_sync(paths):
     with tarfile.open(SSL_SYNC_ARCHIVE, 'w') as fd:
         for path in paths:
             if os.path.exists(path):
-                log("Adding path '%s' sync tarball", level=DEBUG)
+                log("Adding path '%s' sync tarball" % (path), level=DEBUG)
                 fd.add(path)
             else:
-                log("Path '%s' does not exist - not adding to sync tarball",
-                    level=INFO)
+                log("Path '%s' does not exist - not adding to sync "
+                    "tarball" % (path), level=INFO)
 
     ensure_permissions(SYNC_DIR, user=SSH_USER, group='keystone',
                        perms=0o755, recurse=True)

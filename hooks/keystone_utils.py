@@ -1005,9 +1005,11 @@ def update_certs_if_available(f):
                 files = ["/%s" % m.name for m in fd.getmembers()]
                 fd.extractall(path='/')
 
-            for path in files:
-                ensure_permissions(path, user='keystone', group='keystone',
+            for syncfile in files:
+                ensure_permissions(syncfile, user='keystone', group='keystone',
                                    perms=0o644, recurse=True)
+
+            # Mark as complete
             os.rename(path, "%s.complete" % (path))
         else:
             log("No cert updates available", level=DEBUG)

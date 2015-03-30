@@ -283,6 +283,41 @@ class TestKeystoneUtils(CharmTestCase):
                                         adminurl='10.0.0.2',
                                         internalurl='192.168.1.2')
 
+    @patch.object(utils, 'get_service_password')
+    @patch.object(utils, 'grant_role')
+    @patch.object(utils, 'create_role')
+    @patch.object(utils, 'create_user')
+    def test_create_credentials_no_roles(self, mock_create_user,
+                                         mock_create_role,
+                                         mock_grant_role,
+                                         mock_get_service_password):
+        mock_get_service_password.return_value = 'passA'
+        utils.create_credentials('userA', 'tenantA')
+        mock_create_user.assert_has_calls([call('userA', 'passA', 'tenantA')])
+        mock_create_role.assert_has_calls([])
+        mock_grant_role.assert_has_calls([])
+
+    @patch.object(utils, 'get_service_password')
+    @patch.object(utils, 'grant_role')
+    @patch.object(utils, 'create_role')
+    @patch.object(utils, 'create_user')
+    def test_create_credentials(self, mock_create_user, mock_create_role,
+                                mock_grant_role, mock_get_service_password):
+        mock_get_service_password.return_value = 'passA'
+        utils.create_credentials('userA', 'tenantA', grants=['roleA'],
+                                 new_roles=['roleB'])
+        mock_create_user.assert_has_calls([call('userA', 'passA', 'tenantA')])
+        mock_create_role.assert_has_calls([call('roleB', 'userA', 'tenantA')])
+        mock_grant_role.assert_has_calls([call('userA', 'roleA', 'tenantA')])
+
+    @patch.object(utils, 'create_credentials')
+    def test_create_service_credentials(self, mock_create_credentials):
+        cfg = {'service-tenant': 'tenantA', 'admin-role': 'Admin'}
+        self.config.side_effect = lambda key: cfg.get(key, None)
+        calls = [call('serviceA', 'tenantA', grants=['Admin'], new_roles=None)]
+        utils.create_service_credentials('serviceA')
+        mock_create_credentials.assert_has_calls(calls)
+
     def test_ensure_valid_service_incorrect(self):
         utils.ensure_valid_service('fakeservice')
         self.log.assert_called_with("Invalid service requested: 'fakeservice'")

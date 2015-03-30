@@ -50,7 +50,7 @@ class TestKeystoneActions(CharmTestCase):
     @patch('charmhelpers.contrib.openstack.utils.config')
     def test_git_reinstall_not_configured(self, _config, git_install,
                                           action_fail, action_set):
-        _config.return_value = 'none'
+        _config.return_value = None
 
         git_reinstall.git_reinstall()
 

@@ -119,7 +119,7 @@ class TestKeystoneUtils(CharmTestCase):
 
     @patch('charmhelpers.contrib.openstack.utils.config')
     def test_determine_packages(self, _config):
-        _config.return_value = "None"
+        _config.return_value = None
         result = utils.determine_packages()
         ex = utils.BASE_PACKAGES + ['keystone', 'python-keystoneclient']
         self.assertEquals(set(ex), set(result))

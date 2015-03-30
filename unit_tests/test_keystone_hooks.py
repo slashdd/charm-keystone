@@ -92,7 +92,7 @@ class KeystoneRelationTests(CharmTestCase):
             ['haproxy', 'unison', 'python-keystoneclient',
              'uuid', 'python-mysqldb', 'openssl', 'apache2',
              'pwgen', 'python-six', 'keystone', 'python-psycopg2'], fatal=True)
-        self.git_install.assert_called_with('None')
+        self.git_install.assert_called_with(None)
 
     @patch.object(utils, 'git_install_requested')
     def test_install_hook_git(self, git_requested):

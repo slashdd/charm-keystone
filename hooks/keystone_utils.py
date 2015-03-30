@@ -501,26 +501,36 @@ def create_tenant(name):
     log("Tenant '%s' already exists." % name, level=DEBUG)
 
 
-def create_user(name, password, tenant):
-    """Creates a user if it doesn't already exist, as a member of tenant"""
+def user_exists(name):
     import manager
     manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
                                       token=get_admin_token())
     users = [u._info for u in manager.api.users.list()]
     if not users or name not in [u['name'] for u in users]:
-        tenant_id = manager.resolve_tenant_id(tenant)
-        if not tenant_id:
-            error_out('Could not resolve tenant_id for tenant %s' % tenant)
+        return False
 
-        manager.api.users.create(name=name,
-                                 password=password,
-                                 email='juju@localhost',
-                                 tenant_id=tenant_id)
-        log("Created new user '%s' tenant: %s" % (name, tenant_id),
-            level=DEBUG)
-        return
+    return True
 
-    log("A user named '%s' already exists" % name, level=DEBUG)
+
+def create_user(name, password, tenant):
+    """Creates a user if it doesn't already exist, as a member of tenant"""
+    import manager
+    manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
+                                      token=get_admin_token())
+    if user_exists(name):
+        log("A user named '%s' already exists" % name, level=DEBUG)
+        return        
+        
+    tenant_id = manager.resolve_tenant_id(tenant)
+    if not tenant_id:
+        error_out('Could not resolve tenant_id for tenant %s' % tenant)
+
+    manager.api.users.create(name=name,
+                             password=password,
+                             email='juju@localhost',
+                             tenant_id=tenant_id)
+    log("Created new user '%s' tenant: %s" % (name, tenant_id),
+        level=DEBUG)
 
 
 def create_role(name, user=None, tenant=None):
@@ -640,9 +650,8 @@ def ensure_initial_admin(config):
                 'ldap' and config('ldap-readonly')):
             passwd = get_admin_passwd()
             if passwd:
-                create_credentials(config('admin-user'), 'admin',
-                                   new_roles=[config('admin-role')],
-                                   passwd=passwd)
+                create_credentials(config('admin-user'), 'admin', passwd,
+                                   new_roles=[config('admin-role')])
 
         create_service_entry("keystone", "identity",
                              "Keystone Identity Service")
@@ -1237,7 +1246,7 @@ def relation_list(rid):
         return result
 
 
-def create_credentials(user, tenant, new_roles=None, grants=None, passwd=None):
+def create_credentials(user, tenant, passwd, new_roles=None, grants=None):
     """Create user credentials.
 
     Optinally adds user to config(admin-role) and create new roles.
@@ -1246,13 +1255,14 @@ def create_credentials(user, tenant, new_roles=None, grants=None, passwd=None):
     password for the given user.
     """
     log("Creating service credentials for '%s'" % user, level=DEBUG)
-    if passwd:
-        update_user_password(user, passwd)
+    if user_exists(user):
+        log("User '%s' already exists" % (user), level=DEBUG)
+        if passwd:
+            log("Updating user '%s' password" % (user), level=DEBUG)
+            update_user_password(user, passwd)
     else:
-        passwd = get_service_password(user)
+        create_user(user, passwd, tenant)
 
-    create_user(user, passwd, tenant)
-    # Typically admin role
     if grants:
         for role in grants:
             grant_role(user, role, tenant)
@@ -1279,7 +1289,8 @@ def create_service_credentials(user, new_roles=None):
     if not tenant:
         raise Exception("No service tenant provided in config")
 
-    return create_credentials(user, tenant, new_roles=new_roles,
+    return create_credentials(user, tenant, get_service_password(user),
+                              new_roles=new_roles,
                               grants=[config('admin-role')])
 
 

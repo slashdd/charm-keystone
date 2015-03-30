@@ -208,7 +208,11 @@ valid_services = {
     },
     "cinder": {
         "type": "volume",
-        "desc": "Cinder Volume Service"
+        "desc": "Cinder Volume Service v1"
+    },
+    "cinderv2": {
+        "type": "volumev2",
+        "desc": "Cinder Volume Service v2"
     },
     "ec2": {
         "type": "ec2",
@@ -1277,12 +1281,9 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
             # Some backend services advertise no endpoint but require a
             # hook execution to update auth strategy.
             relation_data = {}
-            rel_only_data = {}
             # Check if clustered and use vip + haproxy ports if so
-            # NOTE(hopem): don't put these on peer relation because racey
-            #              leader election causes cluster relation to spin)
-            rel_only_data["auth_host"] = resolve_address(ADMIN)
-            rel_only_data["service_host"] = resolve_address(PUBLIC)
+            relation_data["auth_host"] = resolve_address(ADMIN)
+            relation_data["service_host"] = resolve_address(PUBLIC)
 
             relation_data["auth_protocol"] = protocol
             relation_data["service_protocol"] = protocol
@@ -1306,7 +1307,6 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
                 log("Creating requested role: %s" % role)
                 create_role(role)
 
-            relation_set(relation_id=relation_id, **rel_only_data)
             peer_store_and_set(relation_id=relation_id, **relation_data)
             return
         else:
@@ -1411,14 +1411,11 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
     # service credentials
     service_tenant = config('service-tenant')
 
-    # NOTE(hopem): don't put these on peer relation because racey
-    #              leader election causes cluster relation to spin)
-    rel_only_data = {"auth_host": resolve_address(ADMIN),
-                     "service_host": resolve_address(PUBLIC)}
-
     # NOTE(dosaboy): we use __null__ to represent settings that are to be
     # routed to relations via the cluster relation and set to None.
     relation_data = {
+        "auth_host": resolve_address(ADMIN),
+        "service_host": resolve_address(PUBLIC),
         "admin_token": token,
         "service_port": config("service-port"),
         "auth_port": config("admin-port"),
@@ -1453,7 +1450,6 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         relation_data['ca_cert'] = b64encode(ca_bundle)
         relation_data['https_keystone'] = 'True'
 
-    relation_set(relation_id=relation_id, **rel_only_data)
     # NOTE(dosaboy): '__null__' settings are for peer relation only so that
     # settings can flushed so we filter them out for non-peer relation.
     filtered = filter_null(relation_data)

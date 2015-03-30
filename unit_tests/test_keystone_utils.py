@@ -199,17 +199,15 @@ class TestKeystoneUtils(CharmTestCase):
         self.assertTrue(self.https.called)
         self.assertTrue(self.create_role.called)
 
-        rel_only_data = {'auth_host': '10.10.10.10',
-                         'service_host': '10.10.10.10'}
-        relation_data = {'auth_protocol': 'https',
+        relation_data = {'auth_host': '10.10.10.10',
+                         'service_host': '10.10.10.10',
+                         'auth_protocol': 'https',
                          'service_protocol': 'https',
                          'auth_port': 80,
                          'service_port': 81,
                          'https_keystone': 'True',
                          'ca_cert': 'certificate',
                          'region': 'RegionOne'}
-        self.relation_set.assert_called_with(relation_id=relation_id,
-                                             **rel_only_data)
         self.peer_store_and_set.assert_called_with(relation_id=relation_id,
                                                    **relation_data)
 
@@ -257,9 +255,8 @@ class TestKeystoneUtils(CharmTestCase):
         self.grant_role.assert_called_with('keystone', 'admin', 'tenant')
         self.create_role.assert_called_with('role1', 'keystone', 'tenant')
 
-        rel_only_data = {'auth_host': '10.0.0.3',
-                         'service_host': '10.0.0.3'}
-        relation_data = {'admin_token': 'token', 'service_port': 81,
+        relation_data = {'auth_host': '10.0.0.3', 'service_host': '10.0.0.3',
+                         'admin_token': 'token', 'service_port': 81,
                          'auth_port': 80, 'service_username': 'keystone',
                          'service_password': 'password',
                          'service_tenant': 'tenant',
@@ -276,11 +273,10 @@ class TestKeystoneUtils(CharmTestCase):
             else:
                 filtered[k] = v
 
-        call1 = call(relation_id=relation_id, **rel_only_data)
-        call2 = call(relation_id=relation_id, **filtered)
-        call3 = call(relation_id='cluster/0', **relation_data)
+        call1 = call(relation_id=relation_id, **filtered)
+        call2 = call(relation_id='cluster/0', **relation_data)
         self.assertTrue(self.relation_set.called)
-        self.relation_set.assert_has_calls([call1, call2, call3])
+        self.relation_set.assert_has_calls([call1, call2])
 
     @patch.object(utils, 'ensure_valid_service')
     @patch.object(utils, 'add_endpoint')

@@ -1663,6 +1663,8 @@ def git_post_install(projects_yaml):
         'start_dir': '/var/lib/keystone',
         'process_name': 'keystone',
         'executable_name': '/usr/local/bin/keystone-all',
+        'config_file': '/etc/keystone/keystone.conf',
+        'log_file': '/var/log/keystone/keystone.log',
     }
 
     # NOTE(coreycb): Needs systemd support

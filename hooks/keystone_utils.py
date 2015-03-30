@@ -519,8 +519,8 @@ def create_user(name, password, tenant):
                                       token=get_admin_token())
     if user_exists(name):
         log("A user named '%s' already exists" % name, level=DEBUG)
-        return        
-        
+        return
+
     tenant_id = manager.resolve_tenant_id(tenant)
     if not tenant_id:
         error_out('Could not resolve tenant_id for tenant %s' % tenant)
@@ -650,8 +650,8 @@ def ensure_initial_admin(config):
                 'ldap' and config('ldap-readonly')):
             passwd = get_admin_passwd()
             if passwd:
-                create_credentials(config('admin-user'), 'admin', passwd,
-                                   new_roles=[config('admin-role')])
+                create_user_credentials(config('admin-user'), 'admin', passwd,
+                                        new_roles=[config('admin-role')])
 
         create_service_entry("keystone", "identity",
                              "Keystone Identity Service")
@@ -1246,20 +1246,16 @@ def relation_list(rid):
         return result
 
 
-def create_credentials(user, tenant, passwd, new_roles=None, grants=None):
+def create_user_credentials(user, tenant, passwd, new_roles=None, grants=None):
     """Create user credentials.
 
-    Optinally adds user to config(admin-role) and create new roles.
-
-    If a password is provided, it is used to update/replace any existing
-    password for the given user.
+    Optionally adds role grants to user and/or creates new roles.
     """
     log("Creating service credentials for '%s'" % user, level=DEBUG)
     if user_exists(user):
-        log("User '%s' already exists" % (user), level=DEBUG)
-        if passwd:
-            log("Updating user '%s' password" % (user), level=DEBUG)
-            update_user_password(user, passwd)
+        log("User '%s' already exists - updating password" % (user),
+            level=DEBUG)
+        update_user_password(user, passwd)
     else:
         create_user(user, passwd, tenant)
 
@@ -1283,15 +1279,15 @@ def create_service_credentials(user, new_roles=None):
     """Create credentials for service with given username.
 
     Services are given a user under config('service-tenant') and are given the
-    config('admin-role') role.
+    config('admin-role') role. Tenant is assumed to already exist,
     """
     tenant = config('service-tenant')
     if not tenant:
         raise Exception("No service tenant provided in config")
 
-    return create_credentials(user, tenant, get_service_password(user),
-                              new_roles=new_roles,
-                              grants=[config('admin-role')])
+    return create_user_credentials(user, tenant, get_service_password(user),
+                                   new_roles=new_roles,
+                                   grants=[config('admin-role')])
 
 
 def add_service_to_keystone(relation_id=None, remote_unit=None):

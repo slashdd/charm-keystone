@@ -287,11 +287,12 @@ class TestKeystoneUtils(CharmTestCase):
     @patch.object(utils, 'grant_role')
     @patch.object(utils, 'create_role')
     @patch.object(utils, 'create_user')
-    def test_create_credentials_no_roles(self, mock_create_user,
-                                         mock_create_role,
-                                         mock_grant_role, mock_user_exists):
+    def test_create_user_credentials_no_roles(self, mock_create_user,
+                                              mock_create_role,
+                                              mock_grant_role,
+                                              mock_user_exists):
         mock_user_exists.return_value = False
-        utils.create_credentials('userA', 'tenantA', 'passA')
+        utils.create_user_credentials('userA', 'tenantA', 'passA')
         mock_create_user.assert_has_calls([call('userA', 'passA', 'tenantA')])
         mock_create_role.assert_has_calls([])
         mock_grant_role.assert_has_calls([])
@@ -300,11 +301,11 @@ class TestKeystoneUtils(CharmTestCase):
     @patch.object(utils, 'grant_role')
     @patch.object(utils, 'create_role')
     @patch.object(utils, 'create_user')
-    def test_create_credentials(self, mock_create_user, mock_create_role,
-                                mock_grant_role, mock_user_exists):
+    def test_create_user_credentials(self, mock_create_user, mock_create_role,
+                                     mock_grant_role, mock_user_exists):
         mock_user_exists.return_value = False
-        utils.create_credentials('userA', 'tenantA', 'passA', grants=['roleA'],
-                                 new_roles=['roleB'])
+        utils.create_user_credentials('userA', 'tenantA', 'passA',
+                                      grants=['roleA'], new_roles=['roleB'])
         mock_create_user.assert_has_calls([call('userA', 'passA', 'tenantA')])
         mock_create_role.assert_has_calls([call('roleB', 'userA', 'tenantA')])
         mock_grant_role.assert_has_calls([call('userA', 'roleA', 'tenantA')])
@@ -314,21 +315,22 @@ class TestKeystoneUtils(CharmTestCase):
     @patch.object(utils, 'grant_role')
     @patch.object(utils, 'create_role')
     @patch.object(utils, 'create_user')
-    def test_create_credentials_user_exists(self, mock_create_user,
-                                            mock_create_role, mock_grant_role,
-                                            mock_user_exists,
-                                            mock_update_user_password):
+    def test_create_user_credentials_user_exists(self, mock_create_user,
+                                                 mock_create_role,
+                                                 mock_grant_role,
+                                                 mock_user_exists,
+                                                 mock_update_user_password):
         mock_user_exists.return_value = True
-        utils.create_credentials('userA', 'tenantA', 'passA', grants=['roleA'],
-                                 new_roles=['roleB'])
+        utils.create_user_credentials('userA', 'tenantA', 'passA',
+                                      grants=['roleA'], new_roles=['roleB'])
         mock_create_user.assert_has_calls([])
         mock_create_role.assert_has_calls([call('roleB', 'userA', 'tenantA')])
         mock_grant_role.assert_has_calls([call('userA', 'roleA', 'tenantA')])
         mock_update_user_password.assert_has_calls([call('userA', 'passA')])
 
     @patch.object(utils, 'get_service_password')
-    @patch.object(utils, 'create_credentials')
-    def test_create_service_credentials(self, mock_create_credentials,
+    @patch.object(utils, 'create_user_credentials')
+    def test_create_service_credentials(self, mock_create_user_credentials,
                                         mock_get_service_password):
         mock_get_service_password.return_value = 'passA'
         cfg = {'service-tenant': 'tenantA', 'admin-role': 'Admin'}
@@ -336,7 +338,7 @@ class TestKeystoneUtils(CharmTestCase):
         calls = [call('serviceA', 'tenantA', 'passA', grants=['Admin'],
                       new_roles=None)]
         utils.create_service_credentials('serviceA')
-        mock_create_credentials.assert_has_calls(calls)
+        mock_create_user_credentials.assert_has_calls(calls)
 
     def test_ensure_valid_service_incorrect(self):
         utils.ensure_valid_service('fakeservice')

@@ -442,12 +442,14 @@ def create_service_entry(service_name, service_type, service_desc, owner=None):
                                       token=get_admin_token())
     for service in [s._info for s in manager.api.services.list()]:
         if service['name'] == service_name:
-            log("Service entry for '%s' already exists." % service_name)
+            log("Service entry for '%s' already exists." % service_name,
+                level=DEBUG)
             return
+
     manager.api.services.create(name=service_name,
                                 service_type=service_type,
                                 description=service_desc)
-    log("Created new service entry '%s'" % service_name)
+    log("Created new service entry '%s'" % service_name, level=DEBUG)
 
 
 def create_endpoint_template(region, service, publicurl, adminurl,
@@ -480,7 +482,8 @@ def create_endpoint_template(region, service, publicurl, adminurl,
                                  publicurl=publicurl,
                                  adminurl=adminurl,
                                  internalurl=internalurl)
-    log("Created new endpoint template for '%s' in '%s'" % (region, service))
+    log("Created new endpoint template for '%s' in '%s'" % (region, service),
+        level=DEBUG)
 
 
 def create_tenant(name):
@@ -492,9 +495,10 @@ def create_tenant(name):
     if not tenants or name not in [t['name'] for t in tenants]:
         manager.api.tenants.create(tenant_name=name,
                                    description='Created by Juju')
-        log("Created new tenant: %s" % name)
+        log("Created new tenant: %s" % name, level=DEBUG)
         return
-    log("Tenant '%s' already exists." % name)
+
+    log("Tenant '%s' already exists." % name, level=DEBUG)
 
 
 def create_user(name, password, tenant):
@@ -507,13 +511,16 @@ def create_user(name, password, tenant):
         tenant_id = manager.resolve_tenant_id(tenant)
         if not tenant_id:
             error_out('Could not resolve tenant_id for tenant %s' % tenant)
+
         manager.api.users.create(name=name,
                                  password=password,
                                  email='juju@localhost',
                                  tenant_id=tenant_id)
-        log("Created new user '%s' tenant: %s" % (name, tenant_id))
+        log("Created new user '%s' tenant: %s" % (name, tenant_id),
+            level=DEBUG)
         return
-    log("A user named '%s' already exists" % name)
+
+    log("A user named '%s' already exists" % name, level=DEBUG)
 
 
 def create_role(name, user=None, tenant=None):
@@ -524,9 +531,9 @@ def create_role(name, user=None, tenant=None):
     roles = [r._info for r in manager.api.roles.list()]
     if not roles or name not in [r['name'] for r in roles]:
         manager.api.roles.create(name=name)
-        log("Created new role '%s'" % name)
+        log("Created new role '%s'" % name, level=DEBUG)
     else:
-        log("A role named '%s' already exists" % name)
+        log("A role named '%s' already exists" % name, level=DEBUG)
 
     if not user and not tenant:
         return
@@ -560,10 +567,10 @@ def grant_role(user, role, tenant):
                                         role=role_id,
                                         tenant=tenant_id)
         log("Granted user '%s' role '%s' on tenant '%s'" %
-            (user, role, tenant))
+            (user, role, tenant), level=DEBUG)
     else:
         log("User '%s' already has role '%s' on tenant '%s'" %
-            (user, role, tenant))
+            (user, role, tenant), level=DEBUG)
 
 
 def store_admin_passwd(passwd):

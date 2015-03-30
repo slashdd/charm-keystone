@@ -633,10 +633,10 @@ def ensure_initial_admin(config):
                 'ldap' and config('ldap-readonly')):
             passwd = get_admin_passwd()
             if passwd:
-                create_user(config('admin-user'), passwd, tenant='admin')
-                update_user_password(config('admin-user'), passwd)
-                create_role(config('admin-role'), config('admin-user'),
-                            'admin')
+                create_credentials(config('admin-user'), 'admin',
+                                   new_roles=[config('admin-role')],
+                                   passwd=passwd)
+
         create_service_entry("keystone", "identity",
                              "Keystone Identity Service")
 
@@ -1230,6 +1230,52 @@ def relation_list(rid):
         return result
 
 
+def create_credentials(user, tenant, new_roles=None, grants=None, passwd=None):
+    """Create user credentials.
+
+    Optinally adds user to config(admin-role) and create new roles.
+
+    If a password is provided, it is used to update/replace any existing
+    password for the given user.
+    """
+    log("Creating service credentials for '%s'" % user, level=DEBUG)
+    if passwd:
+        update_user_password(user, passwd)
+    else:
+        passwd = get_service_password(user)
+
+    create_user(user, passwd, tenant)
+    # Typically admin role
+    if grants:
+        for role in grants:
+            grant_role(user, role, tenant)
+    else:
+        log("No role grants requested for user '%s'" % (user), level=DEBUG)
+
+    if new_roles:
+        # Allow the remote service to request creation of any additional roles.
+        # Currently used by Swift and Ceilometer.
+        for role in new_roles:
+            log("Creating requested role '%s'" % role, level=DEBUG)
+            create_role(role, user, tenant)
+
+    return passwd
+
+
+def create_service_credentials(user, new_roles=None):
+    """Create credentials for service with given username.
+
+    Services are given a user under config('service-tenant') and are given the
+    config('admin-role') role.
+    """
+    tenant = config('service-tenant')
+    if not tenant:
+        raise Exception("No service tenant provided in config")
+
+    return create_credentials(user, tenant, new_roles=new_roles,
+                              grants=[config('admin-role')])
+
+
 def add_service_to_keystone(relation_id=None, remote_unit=None):
     import manager
     manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
@@ -1360,18 +1406,9 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         return
 
     token = get_admin_token()
-    log("Creating service credentials for '%s'" % service_username)
-
-    service_password = get_service_password(service_username)
-    create_user(service_username, service_password, config('service-tenant'))
-    grant_role(service_username, config('admin-role'),
-               config('service-tenant'))
-
-    # Allow the remote service to request creation of any additional roles.
-    # Currently used by Swift and Ceilometer.
-    for role in get_requested_roles(settings):
-        log("Creating requested role: %s" % role)
-        create_role(role, service_username, config('service-tenant'))
+    roles = get_requested_roles(settings)
+    service_password = create_service_credentials(service_username,
+                                                  new_roles=roles)
 
     # As of https://review.openstack.org/#change,4675, all nodes hosting
     # an endpoint(s) needs a service username and password assigned to

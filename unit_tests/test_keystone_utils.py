@@ -400,9 +400,16 @@ class TestKeystoneUtils(CharmTestCase):
         allowed_units = 'unit/0'
         self.assertTrue(utils.is_db_ready(use_current_context=True))
 
+        self.relation_id.return_value = 'shared-db:0'
+        self.relation_ids.return_value = ['shared-db:0']
+        self.local_unit.return_value = 'unit/0'
+        allowed_units = 'unit/1'
+        self.assertFalse(utils.is_db_ready(use_current_context=True))
+
         self.relation_ids.return_value = ['acme:0']
         self.assertRaises(utils.is_db_ready, use_current_context=True)
 
+        allowed_units = 'unit/0'
         self.related_units.return_value = ['unit/0']
         self.relation_ids.return_value = ['shared-db:0', 'shared-db:1']
         self.assertTrue(utils.is_db_ready())

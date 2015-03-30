@@ -632,7 +632,12 @@ def ensure_initial_admin(config):
     # Allow retry on fail since leader may not be ready yet.
     # NOTE(hopem): ks client may not be installed at module import time so we
     # use this wrapped approach instead.
-    from keystoneclient.apiclient.exceptions import InternalServerError
+    try:
+        from keystoneclient.apiclient.exceptions import InternalServerError
+    except:
+        # Backwards-compatibility for earlier versions of keystoneclient (< I)
+        from keystoneclient.exceptions import (ClientException as
+                                               InternalServerError)
 
     @retry_on_exception(3, base_delay=3, exc_type=InternalServerError)
     def _ensure_initial_admin(config):
@@ -1008,7 +1013,7 @@ def synchronize_ca(fatal=False):
     Returns a dictionary of settings to be set on the cluster relation.
     """
     paths_to_sync = [SYNC_FLAGS_DIR]
-    peer_service_actions = []
+    peer_service_actions = {'restart': []}
     peer_actions = []
 
     if bool_from_string(config('https-service-endpoints')):
@@ -1018,7 +1023,7 @@ def synchronize_ca(fatal=False):
         paths_to_sync.append(CA_CERT_PATH)
         # We need to restart peer apache services to ensure they have picked up
         # new ssl keys.
-        peer_service_actions.append(('restart', ('apache2')))
+        peer_service_actions['restart'].append('apache2')
         peer_actions.append('update-ca-certificates')
 
     if bool_from_string(config('use-https')):
@@ -1029,7 +1034,7 @@ def synchronize_ca(fatal=False):
         paths_to_sync.append(CA_CERT_PATH)
         # We need to restart peer apache services to ensure they have picked up
         # new ssl keys.
-        peer_service_actions.append(('restart', ('apache2')))
+        peer_service_actions['restart'].append('apache2')
         peer_actions.append('update-ca-certificates')
 
     if is_pki_enabled():
@@ -1047,8 +1052,8 @@ def synchronize_ca(fatal=False):
     if not os.path.isdir(SYNC_FLAGS_DIR):
         mkdir(SYNC_FLAGS_DIR, SSH_USER, 'keystone', 0o775)
 
-    for action, services in set(peer_service_actions):
-        create_peer_service_actions(action, services)
+    for action, services in peer_service_actions.iteritems():
+        create_peer_service_actions(action, set(services))
 
     create_peer_actions(peer_actions)
 
@@ -1589,6 +1594,11 @@ def is_db_ready(use_current_context=False, db_rel=None):
         allowed_units = relation_get(attribute=key)
         if allowed_units and local_unit() in allowed_units.split():
             return True
+
+        # We are in shared-db rel but don't yet have permissions
+        log("%s does not yet have db permissions" % (local_unit()),
+            level=DEBUG)
+        return False
     else:
         for rel in db_rels:
             for rid in relation_ids(rel):

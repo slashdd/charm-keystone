@@ -472,12 +472,14 @@ def create_service_entry(service_name, service_type, service_desc, owner=None):
                                       token=get_admin_token())
     for service in [s._info for s in manager.api.services.list()]:
         if service['name'] == service_name:
-            log("Service entry for '%s' already exists." % service_name)
+            log("Service entry for '%s' already exists." % service_name,
+                level=DEBUG)
             return
+
     manager.api.services.create(name=service_name,
                                 service_type=service_type,
                                 description=service_desc)
-    log("Created new service entry '%s'" % service_name)
+    log("Created new service entry '%s'" % service_name, level=DEBUG)
 
 
 def create_endpoint_template(region, service, publicurl, adminurl,
@@ -510,7 +512,8 @@ def create_endpoint_template(region, service, publicurl, adminurl,
                                  publicurl=publicurl,
                                  adminurl=adminurl,
                                  internalurl=internalurl)
-    log("Created new endpoint template for '%s' in '%s'" % (region, service))
+    log("Created new endpoint template for '%s' in '%s'" % (region, service),
+        level=DEBUG)
 
 
 def create_tenant(name):
@@ -522,9 +525,21 @@ def create_tenant(name):
     if not tenants or name not in [t['name'] for t in tenants]:
         manager.api.tenants.create(tenant_name=name,
                                    description='Created by Juju')
-        log("Created new tenant: %s" % name)
+        log("Created new tenant: %s" % name, level=DEBUG)
         return
-    log("Tenant '%s' already exists." % name)
+
+    log("Tenant '%s' already exists." % name, level=DEBUG)
+
+
+def user_exists(name):
+    import manager
+    manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
+                                      token=get_admin_token())
+    users = [u._info for u in manager.api.users.list()]
+    if not users or name not in [u['name'] for u in users]:
+        return False
+
+    return True
 
 
 def create_user(name, password, tenant):
@@ -532,18 +547,20 @@ def create_user(name, password, tenant):
     import manager
     manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
                                       token=get_admin_token())
-    users = [u._info for u in manager.api.users.list()]
-    if not users or name not in [u['name'] for u in users]:
-        tenant_id = manager.resolve_tenant_id(tenant)
-        if not tenant_id:
-            error_out('Could not resolve tenant_id for tenant %s' % tenant)
-        manager.api.users.create(name=name,
-                                 password=password,
-                                 email='juju@localhost',
-                                 tenant_id=tenant_id)
-        log("Created new user '%s' tenant: %s" % (name, tenant_id))
+    if user_exists(name):
+        log("A user named '%s' already exists" % name, level=DEBUG)
         return
-    log("A user named '%s' already exists" % name)
+
+    tenant_id = manager.resolve_tenant_id(tenant)
+    if not tenant_id:
+        error_out('Could not resolve tenant_id for tenant %s' % tenant)
+
+    manager.api.users.create(name=name,
+                             password=password,
+                             email='juju@localhost',
+                             tenant_id=tenant_id)
+    log("Created new user '%s' tenant: %s" % (name, tenant_id),
+        level=DEBUG)
 
 
 def create_role(name, user=None, tenant=None):
@@ -554,9 +571,9 @@ def create_role(name, user=None, tenant=None):
     roles = [r._info for r in manager.api.roles.list()]
     if not roles or name not in [r['name'] for r in roles]:
         manager.api.roles.create(name=name)
-        log("Created new role '%s'" % name)
+        log("Created new role '%s'" % name, level=DEBUG)
     else:
-        log("A role named '%s' already exists" % name)
+        log("A role named '%s' already exists" % name, level=DEBUG)
 
     if not user and not tenant:
         return
@@ -590,10 +607,10 @@ def grant_role(user, role, tenant):
                                         role=role_id,
                                         tenant=tenant_id)
         log("Granted user '%s' role '%s' on tenant '%s'" %
-            (user, role, tenant))
+            (user, role, tenant), level=DEBUG)
     else:
         log("User '%s' already has role '%s' on tenant '%s'" %
-            (user, role, tenant))
+            (user, role, tenant), level=DEBUG)
 
 
 def store_admin_passwd(passwd):
@@ -663,10 +680,9 @@ def ensure_initial_admin(config):
                 'ldap' and config('ldap-readonly')):
             passwd = get_admin_passwd()
             if passwd:
-                create_user(config('admin-user'), passwd, tenant='admin')
-                update_user_password(config('admin-user'), passwd)
-                create_role(config('admin-role'), config('admin-user'),
-                            'admin')
+                create_user_credentials(config('admin-user'), 'admin', passwd,
+                                        new_roles=[config('admin-role')])
+
         create_service_entry("keystone", "identity",
                              "Keystone Identity Service")
 
@@ -1260,6 +1276,50 @@ def relation_list(rid):
         return result
 
 
+def create_user_credentials(user, tenant, passwd, new_roles=None, grants=None):
+    """Create user credentials.
+
+    Optionally adds role grants to user and/or creates new roles.
+    """
+    log("Creating service credentials for '%s'" % user, level=DEBUG)
+    if user_exists(user):
+        log("User '%s' already exists - updating password" % (user),
+            level=DEBUG)
+        update_user_password(user, passwd)
+    else:
+        create_user(user, passwd, tenant)
+
+    if grants:
+        for role in grants:
+            grant_role(user, role, tenant)
+    else:
+        log("No role grants requested for user '%s'" % (user), level=DEBUG)
+
+    if new_roles:
+        # Allow the remote service to request creation of any additional roles.
+        # Currently used by Swift and Ceilometer.
+        for role in new_roles:
+            log("Creating requested role '%s'" % role, level=DEBUG)
+            create_role(role, user, tenant)
+
+    return passwd
+
+
+def create_service_credentials(user, new_roles=None):
+    """Create credentials for service with given username.
+
+    Services are given a user under config('service-tenant') and are given the
+    config('admin-role') role. Tenant is assumed to already exist,
+    """
+    tenant = config('service-tenant')
+    if not tenant:
+        raise Exception("No service tenant provided in config")
+
+    return create_user_credentials(user, tenant, get_service_password(user),
+                                   new_roles=new_roles,
+                                   grants=[config('admin-role')])
+
+
 def add_service_to_keystone(relation_id=None, remote_unit=None):
     import manager
     manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
@@ -1390,18 +1450,9 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         return
 
     token = get_admin_token()
-    log("Creating service credentials for '%s'" % service_username)
-
-    service_password = get_service_password(service_username)
-    create_user(service_username, service_password, config('service-tenant'))
-    grant_role(service_username, config('admin-role'),
-               config('service-tenant'))
-
-    # Allow the remote service to request creation of any additional roles.
-    # Currently used by Swift and Ceilometer.
-    for role in get_requested_roles(settings):
-        log("Creating requested role: %s" % role)
-        create_role(role, service_username, config('service-tenant'))
+    roles = get_requested_roles(settings)
+    service_password = create_service_credentials(service_username,
+                                                  new_roles=roles)
 
     # As of https://review.openstack.org/#change,4675, all nodes hosting
     # an endpoint(s) needs a service username and password assigned to

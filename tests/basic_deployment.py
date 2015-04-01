@@ -64,6 +64,8 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
                      'branch': branch},
                 ],
                 'directory': '/mnt/openstack-git',
+                'http_proxy': 'http://squid.internal:3128',
+                'https_proxy': 'https://squid.internal:3128',
             }
             keystone_config['openstack-origin-git'] = yaml.dump(openstack_origin_git)
 

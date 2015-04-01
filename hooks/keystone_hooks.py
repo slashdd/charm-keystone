@@ -119,10 +119,6 @@ def install():
     apt_update()
     apt_install(determine_packages(), fatal=True)
 
-    # NOTE(coreycb): This is temporary until bug #1431286 is fixed.
-    os.environ["http_proxy"] = "http://squid.internal:3128"
-    os.environ["https_proxy"] = "https://squid.internal:3128"
-
     git_install(config('openstack-origin-git'))
 
 

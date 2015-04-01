@@ -835,7 +835,7 @@ def create_peer_service_actions(action, services):
                                  service.strip(), action))
         log("Creating action %s" % (flagfile), level=DEBUG)
         write_file(flagfile, content='', owner=SSH_USER, group='keystone',
-                   perms=0o644)
+                   perms=0o744)
 
 
 def create_peer_actions(actions):
@@ -844,7 +844,7 @@ def create_peer_actions(actions):
         flagfile = os.path.join(SYNC_FLAGS_DIR, action)
         log("Creating action %s" % (flagfile), level=DEBUG)
         write_file(flagfile, content='', owner=SSH_USER, group='keystone',
-                   perms=0o644)
+                   perms=0o744)
 
 
 @retry_on_exception(3, base_delay=2, exc_type=subprocess.CalledProcessError)
@@ -1027,7 +1027,7 @@ def update_certs_if_available(f):
 
             for syncfile in files:
                 ensure_permissions(syncfile, user='keystone', group='keystone',
-                                   perms=0o644, recurse=True)
+                                   perms=0o744, recurse=True)
 
             # Mark as complete
             os.rename(path, "%s.complete" % (path))

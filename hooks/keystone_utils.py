@@ -1052,7 +1052,7 @@ def synchronize_ca(fatal=False):
 
     Returns a dictionary of settings to be set on the cluster relation.
     """
-    paths_to_sync = [SYNC_FLAGS_DIR]
+    paths_to_sync = []
     peer_service_actions = {'restart': []}
     peer_actions = []
 

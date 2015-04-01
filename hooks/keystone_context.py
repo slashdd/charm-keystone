@@ -202,6 +202,7 @@ class KeystoneContext(context.OSContextGenerator):
         ctxt['debug'] = debug and bool_from_string(debug)
         verbose = config('verbose')
         ctxt['verbose'] = verbose and bool_from_string(verbose)
+        ctxt['token_expiration'] = config('token-expiration')
 
         ctxt['identity_backend'] = config('identity-backend')
         ctxt['assignment_backend'] = config('assignment-backend')

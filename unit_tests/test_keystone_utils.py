@@ -179,17 +179,15 @@ class TestKeystoneUtils(CharmTestCase):
         self.assertTrue(self.https.called)
         self.assertTrue(self.create_role.called)
 
-        rel_only_data = {'auth_host': '10.10.10.10',
-                         'service_host': '10.10.10.10'}
-        relation_data = {'auth_protocol': 'https',
+        relation_data = {'auth_host': '10.10.10.10',
+                         'service_host': '10.10.10.10',
+                         'auth_protocol': 'https',
                          'service_protocol': 'https',
                          'auth_port': 80,
                          'service_port': 81,
                          'https_keystone': 'True',
                          'ca_cert': 'certificate',
                          'region': 'RegionOne'}
-        self.relation_set.assert_called_with(relation_id=relation_id,
-                                             **rel_only_data)
         self.peer_store_and_set.assert_called_with(relation_id=relation_id,
                                                    **relation_data)
 
@@ -237,9 +235,8 @@ class TestKeystoneUtils(CharmTestCase):
         self.grant_role.assert_called_with('keystone', 'admin', 'tenant')
         self.create_role.assert_called_with('role1', 'keystone', 'tenant')
 
-        rel_only_data = {'auth_host': '10.0.0.3',
-                         'service_host': '10.0.0.3'}
-        relation_data = {'admin_token': 'token', 'service_port': 81,
+        relation_data = {'auth_host': '10.0.0.3', 'service_host': '10.0.0.3',
+                         'admin_token': 'token', 'service_port': 81,
                          'auth_port': 80, 'service_username': 'keystone',
                          'service_password': 'password',
                          'service_tenant': 'tenant',
@@ -256,11 +253,10 @@ class TestKeystoneUtils(CharmTestCase):
             else:
                 filtered[k] = v
 
-        call1 = call(relation_id=relation_id, **rel_only_data)
-        call2 = call(relation_id=relation_id, **filtered)
-        call3 = call(relation_id='cluster/0', **relation_data)
+        call1 = call(relation_id=relation_id, **filtered)
+        call2 = call(relation_id='cluster/0', **relation_data)
         self.assertTrue(self.relation_set.called)
-        self.relation_set.assert_has_calls([call1, call2, call3])
+        self.relation_set.assert_has_calls([call1, call2])
 
     @patch.object(utils, 'ensure_valid_service')
     @patch.object(utils, 'add_endpoint')
@@ -286,6 +282,63 @@ class TestKeystoneUtils(CharmTestCase):
                                         publicurl='10.0.0.1',
                                         adminurl='10.0.0.2',
                                         internalurl='192.168.1.2')
+
+    @patch.object(utils, 'user_exists')
+    @patch.object(utils, 'grant_role')
+    @patch.object(utils, 'create_role')
+    @patch.object(utils, 'create_user')
+    def test_create_user_credentials_no_roles(self, mock_create_user,
+                                              mock_create_role,
+                                              mock_grant_role,
+                                              mock_user_exists):
+        mock_user_exists.return_value = False
+        utils.create_user_credentials('userA', 'tenantA', 'passA')
+        mock_create_user.assert_has_calls([call('userA', 'passA', 'tenantA')])
+        mock_create_role.assert_has_calls([])
+        mock_grant_role.assert_has_calls([])
+
+    @patch.object(utils, 'user_exists')
+    @patch.object(utils, 'grant_role')
+    @patch.object(utils, 'create_role')
+    @patch.object(utils, 'create_user')
+    def test_create_user_credentials(self, mock_create_user, mock_create_role,
+                                     mock_grant_role, mock_user_exists):
+        mock_user_exists.return_value = False
+        utils.create_user_credentials('userA', 'tenantA', 'passA',
+                                      grants=['roleA'], new_roles=['roleB'])
+        mock_create_user.assert_has_calls([call('userA', 'passA', 'tenantA')])
+        mock_create_role.assert_has_calls([call('roleB', 'userA', 'tenantA')])
+        mock_grant_role.assert_has_calls([call('userA', 'roleA', 'tenantA')])
+
+    @patch.object(utils, 'update_user_password')
+    @patch.object(utils, 'user_exists')
+    @patch.object(utils, 'grant_role')
+    @patch.object(utils, 'create_role')
+    @patch.object(utils, 'create_user')
+    def test_create_user_credentials_user_exists(self, mock_create_user,
+                                                 mock_create_role,
+                                                 mock_grant_role,
+                                                 mock_user_exists,
+                                                 mock_update_user_password):
+        mock_user_exists.return_value = True
+        utils.create_user_credentials('userA', 'tenantA', 'passA',
+                                      grants=['roleA'], new_roles=['roleB'])
+        mock_create_user.assert_has_calls([])
+        mock_create_role.assert_has_calls([call('roleB', 'userA', 'tenantA')])
+        mock_grant_role.assert_has_calls([call('userA', 'roleA', 'tenantA')])
+        mock_update_user_password.assert_has_calls([call('userA', 'passA')])
+
+    @patch.object(utils, 'get_service_password')
+    @patch.object(utils, 'create_user_credentials')
+    def test_create_service_credentials(self, mock_create_user_credentials,
+                                        mock_get_service_password):
+        mock_get_service_password.return_value = 'passA'
+        cfg = {'service-tenant': 'tenantA', 'admin-role': 'Admin'}
+        self.config.side_effect = lambda key: cfg.get(key, None)
+        calls = [call('serviceA', 'tenantA', 'passA', grants=['Admin'],
+                      new_roles=None)]
+        utils.create_service_credentials('serviceA')
+        mock_create_user_credentials.assert_has_calls(calls)
 
     def test_ensure_valid_service_incorrect(self):
         utils.ensure_valid_service('fakeservice')

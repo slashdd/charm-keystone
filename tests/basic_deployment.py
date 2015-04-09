@@ -146,14 +146,13 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
                  'tenantId': u.not_null,
                  'id': u.not_null,
                  'email': 'juju@localhost'}
-        user3 = {'name': 'cinder',
+        user3 = {'name': 'cinder_cinderv2',
                  'enabled': True,
                  'tenantId': u.not_null,
                  'id': u.not_null,
                  'email': u'juju@localhost'}
         expected = [user1, user2, user3]
         actual = self.keystone.users.list()
-
         ret = u.validate_user_data(expected, actual)
         if ret:
             amulet.raise_status(amulet.FAIL, msg=ret)
@@ -254,13 +253,13 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             'auth_protocol': 'http',
             'private-address': u.valid_ip,
             'auth_host': u.valid_ip,
-            'service_username': 'cinder',
+            'service_username': 'cinder_cinderv2',
             'service_tenant_id': u.not_null,
             'service_host': u.valid_ip
         }
         ret = u.validate_relation_data(unit, relation, expected)
         if ret:
-            message = u.relation_error('cinder identity-service', ret)
+            message = u.relation_error('keystone identity-service', ret)
             amulet.raise_status(amulet.FAIL, msg=message)
 
     def test_cinder_identity_service_relation(self):
@@ -268,12 +267,17 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         unit = self.cinder_sentry
         relation = ['identity-service', 'keystone:identity-service']
         expected = {
-            'service': 'cinder',
-            'region': 'RegionOne',
-            'public_url': u.valid_url,
-            'internal_url': u.valid_url,
+            'cinder_service': 'cinder',
+            'cinder_region': 'RegionOne',
+            'cinder_public_url': u.valid_url,
+            'cinder_internal_url': u.valid_url,
+            'cinder_admin_url': u.valid_url,
+            'cinderv2_service': 'cinderv2',
+            'cinderv2_region': 'RegionOne',
+            'cinderv2_public_url': u.valid_url,
+            'cinderv2_internal_url': u.valid_url,
+            'cinderv2_admin_url': u.valid_url,
             'private-address': u.valid_ip,
-            'admin_url': u.valid_url
         }
         ret = u.validate_relation_data(unit, relation, expected)
         if ret:

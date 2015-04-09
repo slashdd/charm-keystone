@@ -1495,12 +1495,11 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         relation_data['ca_cert'] = b64encode(ca_bundle)
         relation_data['https_keystone'] = 'True'
 
+    peer_store_and_set(relation_id=relation_id, **relation_data)
     # NOTE(dosaboy): '__null__' settings are for peer relation only so that
     # settings can flushed so we filter them out for non-peer relation.
     filtered = filter_null(relation_data)
     relation_set(relation_id=relation_id, **filtered)
-    for rid in relation_ids('cluster'):
-        relation_set(relation_id=rid, **relation_data)
 
 
 def ensure_valid_service(service):

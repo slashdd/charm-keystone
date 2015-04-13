@@ -682,7 +682,7 @@ class TestKeystoneUtils(CharmTestCase):
             'log_file': '/var/log/keystone/keystone.log',
         }
         expected = [
-            call('logging.conf', '/etc/keystone/logging.conf', {},
+            call('git/logging.conf', '/etc/keystone/logging.conf', {},
                  perms=0o644),
             call('git.upstart', '/etc/init/keystone.conf',
                  keystone_context, perms=0o644, templates_dir='joined-string'),

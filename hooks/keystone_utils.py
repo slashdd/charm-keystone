@@ -1711,7 +1711,7 @@ def git_post_install(projects_yaml):
     for conf, files in configs.iteritems():
         shutil.copyfile(files['src'], files['dest'])
 
-    render('logging.conf', '/etc/keystone/logging.conf', {}, perms=0o644)
+    render('git/logging.conf', '/etc/keystone/logging.conf', {}, perms=0o644)
 
     keystone_context = {
         'service_description': 'Keystone API server',

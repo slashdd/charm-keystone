@@ -1676,7 +1676,6 @@ def git_pre_install():
         '/var/lib/keystone',
         '/var/lib/keystone/cache',
         '/var/log/keystone',
-        '/etc/keystone',
     ]
 
     logs = [
@@ -1698,18 +1697,13 @@ def git_post_install(projects_yaml):
     """Perform keystone post-install setup."""
     src_etc = os.path.join(git_src_dir(projects_yaml, 'keystone'), 'etc')
     configs = {
-        'policy': {
-            'src': os.path.join(src_etc, 'policy.json'),
-            'dest': '/etc/keystone/policy.json',
-        },
-        'keystone-paste': {
-            'src': os.path.join(src_etc, 'keystone-paste.ini'),
-            'dest': '/etc/keystone/keystone-paste.ini',
-        },
+        'src': src_etc,
+        'dest': '/etc/keystone',
     }
 
-    for conf, files in configs.iteritems():
-        shutil.copyfile(files['src'], files['dest'])
+    if os.path.exists(configs['dest']):
+        shutil.rmtree(configs['dest'])
+    shutil.copytree(configs['src'], configs['dest'])
 
     render('git/logging.conf', '/etc/keystone/logging.conf', {}, perms=0o644)
 

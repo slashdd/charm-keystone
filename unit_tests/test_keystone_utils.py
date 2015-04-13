@@ -646,8 +646,6 @@ class TestKeystoneUtils(CharmTestCase):
                  group='keystone', perms=0700, force=False),
             call('/var/log/keystone', owner='keystone',
                  group='keystone', perms=0700, force=False),
-            call('/etc/keystone', owner='keystone',
-                 group='keystone', perms=0700, force=False),
         ]
         self.assertEquals(mkdir.call_args_list, expected)
         write_file.assert_called_with('/var/log/keystone/keystone.log',
@@ -658,19 +656,18 @@ class TestKeystoneUtils(CharmTestCase):
     @patch.object(utils, 'service_restart')
     @patch.object(utils, 'render')
     @patch('os.path.join')
-    @patch('shutil.copyfile')
-    def test_git_post_install(self, copyfile, join, render, service_restart,
-                              git_src_dir):
+    @patch('os.path.exists')
+    @patch('shutil.copytree')
+    @patch('shutil.rmtree')
+    def test_git_post_install(self, rmtree, copytree, exists, join, render,
+                              service_restart, git_src_dir):
         projects_yaml = openstack_origin_git
         join.return_value = 'joined-string'
         utils.git_post_install(projects_yaml)
         expected = [
-            call('joined-string',
-                 '/etc/keystone/keystone-paste.ini'),
-            call('joined-string',
-                 '/etc/keystone/policy.json'),
+            call('joined-string', '/etc/keystone'),
         ]
-        copyfile.assert_has_calls(expected, any_order=True)
+        copytree.assert_has_calls(expected)
         keystone_context = {
             'service_description': 'Keystone API server',
             'service_name': 'Keystone',

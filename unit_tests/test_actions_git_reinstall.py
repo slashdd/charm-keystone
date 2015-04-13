@@ -4,7 +4,8 @@ with patch('charmhelpers.core.hookenv.config') as config:
     config.return_value = 'keystone'
     import keystone_utils as utils  # noqa
 
-import git_reinstall
+with patch('keystone_utils.register_configs') as register_configs:
+    import git_reinstall
 
 from test_utils import (
     CharmTestCase
@@ -70,7 +71,7 @@ class TestKeystoneActions(CharmTestCase):
         git_install.side_effect = e
         traceback = (
             "Traceback (most recent call last):\n"
-            "  File \"actions/git_reinstall.py\", line 33, in git_reinstall\n"
+            "  File \"actions/git_reinstall.py\", line 37, in git_reinstall\n"
             "    git_install(config(\'openstack-origin-git\'))\n"
             "  File \"/usr/lib/python2.7/dist-packages/mock.py\", line 964, in __call__\n"  # noqa
             "    return _mock_self._mock_call(*args, **kwargs)\n"

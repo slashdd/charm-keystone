@@ -18,6 +18,10 @@ from keystone_utils import (
     git_install,
 )
 
+from keystone_hooks import (
+    config_changed,
+)
+
 
 def git_reinstall():
     """Reinstall from source and restart services.
@@ -38,3 +42,4 @@ def git_reinstall():
 
 if __name__ == '__main__':
     git_reinstall()
+    config_changed()

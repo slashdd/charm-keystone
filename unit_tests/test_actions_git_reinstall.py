@@ -63,8 +63,9 @@ class TestKeystoneActions(CharmTestCase):
     @patch.object(git_reinstall, 'action_set')
     @patch.object(git_reinstall, 'action_fail')
     @patch.object(git_reinstall, 'git_install')
+    @patch('traceback.format_exc')
     @patch('charmhelpers.contrib.openstack.utils.config')
-    def test_git_reinstall_exception(self, _config, git_install,
+    def test_git_reinstall_exception(self, _config, format_exc, git_install,
                                      action_fail, action_set):
         _config.return_value = openstack_origin_git
         e = OSError('something bad happened')
@@ -78,6 +79,7 @@ class TestKeystoneActions(CharmTestCase):
             "  File \"/usr/lib/python2.7/dist-packages/mock.py\", line 1019, in _mock_call\n"  # noqa
             "    raise effect\n"
             "OSError: something bad happened\n")
+        format_exc.return_value = traceback
 
         git_reinstall.git_reinstall()
 

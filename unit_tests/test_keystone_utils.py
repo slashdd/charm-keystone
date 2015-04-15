@@ -273,10 +273,11 @@ class TestKeystoneUtils(CharmTestCase):
             else:
                 filtered[k] = v
 
-        call1 = call(relation_id=relation_id, **filtered)
-        call2 = call(relation_id='cluster/0', **relation_data)
         self.assertTrue(self.relation_set.called)
-        self.relation_set.assert_has_calls([call1, call2])
+        self.peer_store_and_set.assert_called_with(relation_id=relation_id,
+                                                   **relation_data)
+        self.relation_set.assert_called_with(relation_id=relation_id,
+                                             **filtered)
 
     @patch.object(utils, 'ensure_valid_service')
     @patch.object(utils, 'add_endpoint')

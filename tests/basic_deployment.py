@@ -1,6 +1,8 @@
 #!/usr/bin/python
 
 import amulet
+import os
+import yaml
 
 from charmhelpers.contrib.openstack.amulet.deployment import (
     OpenStackAmuletDeployment
@@ -13,15 +15,16 @@ from charmhelpers.contrib.openstack.amulet.utils import (
 )
 
 # Use DEBUG to turn on debug logging
-u = OpenStackAmuletUtils(ERROR)
+u = OpenStackAmuletUtils(DEBUG)
 
 
 class KeystoneBasicDeployment(OpenStackAmuletDeployment):
     """Amulet tests on a basic keystone deployment."""
 
-    def __init__(self, series=None, openstack=None, source=None, stable=False):
+    def __init__(self, series=None, openstack=None, source=None, git=False, stable=False):
         """Deploy the entire test environment."""
         super(KeystoneBasicDeployment, self).__init__(series, openstack, source, stable)
+        self.git = git
         self._add_services()
         self._add_relations()
         self._configure_services()
@@ -50,6 +53,24 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         """Configure all of the services."""
         keystone_config = {'admin-password': 'openstack',
                            'admin-token': 'ubuntutesting'}
+        if self.git:
+            branch = 'stable/' + self._get_openstack_release_string()
+            amulet_http_proxy = os.environ.get('AMULET_HTTP_PROXY')
+            openstack_origin_git = {
+                'repositories': [
+                    {'name': 'requirements',
+                     'repository': 'git://git.openstack.org/openstack/requirements',
+                     'branch': branch},
+                    {'name': 'keystone',
+                     'repository': 'git://git.openstack.org/openstack/keystone',
+                     'branch': branch},
+                ],
+                'directory': '/mnt/openstack-git',
+                'http_proxy': amulet_http_proxy,
+                'https_proxy': amulet_http_proxy,
+            }
+            keystone_config['openstack-origin-git'] = yaml.dump(openstack_origin_git)
+
         mysql_config = {'dataset-size': '50%'}
         cinder_config = {'block-device': 'None'}
         configs = {'keystone': keystone_config,

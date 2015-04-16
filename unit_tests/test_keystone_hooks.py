@@ -2,6 +2,7 @@ from mock import call, patch, MagicMock
 import os
 import json
 import uuid
+import yaml
 
 from test_utils import CharmTestCase
 
@@ -67,6 +68,7 @@ TO_PATCH = [
     'get_iface_for_address',
     'get_netmask_for_address',
     'get_address_in_network',
+    'git_install',
 ]
 
 
@@ -77,17 +79,49 @@ class KeystoneRelationTests(CharmTestCase):
         self.config.side_effect = self.test_config.get
         self.ssh_user = 'juju_keystone'
 
-    def test_install_hook(self):
+    @patch.object(utils, 'git_install_requested')
+    def test_install_hook(self, git_requested):
+        git_requested.return_value = False
         repo = 'cloud:precise-grizzly'
         self.test_config.set('openstack-origin', repo)
         hooks.install()
+        self.assertTrue(self.execd_preinstall.called)
         self.configure_installation_source.assert_called_with(repo)
         self.assertTrue(self.apt_update.called)
         self.apt_install.assert_called_with(
             ['haproxy', 'unison', 'python-keystoneclient',
              'uuid', 'python-mysqldb', 'openssl', 'apache2',
              'pwgen', 'python-six', 'keystone', 'python-psycopg2'], fatal=True)
+        self.git_install.assert_called_with(None)
+
+    @patch.object(utils, 'git_install_requested')
+    def test_install_hook_git(self, git_requested):
+        git_requested.return_value = True
+        repo = 'cloud:trusty-juno'
+        openstack_origin_git = {
+            'repositories': [
+                {'name': 'requirements',
+                 'repository': 'git://git.openstack.org/openstack/requirements',  # noqa
+                 'branch': 'stable/juno'},
+                {'name': 'keystone',
+                 'repository': 'git://git.openstack.org/openstack/keystone',
+                 'branch': 'stable/juno'}
+            ],
+            'directory': '/mnt/openstack-git',
+        }
+        projects_yaml = yaml.dump(openstack_origin_git)
+        self.test_config.set('openstack-origin', repo)
+        self.test_config.set('openstack-origin-git', projects_yaml)
+        hooks.install()
         self.assertTrue(self.execd_preinstall.called)
+        self.configure_installation_source.assert_called_with(repo)
+        self.assertTrue(self.apt_update.called)
+        self.apt_install.assert_called_with(
+            ['haproxy', 'unison', 'python-setuptools', 'python-six', 'uuid',
+             'python-mysqldb', 'python-pip', 'openssl', 'apache2', 'pwgen',
+             'libxslt1-dev', 'python-psycopg2', 'zlib1g-dev', 'python-dev',
+             'libxml2-dev'], fatal=True)
+        self.git_install.assert_called_with(projects_yaml)
 
     mod_ch_openstack_utils = 'charmhelpers.contrib.openstack.utils'
 
@@ -271,6 +305,7 @@ class KeystoneRelationTests(CharmTestCase):
             relation_id='identity-service:0',
             remote_unit='unit/0')
 
+    @patch.object(hooks, 'git_install_requested')
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
     @patch.object(hooks, 'ensure_pki_dir_permissions')
@@ -305,7 +340,8 @@ class KeystoneRelationTests(CharmTestCase):
                                               mock_ensure_ssl_dir,
                                               mock_ensure_pki_dir_permissions,
                                               mock_ensure_ssl_cert_master,
-                                              mock_log):
+                                              mock_log, git_requested):
+        git_requested.return_value = False
         mock_is_pki_enabled.return_value = True
         mock_is_ssl_cert_master.return_value = True
         mock_is_db_initialised.return_value = True
@@ -334,6 +370,7 @@ class KeystoneRelationTests(CharmTestCase):
             remote_unit='unit/0')
         admin_relation_changed.assert_called_with('identity-service:0')
 
+    @patch.object(hooks, 'git_install_requested')
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
     @patch.object(hooks, 'update_all_identity_relation_units')
@@ -361,7 +398,8 @@ class KeystoneRelationTests(CharmTestCase):
                                                   mock_ensure_pki_permissions,
                                                   mock_update_all_id_rel_units,
                                                   mock_ensure_ssl_cert_master,
-                                                  mock_log):
+                                                  mock_log, git_requested):
+        git_requested.return_value = False
         mock_is_pki_enabled.return_value = True
         mock_is_ssl_cert_master.return_value = True
         mock_peer_units.return_value = []
@@ -381,6 +419,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertFalse(self.ensure_initial_admin.called)
         self.assertFalse(identity_changed.called)
 
+    @patch.object(hooks, 'git_install_requested')
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
     @patch.object(hooks, 'ensure_pki_dir_permissions')
@@ -414,7 +453,8 @@ class KeystoneRelationTests(CharmTestCase):
                                                    mock_ensure_ssl_dir,
                                                    mock_ensure_pki_permissions,
                                                    mock_ensure_ssl_cert_master,
-                                                   mock_log):
+                                                   mock_log, git_requested):
+        git_requested.return_value = False
         mock_is_pki_enabled.return_value = True
         mock_is_ssl_cert_master.return_value = True
         mock_is_db_ready.return_value = True
@@ -444,6 +484,66 @@ class KeystoneRelationTests(CharmTestCase):
             relation_id='identity-service:0',
             remote_unit='unit/0')
         admin_relation_changed.assert_called_with('identity-service:0')
+
+    @patch.object(hooks, 'git_install_requested')
+    @patch.object(hooks, 'config_value_changed')
+    @patch('keystone_utils.log')
+    @patch('keystone_utils.ensure_ssl_cert_master')
+    @patch.object(hooks, 'ensure_ssl_dir')
+    @patch.object(hooks, 'is_pki_enabled')
+    @patch.object(hooks, 'send_ssl_sync_request')
+    @patch.object(hooks, 'is_db_initialised')
+    @patch.object(hooks, 'is_db_ready')
+    @patch.object(hooks, 'peer_units')
+    @patch.object(hooks, 'ensure_permissions')
+    @patch.object(hooks, 'admin_relation_changed')
+    @patch.object(hooks, 'cluster_joined')
+    @patch.object(unison, 'ensure_user')
+    @patch.object(unison, 'get_homedir')
+    @patch.object(hooks, 'CONFIGS')
+    @patch.object(hooks, 'identity_changed')
+    @patch.object(hooks, 'configure_https')
+    def test_config_changed_git_updated(self, configure_https,
+                                        identity_changed,
+                                        configs, get_homedir, ensure_user,
+                                        cluster_joined, admin_relation_changed,
+                                        ensure_permissions, mock_peer_units,
+                                        mock_is_db_ready,
+                                        mock_is_db_initialised,
+                                        mock_send_ssl_sync_request,
+                                        mock_is_pki_enabled,
+                                        mock_ensure_ssl_dir,
+                                        mock_ensure_ssl_cert_master,
+                                        mock_log, config_val_changed,
+                                        git_requested):
+        git_requested.return_value = True
+        mock_ensure_ssl_cert_master.return_value = False
+        mock_is_pki_enabled.return_value = False
+        self.openstack_upgrade_available.return_value = False
+        self.is_elected_leader.return_value = True
+        mock_peer_units.return_value = []
+        self.relation_ids.return_value = ['identity-service:0']
+        self.related_units.return_value = ['unit/0']
+
+        repo = 'cloud:trusty-juno'
+        openstack_origin_git = {
+            'repositories': [
+                {'name': 'requirements',
+                 'repository': 'git://git.openstack.org/openstack/requirements',  # noqa
+                 'branch': 'stable/juno'},
+                {'name': 'keystone',
+                 'repository': 'git://git.openstack.org/openstack/keystone',
+                 'branch': 'stable/juno'}
+            ],
+            'directory': '/mnt/openstack-git',
+        }
+        projects_yaml = yaml.dump(openstack_origin_git)
+        self.test_config.set('openstack-origin', repo)
+        self.test_config.set('openstack-origin-git', projects_yaml)
+        hooks.config_changed()
+        self.git_install.assert_called_with(projects_yaml)
+        self.assertFalse(self.openstack_upgrade_available.called)
+        self.assertFalse(self.do_openstack_upgrade.called)
 
     @patch.object(hooks, 'is_db_initialised')
     @patch.object(hooks, 'is_db_ready')
@@ -689,6 +789,7 @@ class KeystoneRelationTests(CharmTestCase):
         cmd = ['a2dissite', 'openstack_https_frontend']
         self.check_call.assert_called_with(cmd)
 
+    @patch.object(utils, 'git_install_requested')
     @patch.object(hooks, 'is_db_ready')
     @patch.object(hooks, 'is_db_initialised')
     @patch('keystone_utils.log')
@@ -706,7 +807,8 @@ class KeystoneRelationTests(CharmTestCase):
                                   mock_relation_ids,
                                   mock_log,
                                   mock_is_db_ready,
-                                  mock_is_db_initialised):
+                                  mock_is_db_initialised,
+                                  git_requested):
         mock_is_db_initialised.return_value = True
         mock_is_db_ready.return_value = True
         mock_is_elected_leader.return_value = False
@@ -718,6 +820,7 @@ class KeystoneRelationTests(CharmTestCase):
 
         self.is_elected_leader.return_value = True
         self.filter_installed_packages.return_value = []
+        git_requested.return_value = False
         hooks.upgrade_charm()
         self.assertTrue(self.apt_install.called)
         ssh_authorized_peers.assert_called_with(
@@ -728,6 +831,7 @@ class KeystoneRelationTests(CharmTestCase):
             'Firing identity_changed hook for all related services.')
         self.assertTrue(self.ensure_initial_admin.called)
 
+    @patch.object(utils, 'git_install_requested')
     @patch('keystone_utils.log')
     @patch('keystone_utils.relation_ids')
     @patch('keystone_utils.ensure_ssl_cert_master')
@@ -737,7 +841,7 @@ class KeystoneRelationTests(CharmTestCase):
                                       mock_update_hash_from_path,
                                       mock_ensure_ssl_cert_master,
                                       mock_relation_ids,
-                                      mock_log):
+                                      mock_log, git_requested):
         mock_relation_ids.return_value = []
         mock_ensure_ssl_cert_master.return_value = False
         # Ensure always returns diff
@@ -746,6 +850,7 @@ class KeystoneRelationTests(CharmTestCase):
 
         self.is_elected_leader.return_value = False
         self.filter_installed_packages.return_value = []
+        git_requested.return_value = False
         hooks.upgrade_charm()
         self.assertTrue(self.apt_install.called)
         ssh_authorized_peers.assert_called_with(

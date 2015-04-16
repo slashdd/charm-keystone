@@ -68,3 +68,63 @@ go down, it must be removed from Juju i.e.
 Otherwise it will be assumed that this unit may come back at some point and
 therefore must be know to be in-sync with the rest before continuing.
 
+Deploying from source
+---------------------
+
+The minimum openstack-origin-git config required to deploy from source is:
+
+  openstack-origin-git:
+      "repositories:
+         - {name: requirements,
+            repository: 'git://git.openstack.org/openstack/requirements',
+            branch: stable/juno}
+         - {name: keystone,
+            repository: 'git://git.openstack.org/openstack/keystone',
+            branch: stable/juno}"
+
+Note that there are only two 'name' values the charm knows about: 'requirements'
+and 'keystone'. These repositories must correspond to these 'name' values.
+Additionally, the requirements repository must be specified first and the
+keystone repository must be specified last. All other repostories are installed
+in the order in which they are specified.
+
+The following is a full list of current tip repos (may not be up-to-date):
+
+  openstack-origin-git:
+      "repositories:
+         - {name: requirements,
+            repository: 'git://git.openstack.org/openstack/requirements',
+            branch: master}
+         - {name: oslo-concurrency,
+            repository: 'git://git.openstack.org/openstack/oslo.concurrency',
+            branch: master}
+         - {name: oslo-config,
+            repository: 'git://git.openstack.org/openstack/oslo.config',
+            branch: master}
+         - {name: oslo-db,
+            repository: 'git://git.openstack.org/openstack/oslo.db',
+            branch: master}
+         - {name: oslo-i18n,
+            repository: 'git://git.openstack.org/openstack/oslo.i18n',
+            branch: master}
+         - {name: oslo-serialization,
+            repository: 'git://git.openstack.org/openstack/oslo.serialization',
+            branch: master}
+         - {name: oslo-utils,
+            repository: 'git://git.openstack.org/openstack/oslo.utils',
+            branch: master}
+         - {name: pbr,
+            repository: 'git://git.openstack.org/openstack-dev/pbr',
+            branch: master}
+         - {name: python-keystoneclient,
+            repository: 'git://git.openstack.org/openstack/python-keystoneclient',
+            branch: master}
+         - {name: sqlalchemy-migrate,
+            repository: 'git://git.openstack.org/stackforge/sqlalchemy-migrate',
+            branch: master}
+         - {name: keystonemiddleware,
+            repository: 'git://git.openstack.org/openstack/keystonemiddleware',
+            branch: master}
+         - {name: keystone,
+            repository: 'git://git.openstack.org/openstack/keystone',
+            branch: master}"

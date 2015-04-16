@@ -8,6 +8,7 @@ include:
     - contrib.hahelpers:
         - apache
         - cluster
+    - contrib.python
     - contrib.unison
     - payload.execd
     - contrib.peerstorage

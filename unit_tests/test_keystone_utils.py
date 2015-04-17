@@ -642,11 +642,11 @@ class TestKeystoneUtils(CharmTestCase):
         add_user_to_group.assert_called_with('keystone', 'keystone')
         expected = [
             call('/var/lib/keystone', owner='keystone',
-                 group='keystone', perms=0700, force=False),
+                 group='keystone', perms=0755, force=False),
             call('/var/lib/keystone/cache', owner='keystone',
-                 group='keystone', perms=0700, force=False),
+                 group='keystone', perms=0755, force=False),
             call('/var/log/keystone', owner='keystone',
-                 group='keystone', perms=0700, force=False),
+                 group='keystone', perms=0755, force=False),
         ]
         self.assertEquals(mkdir.call_args_list, expected)
         write_file.assert_called_with('/var/log/keystone/keystone.log',

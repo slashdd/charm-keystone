@@ -118,9 +118,10 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertTrue(self.apt_update.called)
         self.apt_install.assert_called_with(
             ['haproxy', 'unison', 'python-setuptools', 'python-six', 'uuid',
-             'python-mysqldb', 'python-pip', 'openssl', 'apache2', 'pwgen',
-             'libxslt1-dev', 'python-psycopg2', 'zlib1g-dev', 'python-dev',
-             'libxml2-dev'], fatal=True)
+             'python-mysqldb', 'python-pip', 'libssl-dev', 'openssl',
+             'libffi-dev', 'apache2', 'pwgen', 'libxslt1-dev',
+             'python-psycopg2', 'zlib1g-dev', 'python-dev', 'libxml2-dev'],
+            fatal=True)
         self.git_install.assert_called_with(projects_yaml)
 
     mod_ch_openstack_utils = 'charmhelpers.contrib.openstack.utils'

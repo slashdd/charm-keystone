@@ -122,11 +122,8 @@ BASE_PACKAGES = [
 ]
 
 BASE_GIT_PACKAGES = [
-    'libffi-dev',
-    'libssl-dev',
     'libxml2-dev',
     'libxslt1-dev',
-    'libyaml-dev',
     'python-dev',
     'python-pip',
     'python-setuptools',

@@ -21,7 +21,7 @@ u = OpenStackAmuletUtils(DEBUG)
 class KeystoneBasicDeployment(OpenStackAmuletDeployment):
     """Amulet tests on a basic keystone deployment."""
 
-    def __init__(self, series=None, openstack=None, source=None, git=False, stable=False):
+    def __init__(self, series=None, openstack=None, source=None, git=False, stable=True):
         """Deploy the entire test environment."""
         super(KeystoneBasicDeployment, self).__init__(series, openstack, source, stable)
         self.git = git

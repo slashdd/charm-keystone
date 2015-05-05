@@ -1706,13 +1706,14 @@ def git_post_install(projects_yaml):
 
     render('git/logging.conf', '/etc/keystone/logging.conf', {}, perms=0o644)
 
+    bin_dir = os.path.join(charm_dir(), 'venv/bin')
     keystone_context = {
         'service_description': 'Keystone API server',
         'service_name': 'Keystone',
         'user_name': 'keystone',
         'start_dir': '/var/lib/keystone',
         'process_name': 'keystone',
-        'executable_name': '/usr/local/bin/keystone-all',
+        'executable_name': os.path.join(bin_dir, 'keystone-all'),
         'config_files': ['/etc/keystone/keystone.conf'],
         'log_file': '/var/log/keystone/keystone.log',
     }

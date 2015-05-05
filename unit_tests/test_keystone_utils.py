@@ -675,7 +675,7 @@ class TestKeystoneUtils(CharmTestCase):
             'user_name': 'keystone',
             'start_dir': '/var/lib/keystone',
             'process_name': 'keystone',
-            'executable_name': '/usr/local/bin/keystone-all',
+            'executable_name': 'joined-string',
             'config_files': ['/etc/keystone/keystone.conf'],
             'log_file': '/var/log/keystone/keystone.log',
         }

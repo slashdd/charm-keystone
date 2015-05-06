@@ -144,7 +144,6 @@ BASE_SERVICES = [
 # ubuntu packages that should not be installed when deploying from git
 GIT_PACKAGE_BLACKLIST = [
     'keystone',
-    'python-keystoneclient',
 ]
 
 API_PORTS = {

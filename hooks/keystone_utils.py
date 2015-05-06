@@ -1704,6 +1704,18 @@ def git_post_install(projects_yaml):
         shutil.rmtree(configs['dest'])
     shutil.copytree(configs['src'], configs['dest'])
 
+    symlinks = [
+        {'src': os.path.join(charm_dir(), 'venv/bin/keystone'),
+         'link': '/usr/local/bin/keystone'},
+        {'src': os.path.join(charm_dir(), 'venv/bin/keystone-manage'),
+         'link': '/usr/local/bin/keystone-manage'},
+    ]
+
+    for s in symlinks:
+        if os.path.lexists(s['link']):
+            os.remove(s['link'])
+        os.symlink(s['src'], s['link'])
+
     render('git/logging.conf', '/etc/keystone/logging.conf', {}, perms=0o644)
 
     bin_dir = os.path.join(charm_dir(), 'venv/bin')

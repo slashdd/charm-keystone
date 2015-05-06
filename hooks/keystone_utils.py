@@ -44,8 +44,14 @@ from charmhelpers.contrib.openstack.utils import (
     git_install_requested,
     git_clone_and_install,
     git_src_dir,
+    git_http_proxy,
     os_release,
-    save_script_rc as _save_script_rc)
+    save_script_rc as _save_script_rc
+)
+
+from charmhelpers.contrib.python.packages import (
+    pip_install,
+)
 
 from charmhelpers.core.strutils import (
     bool_from_string,
@@ -122,6 +128,7 @@ BASE_PACKAGES = [
 ]
 
 BASE_GIT_PACKAGES = [
+    'libmysqlclient-dev',
     'libxml2-dev',
     'libxslt1-dev',
     'python-dev',
@@ -1694,6 +1701,12 @@ def git_pre_install():
 
 def git_post_install(projects_yaml):
     """Perform keystone post-install setup."""
+    http_proxy = git_http_proxy(projects_yaml)
+    if http_proxy:
+        pip_install('mysql-python', proxy=http_proxy, venv=True)
+    else:
+        pip_install('mysql-python', venv=True)
+
     src_etc = os.path.join(git_src_dir(projects_yaml, 'keystone'), 'etc')
     configs = {
         'src': src_etc,

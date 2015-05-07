@@ -45,7 +45,7 @@ from charmhelpers.contrib.openstack.utils import (
     git_clone_and_install,
     git_src_dir,
     git_yaml_value,
-    git_pip_venv_dir
+    git_pip_venv_dir,
     os_release,
     save_script_rc as _save_script_rc
 )

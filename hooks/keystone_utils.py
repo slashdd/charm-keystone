@@ -1717,8 +1717,6 @@ def git_post_install(projects_yaml):
     shutil.copytree(configs['src'], configs['dest'])
 
     symlinks = [
-        {'src': os.path.join(charm_dir(), 'venv/bin/keystone'),
-         'link': '/usr/local/bin/keystone'},
         {'src': os.path.join(charm_dir(), 'venv/bin/keystone-manage'),
          'link': '/usr/local/bin/keystone-manage'},
     ]

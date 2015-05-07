@@ -1718,7 +1718,7 @@ def git_post_install(projects_yaml):
     shutil.copytree(configs['src'], configs['dest'])
 
     symlinks = [
-        {'src': os.path.join(pip_get_virtualenv_path(), 'bin/keystone-manage')
+        {'src': os.path.join(pip_get_virtualenv_path(), 'bin/keystone-manage'),
          'link': '/usr/local/bin/keystone-manage'},
     ]
 

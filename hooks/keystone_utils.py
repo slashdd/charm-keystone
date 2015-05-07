@@ -44,13 +44,14 @@ from charmhelpers.contrib.openstack.utils import (
     git_install_requested,
     git_clone_and_install,
     git_src_dir,
-    git_http_proxy,
+    git_yaml_value,
     os_release,
     save_script_rc as _save_script_rc
 )
 
 from charmhelpers.contrib.python.packages import (
     pip_install,
+    pip_get_virtualenv_path,
 )
 
 from charmhelpers.core.strutils import (
@@ -1700,7 +1701,7 @@ def git_pre_install():
 
 def git_post_install(projects_yaml):
     """Perform keystone post-install setup."""
-    http_proxy = git_http_proxy(projects_yaml)
+    http_proxy = git_yaml_value(projects_yaml, 'http_proxy')
     if http_proxy:
         pip_install('mysql-python', proxy=http_proxy, venv=True)
     else:
@@ -1717,7 +1718,7 @@ def git_post_install(projects_yaml):
     shutil.copytree(configs['src'], configs['dest'])
 
     symlinks = [
-        {'src': os.path.join(charm_dir(), 'venv/bin/keystone-manage'),
+        {'src': os.path.join(pip_get_virtualenv_path(), 'bin/keystone-manage')
          'link': '/usr/local/bin/keystone-manage'},
     ]
 
@@ -1728,7 +1729,7 @@ def git_post_install(projects_yaml):
 
     render('git/logging.conf', '/etc/keystone/logging.conf', {}, perms=0o644)
 
-    bin_dir = os.path.join(charm_dir(), 'venv/bin')
+    bin_dir = os.path.join(pip_get_virtualenv_path(), 'bin')
     keystone_context = {
         'service_description': 'Keystone API server',
         'service_name': 'Keystone',

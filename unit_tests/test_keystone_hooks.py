@@ -119,8 +119,9 @@ class KeystoneRelationTests(CharmTestCase):
         self.apt_install.assert_called_with(
             ['haproxy', 'unison', 'python-setuptools', 'python-keystoneclient',
              'uuid', 'python-mysqldb', 'libmysqlclient-dev', 'openssl',
-             'apache2', 'python-pip', 'pwgen', 'python-six', 'libxslt1-dev',
-             'python-psycopg2', 'zlib1g-dev', 'python-dev', 'libxml2-dev'],
+             'libffi-dev', 'apache2', 'python-pip', 'pwgen', 'python-six',
+             'libxslt1-dev', 'python-psycopg2', 'zlib1g-dev', 'python-dev',
+             'libxml2-dev'],
             fatal=True)
         self.git_install.assert_called_with(projects_yaml)
 

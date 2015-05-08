@@ -131,6 +131,7 @@ BASE_PACKAGES = [
 BASE_GIT_PACKAGES = [
     'libffi-dev',
     'libmysqlclient-dev',
+    'libssl-dev',
     'libxml2-dev',
     'libxslt1-dev',
     'python-dev',

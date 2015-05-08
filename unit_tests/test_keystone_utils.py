@@ -42,6 +42,7 @@ TO_PATCH = [
     'https',
     'is_relation_made',
     'peer_store',
+    'pip_install',
     # generic
     'apt_update',
     'apt_upgrade',

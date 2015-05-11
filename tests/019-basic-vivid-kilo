@@ -1,9 +1,9 @@
 #!/usr/bin/python
 
-"""Amulet tests on a basic keystone deployment on precise-essex."""
+"""Amulet tests on a basic keystone deployment on vivid-kilo."""
 
 from basic_deployment import KeystoneBasicDeployment
 
 if __name__ == '__main__':
-    deployment = KeystoneBasicDeployment(series='precise')
+    deployment = KeystoneBasicDeployment(series='vivid')
     deployment.run_tests()

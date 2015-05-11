@@ -42,13 +42,11 @@ from charmhelpers.contrib.openstack.utils import (
     configure_installation_source,
     error_out,
     get_os_codename_install_source,
+    git_install_requested,
+    git_clone_and_install,
+    git_src_dir,
     os_release,
     save_script_rc as _save_script_rc)
-
-from charmhelpers.core.host import (
-    mkdir,
-    write_file,
-)
 
 from charmhelpers.core.strutils import (
     bool_from_string,
@@ -61,6 +59,7 @@ from charmhelpers.core.decorators import (
 )
 
 from charmhelpers.core.hookenv import (
+    charm_dir,
     config,
     is_relation_made,
     log,
@@ -79,15 +78,20 @@ from charmhelpers.fetch import (
     apt_install,
     apt_update,
     apt_upgrade,
-    add_source
+    add_source,
 )
 
 from charmhelpers.core.host import (
+    adduser,
+    add_group,
+    add_user_to_group,
+    mkdir,
     service_stop,
     service_start,
     service_restart,
     pwgen,
-    lsb_release
+    lsb_release,
+    write_file,
 )
 
 from charmhelpers.contrib.peerstorage import (
@@ -95,6 +99,8 @@ from charmhelpers.contrib.peerstorage import (
     peer_store,
     peer_retrieve,
 )
+
+from charmhelpers.core.templating import render
 
 import keystone_context
 import keystone_ssl as ssl
@@ -115,8 +121,25 @@ BASE_PACKAGES = [
     'uuid',
 ]
 
+BASE_GIT_PACKAGES = [
+    'libffi-dev',
+    'libssl-dev',
+    'libxml2-dev',
+    'libxslt1-dev',
+    'python-dev',
+    'python-pip',
+    'python-setuptools',
+    'zlib1g-dev',
+]
+
 BASE_SERVICES = [
     'keystone',
+]
+
+# ubuntu packages that should not be installed when deploying from git
+GIT_PACKAGE_BLACKLIST = [
+    'keystone',
+    'python-keystoneclient',
 ]
 
 API_PORTS = {
@@ -308,6 +331,14 @@ def determine_packages():
     packages = [] + BASE_PACKAGES
     for k, v in resource_map().iteritems():
         packages.extend(v['services'])
+
+    if git_install_requested():
+        packages.extend(BASE_GIT_PACKAGES)
+        # don't include packages that will be installed from git
+        packages = list(set(packages))
+        for p in GIT_PACKAGE_BLACKLIST:
+            packages.remove(p)
+
     return list(set(packages))
 
 
@@ -1653,3 +1684,68 @@ def is_db_ready(use_current_context=False, db_rel=None):
     # If neither relation has units then we are probably in sqlite mode so
     # return True.
     return not rel_has_units
+
+
+def git_install(projects_yaml):
+    """Perform setup, and install git repos specified in yaml parameter."""
+    if git_install_requested():
+        git_pre_install()
+        git_clone_and_install(projects_yaml, core_project='keystone')
+        git_post_install(projects_yaml)
+
+
+def git_pre_install():
+    """Perform keystone pre-install setup."""
+    dirs = [
+        '/var/lib/keystone',
+        '/var/lib/keystone/cache',
+        '/var/log/keystone',
+    ]
+
+    logs = [
+        '/var/log/keystone/keystone.log',
+    ]
+
+    adduser('keystone', shell='/bin/bash', system_user=True)
+    add_group('keystone', system_group=True)
+    add_user_to_group('keystone', 'keystone')
+
+    for d in dirs:
+        mkdir(d, owner='keystone', group='keystone', perms=0755, force=False)
+
+    for l in logs:
+        write_file(l, '', owner='keystone', group='keystone', perms=0600)
+
+
+def git_post_install(projects_yaml):
+    """Perform keystone post-install setup."""
+    src_etc = os.path.join(git_src_dir(projects_yaml, 'keystone'), 'etc')
+    configs = {
+        'src': src_etc,
+        'dest': '/etc/keystone',
+    }
+
+    if os.path.exists(configs['dest']):
+        shutil.rmtree(configs['dest'])
+    shutil.copytree(configs['src'], configs['dest'])
+
+    render('git/logging.conf', '/etc/keystone/logging.conf', {}, perms=0o644)
+
+    keystone_context = {
+        'service_description': 'Keystone API server',
+        'service_name': 'Keystone',
+        'user_name': 'keystone',
+        'start_dir': '/var/lib/keystone',
+        'process_name': 'keystone',
+        'executable_name': '/usr/local/bin/keystone-all',
+        'config_files': ['/etc/keystone/keystone.conf'],
+        'log_file': '/var/log/keystone/keystone.log',
+    }
+
+    # NOTE(coreycb): Needs systemd support
+    templates_dir = 'hooks/charmhelpers/contrib/openstack/templates'
+    templates_dir = os.path.join(charm_dir(), templates_dir)
+    render('git.upstart', '/etc/init/keystone.conf', keystone_context,
+           perms=0o644, templates_dir=templates_dir)
+
+    service_restart('keystone')

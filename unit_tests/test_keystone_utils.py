@@ -53,6 +53,15 @@ TO_PATCH = [
     'resolve_address',
 ]
 
+openstack_origin_git = \
+    """repositories:
+         - {name: requirements,
+            repository: 'git://git.openstack.org/openstack/requirements',
+            branch: stable/juno}
+         - {name: keystone,
+            repository: 'git://git.openstack.org/openstack/keystone',
+            branch: stable/juno}"""
+
 
 class TestKeystoneUtils(CharmTestCase):
 
@@ -108,9 +117,20 @@ class TestKeystoneUtils(CharmTestCase):
         result = utils.determine_ports()
         self.assertEquals(result, ['80', '81'])
 
-    def test_determine_packages(self):
+    @patch('charmhelpers.contrib.openstack.utils.config')
+    def test_determine_packages(self, _config):
+        _config.return_value = None
         result = utils.determine_packages()
-        ex = utils.BASE_PACKAGES + ['keystone', 'haproxy', 'apache2']
+        ex = utils.BASE_PACKAGES + ['keystone', 'python-keystoneclient']
+        self.assertEquals(set(ex), set(result))
+
+    @patch('charmhelpers.contrib.openstack.utils.config')
+    def test_determine_packages_git(self, _config):
+        _config.return_value = openstack_origin_git
+        result = utils.determine_packages()
+        ex = utils.BASE_PACKAGES + ['keystone'] + utils.BASE_GIT_PACKAGES
+        for p in utils.GIT_PACKAGE_BLACKLIST:
+            ex.remove(p)
         self.assertEquals(set(ex), set(result))
 
     @patch.object(hooks, 'CONFIGS')
@@ -593,3 +613,77 @@ class TestKeystoneUtils(CharmTestCase):
         self.is_elected_leader.return_value = True
         self.assertFalse(utils.ensure_ssl_cert_master())
         self.assertFalse(self.relation_set.called)
+
+    @patch.object(utils, 'git_install_requested')
+    @patch.object(utils, 'git_clone_and_install')
+    @patch.object(utils, 'git_post_install')
+    @patch.object(utils, 'git_pre_install')
+    def test_git_install(self, git_pre, git_post, git_clone_and_install,
+                         git_requested):
+        projects_yaml = openstack_origin_git
+        git_requested.return_value = True
+        utils.git_install(projects_yaml)
+        self.assertTrue(git_pre.called)
+        git_clone_and_install.assert_called_with(openstack_origin_git,
+                                                 core_project='keystone')
+        self.assertTrue(git_post.called)
+
+    @patch.object(utils, 'mkdir')
+    @patch.object(utils, 'write_file')
+    @patch.object(utils, 'add_user_to_group')
+    @patch.object(utils, 'add_group')
+    @patch.object(utils, 'adduser')
+    def test_git_pre_install(self, adduser, add_group, add_user_to_group,
+                             write_file, mkdir):
+        utils.git_pre_install()
+        adduser.assert_called_with('keystone', shell='/bin/bash',
+                                   system_user=True)
+        add_group.assert_called_with('keystone', system_group=True)
+        add_user_to_group.assert_called_with('keystone', 'keystone')
+        expected = [
+            call('/var/lib/keystone', owner='keystone',
+                 group='keystone', perms=0755, force=False),
+            call('/var/lib/keystone/cache', owner='keystone',
+                 group='keystone', perms=0755, force=False),
+            call('/var/log/keystone', owner='keystone',
+                 group='keystone', perms=0755, force=False),
+        ]
+        self.assertEquals(mkdir.call_args_list, expected)
+        write_file.assert_called_with('/var/log/keystone/keystone.log',
+                                      '', owner='keystone', group='keystone',
+                                      perms=0600)
+
+    @patch.object(utils, 'git_src_dir')
+    @patch.object(utils, 'service_restart')
+    @patch.object(utils, 'render')
+    @patch('os.path.join')
+    @patch('os.path.exists')
+    @patch('shutil.copytree')
+    @patch('shutil.rmtree')
+    def test_git_post_install(self, rmtree, copytree, exists, join, render,
+                              service_restart, git_src_dir):
+        projects_yaml = openstack_origin_git
+        join.return_value = 'joined-string'
+        utils.git_post_install(projects_yaml)
+        expected = [
+            call('joined-string', '/etc/keystone'),
+        ]
+        copytree.assert_has_calls(expected)
+        keystone_context = {
+            'service_description': 'Keystone API server',
+            'service_name': 'Keystone',
+            'user_name': 'keystone',
+            'start_dir': '/var/lib/keystone',
+            'process_name': 'keystone',
+            'executable_name': '/usr/local/bin/keystone-all',
+            'config_files': ['/etc/keystone/keystone.conf'],
+            'log_file': '/var/log/keystone/keystone.log',
+        }
+        expected = [
+            call('git/logging.conf', '/etc/keystone/logging.conf', {},
+                 perms=0o644),
+            call('git.upstart', '/etc/init/keystone.conf',
+                 keystone_context, perms=0o644, templates_dir='joined-string'),
+        ]
+        self.assertEquals(render.call_args_list, expected)
+        service_restart.assert_called_with('keystone')

@@ -235,6 +235,18 @@ options:
       192.168.0.0/24)
       .
       This network will be used for public endpoints.
+  endpoint-public-name:
+    type: string
+    default:
+    description: |
+      The hostname or address of the public endpoints created for keystone
+      inside itself.
+      .
+      This value will be used for public endpoints. For example, an
+      endpoint-public-name set to 'keystone.example.com' with ssl enabled will
+      create a public endpoint for keystone as:
+      .
+      https://keystone.example.com:5000/v2.0
   prefer-ipv6:
     type: boolean
     default: False

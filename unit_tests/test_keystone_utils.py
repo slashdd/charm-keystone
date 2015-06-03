@@ -606,7 +606,7 @@ class TestKeystoneUtils(CharmTestCase):
         _is_clustered.return_value = False
         _ip_config.side_effect = self.test_config.get
         _unit_get.return_value = '10.0.0.1'
-        self.test_config.set('endpoint-public-name', 'keystone.example.com')
+        self.test_config.set('os-public-hostname', 'keystone.example.com')
         utils.ensure_initial_admin(self.config)
         _create_keystone_endpoint.assert_called_with(
             public_ip='keystone.example.com',

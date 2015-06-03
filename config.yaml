@@ -235,7 +235,7 @@ options:
       192.168.0.0/24)
       .
       This network will be used for public endpoints.
-  endpoint-public-name:
+  os-public-hostname:
     type: string
     default:
     description: |
@@ -243,7 +243,7 @@ options:
       inside itself.
       .
       This value will be used for public endpoints. For example, an
-      endpoint-public-name set to 'keystone.example.com' with ssl enabled will
+      os-public-hostname set to 'keystone.example.com' with ssl enabled will
       create a public endpoint for keystone as:
       .
       https://keystone.example.com:5000/v2.0

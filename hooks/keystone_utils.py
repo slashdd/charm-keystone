@@ -257,6 +257,10 @@ valid_services = {
     "image-stream": {
         "type": "product-streams",
         "desc": "Ubuntu Product Streams"
+    },
+    "midonet": {
+        "type": "network-overlay",
+        "desc": "MidoNet low-level API"
     }
 }
 

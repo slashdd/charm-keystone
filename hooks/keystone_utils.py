@@ -8,6 +8,7 @@ import pwd
 import re
 import shutil
 import subprocess
+import tarfile
 import threading
 import time
 import urlparse
@@ -71,7 +72,6 @@ from charmhelpers.core.hookenv import (
     DEBUG,
     INFO,
     WARNING,
-    ERROR,
 )
 
 from charmhelpers.fetch import (
@@ -160,6 +160,8 @@ APACHE_24_CONF = '/etc/apache2/sites-available/openstack_https_frontend.conf'
 
 APACHE_SSL_DIR = '/etc/apache2/ssl/keystone'
 SYNC_FLAGS_DIR = '/var/lib/keystone/juju_sync_flags/'
+SYNC_DIR = '/var/lib/keystone/juju_sync/'
+SSL_SYNC_ARCHIVE = os.path.join(SYNC_DIR, 'juju-ssl-sync.tar')
 SSL_DIR = '/var/lib/keystone/juju_ssl/'
 PKI_CERTS_DIR = os.path.join(SSL_DIR, 'pki')
 SSL_CA_NAME = 'Ubuntu Cloud'
@@ -382,26 +384,20 @@ def do_openstack_upgrade(configs):
             return
 
 
-def set_db_initialised():
-    for rid in relation_ids('cluster'):
-        relation_set(relation_settings={'db-initialised': 'True'},
-                     relation_id=rid)
-
-
 def is_db_initialised():
-    for rid in relation_ids('cluster'):
-        units = related_units(rid) + [local_unit()]
-        for unit in units:
-            db_initialised = relation_get(attribute='db-initialised',
-                                          unit=unit, rid=rid)
-            if db_initialised:
-                log("Database is initialised", level=DEBUG)
-                return True
+    if relation_ids('cluster'):
+        inited = peer_retrieve('db-initialised')
+        if inited and bool_from_string(inited):
+            log("Database is initialised", level=DEBUG)
+            return True
 
     log("Database is NOT initialised", level=DEBUG)
     return False
 
 
+# NOTE(jamespage): Retry deals with sync issues during one-shot HA deploys.
+#                  mysql might be restarting or suchlike.
+@retry_on_exception(5, base_delay=3, exc_type=subprocess.CalledProcessError)
 def migrate_database():
     """Runs keystone-manage to initialize a new database or migrate existing"""
     log('Migrating the keystone database.', level=INFO)
@@ -413,7 +409,7 @@ def migrate_database():
     subprocess.check_output(cmd)
     service_start('keystone')
     time.sleep(10)
-    set_db_initialised()
+    peer_store('db-initialised', 'True')
 
 # OLD
 
@@ -768,6 +764,16 @@ def get_service_password(service_username):
     return passwd
 
 
+def ensure_ssl_dirs():
+    """Ensure unison has access to these dirs."""
+    for path in [SYNC_FLAGS_DIR, SYNC_DIR]:
+        if not os.path.isdir(path):
+            mkdir(path, SSH_USER, 'juju_keystone', 0o775)
+        else:
+            ensure_permissions(path, user=SSH_USER, group='keystone',
+                               perms=0o755)
+
+
 def ensure_permissions(path, user=None, group=None, perms=None, recurse=False,
                        maxdepth=50):
     """Set chownand chmod for path
@@ -864,7 +870,7 @@ def create_peer_service_actions(action, services):
                                  service.strip(), action))
         log("Creating action %s" % (flagfile), level=DEBUG)
         write_file(flagfile, content='', owner=SSH_USER, group='keystone',
-                   perms=0o644)
+                   perms=0o744)
 
 
 def create_peer_actions(actions):
@@ -873,7 +879,7 @@ def create_peer_actions(actions):
         flagfile = os.path.join(SYNC_FLAGS_DIR, action)
         log("Creating action %s" % (flagfile), level=DEBUG)
         write_file(flagfile, content='', owner=SSH_USER, group='keystone',
-                   perms=0o644)
+                   perms=0o744)
 
 
 @retry_on_exception(3, base_delay=2, exc_type=subprocess.CalledProcessError)
@@ -1011,6 +1017,22 @@ def ensure_ssl_cert_master():
     return True
 
 
+def stage_paths_for_sync(paths):
+    shutil.rmtree(SYNC_DIR)
+    ensure_ssl_dirs()
+    with tarfile.open(SSL_SYNC_ARCHIVE, 'w') as fd:
+        for path in paths:
+            if os.path.exists(path):
+                log("Adding path '%s' sync tarball" % (path), level=DEBUG)
+                fd.add(path)
+            else:
+                log("Path '%s' does not exist - not adding to sync "
+                    "tarball" % (path), level=INFO)
+
+    ensure_permissions(SYNC_DIR, user=SSH_USER, group='keystone',
+                       perms=0o755, recurse=True)
+
+
 def is_pki_enabled():
     enable_pki = config('enable-pki')
     if enable_pki and bool_from_string(enable_pki):
@@ -1023,6 +1045,33 @@ def ensure_pki_dir_permissions():
     # Ensure accessible by unison user and group (for sync).
     ensure_permissions(PKI_CERTS_DIR, user=SSH_USER, group='keystone',
                        perms=0o755, recurse=True)
+
+
+def update_certs_if_available(f):
+    def _inner_update_certs_if_available(*args, **kwargs):
+        path = None
+        for rid in relation_ids('cluster'):
+            path = relation_get(attribute='ssl-cert-available-updates',
+                                rid=rid, unit=local_unit())
+
+        if path and os.path.exists(path):
+            log("Updating certs from '%s'" % (path), level=DEBUG)
+            with tarfile.open(path) as fd:
+                files = ["/%s" % m.name for m in fd.getmembers()]
+                fd.extractall(path='/')
+
+            for syncfile in files:
+                ensure_permissions(syncfile, user='keystone', group='keystone',
+                                   perms=0o744, recurse=True)
+
+            # Mark as complete
+            os.rename(path, "%s.complete" % (path))
+        else:
+            log("No cert updates available", level=DEBUG)
+
+        return f(*args, **kwargs)
+
+    return _inner_update_certs_if_available
 
 
 def synchronize_ca(fatal=False):
@@ -1038,7 +1087,7 @@ def synchronize_ca(fatal=False):
 
     Returns a dictionary of settings to be set on the cluster relation.
     """
-    paths_to_sync = [SYNC_FLAGS_DIR]
+    paths_to_sync = []
     peer_service_actions = {'restart': []}
     peer_actions = []
 
@@ -1068,9 +1117,6 @@ def synchronize_ca(fatal=False):
         paths_to_sync.append(PKI_CERTS_DIR)
         peer_actions.append('ensure-pki-permissions')
 
-    # Ensure unique
-    paths_to_sync = list(set(paths_to_sync))
-
     if not paths_to_sync:
         log("Nothing to sync - skipping", level=DEBUG)
         return {}
@@ -1083,50 +1129,27 @@ def synchronize_ca(fatal=False):
 
     create_peer_actions(peer_actions)
 
-    cluster_rel_settings = {}
+    paths_to_sync = list(set(paths_to_sync))
+    stage_paths_for_sync(paths_to_sync)
 
-    retries = 3
-    while True:
-        hash1 = hashlib.sha256()
-        for path in paths_to_sync:
-            update_hash_from_path(hash1, path)
+    hash1 = hashlib.sha256()
+    for path in paths_to_sync:
+        update_hash_from_path(hash1, path)
 
-        try:
-            synced_units = unison_sync(paths_to_sync)
-            if synced_units:
-                # Format here needs to match that used when peers request sync
-                synced_units = [u.replace('/', '-') for u in synced_units]
-                cluster_rel_settings['ssl-synced-units'] = \
-                    json.dumps(synced_units)
-        except Exception as exc:
-            if fatal:
-                raise
-            else:
-                log("Sync failed but fatal=False - %s" % (exc), level=INFO)
-                return {}
+    cluster_rel_settings = {'ssl-cert-available-updates': SSL_SYNC_ARCHIVE,
+                            'sync-hash': hash1.hexdigest()}
 
-        hash2 = hashlib.sha256()
-        for path in paths_to_sync:
-            update_hash_from_path(hash2, path)
+    synced_units = unison_sync([SSL_SYNC_ARCHIVE, SYNC_FLAGS_DIR])
+    if synced_units:
+        # Format here needs to match that used when peers request sync
+        synced_units = [u.replace('/', '-') for u in synced_units]
+        cluster_rel_settings['ssl-synced-units'] = \
+            json.dumps(synced_units)
 
-        # Detect whether someone else has synced to this unit while we did our
-        # transfer.
-        if hash1.hexdigest() != hash2.hexdigest():
-            retries -= 1
-            if retries > 0:
-                log("SSL dir contents changed during sync - retrying unison "
-                    "sync %s more times" % (retries), level=WARNING)
-            else:
-                log("SSL dir contents changed during sync - retries failed",
-                    level=ERROR)
-                return {}
-        else:
-            break
-
-    hash = hash1.hexdigest()
-    log("Sending restart-services-trigger=%s to all peers" % (hash),
+    trigger = str(uuid.uuid4())
+    log("Sending restart-services-trigger=%s to all peers" % (trigger),
         level=DEBUG)
-    cluster_rel_settings['restart-services-trigger'] = hash
+    cluster_rel_settings['restart-services-trigger'] = trigger
 
     log("Sync complete", level=DEBUG)
     return cluster_rel_settings

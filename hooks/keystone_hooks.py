@@ -2,7 +2,6 @@
 import hashlib
 import json
 import os
-import stat
 import sys
 
 from subprocess import check_call
@@ -68,18 +67,18 @@ from keystone_utils import (
     setup_ipv6,
     send_notifications,
     check_peer_actions,
-    CA_CERT_PATH,
-    ensure_permissions,
     get_ssl_sync_request_units,
     is_ssl_cert_master,
     is_db_ready,
     clear_ssl_synced_units,
     is_db_initialised,
+    update_certs_if_available,
     is_pki_enabled,
     ensure_ssl_dir,
     ensure_pki_dir_permissions,
     force_ssl_sync,
     filter_null,
+    ensure_ssl_dirs,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -149,13 +148,7 @@ def config_changed():
 
     check_call(['chmod', '-R', 'g+wrx', '/var/lib/keystone/'])
 
-    # Ensure unison can write to certs dir.
-    # FIXME: need to a better way around this e.g. move cert to it's own dir
-    # and give that unison permissions.
-    path = os.path.dirname(CA_CERT_PATH)
-    perms = int(oct(stat.S_IMODE(os.stat(path).st_mode) |
-                    (stat.S_IWGRP | stat.S_IXGRP)), base=8)
-    ensure_permissions(path, group='keystone', perms=perms)
+    ensure_ssl_dirs()
 
     save_script_rc()
     configure_https()
@@ -423,6 +416,7 @@ def cluster_joined():
 @hooks.hook('cluster-relation-changed',
             'cluster-relation-departed')
 @restart_on_change(restart_map(), stopstart=True)
+@update_certs_if_available
 def cluster_changed():
     unison.ssh_authorized_peers(user=SSH_USER,
                                 group='juju_keystone',
@@ -430,9 +424,9 @@ def cluster_changed():
                                 ensure_local_user=True)
     # NOTE(jamespage) re-echo passwords for peer storage
     echo_whitelist = ['_passwd', 'identity-service:', 'ssl-cert-master',
-                      'db-initialised']
+                      'db-initialised', 'ssl-cert-available-updates']
     log("Peer echo whitelist: %s" % (echo_whitelist), level=DEBUG)
-    peer_echo(includes=echo_whitelist)
+    peer_echo(includes=echo_whitelist, force=True)
 
     check_peer_actions()
 
@@ -464,6 +458,14 @@ def cluster_changed():
         force_ssl_sync()
     else:
         CONFIGS.write_all()
+
+
+@hooks.hook('leader-settings-changed')
+def leader_settings_changed():
+    log('Firing identity_changed hook for all related services.')
+    for rid in relation_ids('identity-service'):
+            for unit in related_units(rid):
+                identity_changed(relation_id=rid, remote_unit=unit)
 
 
 @hooks.hook('ha-relation-joined')
@@ -574,6 +576,8 @@ def upgrade_charm():
                                 group='juju_keystone',
                                 peer_interface='cluster',
                                 ensure_local_user=True)
+
+    ensure_ssl_dirs()
 
     CONFIGS.write_all()
     update_nrpe_config()

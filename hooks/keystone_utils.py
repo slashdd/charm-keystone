@@ -45,8 +45,15 @@ from charmhelpers.contrib.openstack.utils import (
     git_install_requested,
     git_clone_and_install,
     git_src_dir,
+    git_yaml_value,
+    git_pip_venv_dir,
     os_release,
-    save_script_rc as _save_script_rc)
+    save_script_rc as _save_script_rc
+)
+
+from charmhelpers.contrib.python.packages import (
+    pip_install,
+)
 
 from charmhelpers.core.strutils import (
     bool_from_string,
@@ -123,9 +130,11 @@ BASE_PACKAGES = [
 
 BASE_GIT_PACKAGES = [
     'libffi-dev',
+    'libmysqlclient-dev',
     'libssl-dev',
     'libxml2-dev',
     'libxslt1-dev',
+    'libyaml-dev',
     'python-dev',
     'python-pip',
     'python-setuptools',
@@ -139,7 +148,6 @@ BASE_SERVICES = [
 # ubuntu packages that should not be installed when deploying from git
 GIT_PACKAGE_BLACKLIST = [
     'keystone',
-    'python-keystoneclient',
 ]
 
 API_PORTS = {
@@ -1723,6 +1731,14 @@ def git_pre_install():
 
 def git_post_install(projects_yaml):
     """Perform keystone post-install setup."""
+    http_proxy = git_yaml_value(projects_yaml, 'http_proxy')
+    if http_proxy:
+        pip_install('mysql-python', proxy=http_proxy,
+                    venv=git_pip_venv_dir(projects_yaml))
+    else:
+        pip_install('mysql-python',
+                    venv=git_pip_venv_dir(projects_yaml))
+
     src_etc = os.path.join(git_src_dir(projects_yaml, 'keystone'), 'etc')
     configs = {
         'src': src_etc,
@@ -1733,15 +1749,28 @@ def git_post_install(projects_yaml):
         shutil.rmtree(configs['dest'])
     shutil.copytree(configs['src'], configs['dest'])
 
+    # NOTE(coreycb): Need to find better solution than bin symlinks.
+    symlinks = [
+        {'src': os.path.join(git_pip_venv_dir(projects_yaml),
+                             'bin/keystone-manage'),
+         'link': '/usr/local/bin/keystone-manage'},
+    ]
+
+    for s in symlinks:
+        if os.path.lexists(s['link']):
+            os.remove(s['link'])
+        os.symlink(s['src'], s['link'])
+
     render('git/logging.conf', '/etc/keystone/logging.conf', {}, perms=0o644)
 
+    bin_dir = os.path.join(git_pip_venv_dir(projects_yaml), 'bin')
     keystone_context = {
         'service_description': 'Keystone API server',
         'service_name': 'Keystone',
         'user_name': 'keystone',
         'start_dir': '/var/lib/keystone',
         'process_name': 'keystone',
-        'executable_name': '/usr/local/bin/keystone-all',
+        'executable_name': os.path.join(bin_dir, 'keystone-all'),
         'config_files': ['/etc/keystone/keystone.conf'],
         'log_file': '/var/log/keystone/keystone.log',
     }

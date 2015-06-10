@@ -50,8 +50,6 @@ TO_PATCH = [
     'subprocess',
     'time',
     'pwgen',
-    # openstack.ip
-    'resolve_address',
 ]
 
 openstack_origin_git = \
@@ -174,12 +172,13 @@ class TestKeystoneUtils(CharmTestCase):
         self.subprocess.check_output.assert_called_with(cmd)
         self.service_start.assert_called_wkth('keystone')
 
+    @patch.object(utils, 'resolve_address')
     @patch.object(utils, 'b64encode')
     def test_add_service_to_keystone_clustered_https_none_values(
-            self, b64encode):
+            self, b64encode, _resolve_address):
         relation_id = 'identity-service:0'
         remote_unit = 'unit/0'
-        self.resolve_address.return_value = '10.10.10.10'
+        _resolve_address.return_value = '10.10.10.10'
         self.https.return_value = True
         self.test_config.set('https-service-endpoints', 'True')
         self.test_config.set('vip', '10.10.10.10')
@@ -212,11 +211,13 @@ class TestKeystoneUtils(CharmTestCase):
         self.peer_store_and_set.assert_called_with(relation_id=relation_id,
                                                    **relation_data)
 
+    @patch.object(utils, 'resolve_address')
     @patch.object(utils, 'ensure_valid_service')
     @patch.object(utils, 'add_endpoint')
     @patch.object(manager, 'KeystoneManager')
     def test_add_service_to_keystone_no_clustered_no_https_complete_values(
-            self, KeystoneManager, add_endpoint, ensure_valid_service):
+            self, KeystoneManager, add_endpoint, ensure_valid_service,
+            _resolve_address):
         relation_id = 'identity-service:0'
         remote_unit = 'unit/0'
         self.get_admin_token.return_value = 'token'
@@ -224,7 +225,7 @@ class TestKeystoneUtils(CharmTestCase):
         self.test_config.set('service-tenant', 'tenant')
         self.test_config.set('admin-role', 'admin')
         self.get_requested_roles.return_value = ['role1', ]
-        self.resolve_address.return_value = '10.0.0.3'
+        _resolve_address.return_value = '10.0.0.3'
         self.test_config.set('admin-port', 80)
         self.test_config.set('service-port', 81)
         self.https.return_value = False
@@ -587,6 +588,35 @@ class TestKeystoneUtils(CharmTestCase):
         self.is_elected_leader.return_value = True
         self.assertFalse(utils.ensure_ssl_cert_master())
         self.assertFalse(self.relation_set.called)
+
+    @patch('charmhelpers.contrib.openstack.ip.unit_get')
+    @patch('charmhelpers.contrib.openstack.ip.is_clustered')
+    @patch('charmhelpers.contrib.openstack.ip.config')
+    @patch.object(utils, 'create_keystone_endpoint')
+    @patch.object(utils, 'create_tenant')
+    @patch.object(utils, 'create_user_credentials')
+    @patch.object(utils, 'create_service_entry')
+    def test_ensure_initial_admin_public_name(self,
+                                              _create_service_entry,
+                                              _create_user_creds,
+                                              _create_tenant,
+                                              _create_keystone_endpoint,
+                                              _ip_config,
+                                              _is_clustered,
+                                              _unit_get):
+        _is_clustered.return_value = False
+        _ip_config.side_effect = self.test_config.get
+        _unit_get.return_value = '10.0.0.1'
+        self.test_config.set('os-public-hostname', 'keystone.example.com')
+        utils.ensure_initial_admin(self.config)
+        _create_keystone_endpoint.assert_called_with(
+            public_ip='keystone.example.com',
+            service_port=5000,
+            internal_ip='10.0.0.1',
+            admin_ip='10.0.0.1',
+            auth_port=35357,
+            region='RegionOne'
+        )
 
     @patch.object(utils, 'peer_units')
     @patch.object(utils, 'is_ssl_enabled')

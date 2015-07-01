@@ -6,8 +6,9 @@ description: |
  Policy services for use specifically by projects in the OpenStack family. It
  implements OpenStack’s Identity API.
 tags:
-  - miscellaneous
   - openstack
+  - identity
+  - misc
 provides:
   nrpe-external-master:
     interface: nrpe-external-master

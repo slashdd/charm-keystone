@@ -1,7 +1,12 @@
 #!/usr/bin/python
 
+"""
+Basic keystone amulet functional tests.
+"""
+
 import amulet
 import os
+import time
 import yaml
 
 from charmhelpers.contrib.openstack.amulet.deployment import (
@@ -10,8 +15,8 @@ from charmhelpers.contrib.openstack.amulet.deployment import (
 
 from charmhelpers.contrib.openstack.amulet.utils import (
     OpenStackAmuletUtils,
-    DEBUG, # flake8: noqa
-    ERROR
+    DEBUG,
+    # ERROR
 )
 
 # Use DEBUG to turn on debug logging
@@ -21,9 +26,11 @@ u = OpenStackAmuletUtils(DEBUG)
 class KeystoneBasicDeployment(OpenStackAmuletDeployment):
     """Amulet tests on a basic keystone deployment."""
 
-    def __init__(self, series=None, openstack=None, source=None, git=False, stable=False):
+    def __init__(self, series=None, openstack=None,
+                 source=None, git=False, stable=False):
         """Deploy the entire test environment."""
-        super(KeystoneBasicDeployment, self).__init__(series, openstack, source, stable)
+        super(KeystoneBasicDeployment, self).__init__(series, openstack,
+                                                      source, stable)
         self.git = git
         self._add_services()
         self._add_relations()
@@ -39,7 +46,8 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
            compatible with the local charm (e.g. stable or next).
            """
         this_service = {'name': 'keystone'}
-        other_services = [{'name': 'mysql'}, {'name': 'cinder'}]
+        other_services = [{'name': 'mysql'},
+                          {'name': 'cinder'}]
         super(KeystoneBasicDeployment, self)._add_services(this_service,
                                                            other_services)
 
@@ -69,13 +77,16 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
                 'http_proxy': amulet_http_proxy,
                 'https_proxy': amulet_http_proxy,
             }
-            keystone_config['openstack-origin-git'] = yaml.dump(openstack_origin_git)
+            keystone_config['openstack-origin-git'] = \
+                yaml.dump(openstack_origin_git)
 
         mysql_config = {'dataset-size': '50%'}
         cinder_config = {'block-device': 'None'}
-        configs = {'keystone': keystone_config,
-                   'mysql': mysql_config,
-                   'cinder': cinder_config}
+        configs = {
+            'keystone': keystone_config,
+            'mysql': mysql_config,
+            'cinder': cinder_config
+        }
         super(KeystoneBasicDeployment, self)._configure_services(configs)
 
     def _initialize_tests(self):
@@ -84,6 +95,13 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         self.mysql_sentry = self.d.sentry.unit['mysql/0']
         self.keystone_sentry = self.d.sentry.unit['keystone/0']
         self.cinder_sentry = self.d.sentry.unit['cinder/0']
+        u.log.debug('openstack release val: {}'.format(
+            self._get_openstack_release()))
+        u.log.debug('openstack release str: {}'.format(
+            self._get_openstack_release_string()))
+
+        # Let things settle a bit before moving forward
+        time.sleep(30)
 
         # Authenticate keystone admin
         self.keystone = u.authenticate_keystone_admin(self.keystone_sentry,
@@ -100,139 +118,156 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
                                                   description='demo tenant',
                                                   enabled=True)
             self.keystone.roles.create(name=self.demo_role)
-            self.keystone.users.create(name=self.demo_user, password='password',
+            self.keystone.users.create(name=self.demo_user,
+                                       password='password',
                                        tenant_id=tenant.id,
                                        email='demo@demo.com')
 
         # Authenticate keystone demo
-        self.keystone_demo = u.authenticate_keystone_user(self.keystone,
-                                                        user=self.demo_user,
-                                                        password='password',
-                                                        tenant=self.demo_tenant)
+        self.keystone_demo = u.authenticate_keystone_user(
+            self.keystone, user=self.demo_user,
+            password='password', tenant=self.demo_tenant)
 
-    def test_services(self):
+    def test_100_services(self):
         """Verify the expected services are running on the corresponding
            service units."""
-        commands = {
-            self.mysql_sentry: ['status mysql'],
-            self.keystone_sentry: ['status keystone'],
-            self.cinder_sentry: ['status cinder-api', 'status cinder-scheduler',
-                                 'status cinder-volume']
+        services = {
+            self.mysql_sentry: ['mysql'],
+            self.keystone_sentry: ['keystone'],
+            self.cinder_sentry: ['cinder-api',
+                                 'cinder-scheduler',
+                                 'cinder-volume']
         }
-        ret = u.validate_services(commands)
+        ret = u.validate_services_by_name(services)
         if ret:
             amulet.raise_status(amulet.FAIL, msg=ret)
 
-    def test_tenants(self):
+    def test_102_keystone_tenants(self):
         """Verify all existing tenants."""
-        tenant1 = {'enabled': True,
-                   'description': 'Created by Juju',
-                   'name': 'services',
-                   'id': u.not_null}
-        tenant2 = {'enabled': True,
-                   'description': 'demo tenant',
-                   'name': 'demoTenant',
-                   'id': u.not_null}
-        tenant3 = {'enabled': True,
-                   'description': 'Created by Juju',
-                   'name': 'admin',
-                   'id': u.not_null}
-        expected = [tenant1, tenant2, tenant3]
+        u.log.debug('Checking keystone tenants...')
+        expected = [
+            {'name': 'services',
+             'enabled': True,
+             'description': 'Created by Juju',
+             'id': u.not_null},
+            {'name': 'demoTenant',
+             'enabled': True,
+             'description': 'demo tenant',
+             'id': u.not_null},
+            {'name': 'admin',
+             'enabled': True,
+             'description': 'Created by Juju',
+             'id': u.not_null}
+        ]
         actual = self.keystone.tenants.list()
 
         ret = u.validate_tenant_data(expected, actual)
         if ret:
             amulet.raise_status(amulet.FAIL, msg=ret)
 
-    def test_roles(self):
+    def test_104_keystone_roles(self):
         """Verify all existing roles."""
-        role1 = {'name': 'demoRole', 'id': u.not_null}
-        role2 = {'name': 'Admin', 'id': u.not_null}
-        expected = [role1, role2]
+        u.log.debug('Checking keystone roles...')
+        expected = [
+            {'name': 'demoRole',
+             'id': u.not_null},
+            {'name': 'Admin',
+             'id': u.not_null}
+        ]
         actual = self.keystone.roles.list()
 
         ret = u.validate_role_data(expected, actual)
         if ret:
             amulet.raise_status(amulet.FAIL, msg=ret)
 
-    def test_users(self):
+    def test_106_keystone_users(self):
         """Verify all existing roles."""
-        user1 = {'name': 'demoUser',
-                 'enabled': True,
-                 'tenantId': u.not_null,
-                 'id': u.not_null,
-                 'email': 'demo@demo.com'}
-        user2 = {'name': 'admin',
-                 'enabled': True,
-                 'tenantId': u.not_null,
-                 'id': u.not_null,
-                 'email': 'juju@localhost'}
-        user3 = {'name': 'cinder_cinderv2',
-                 'enabled': True,
-                 'tenantId': u.not_null,
-                 'id': u.not_null,
-                 'email': u'juju@localhost'}
-        expected = [user1, user2, user3]
+        u.log.debug('Checking keystone users...')
+        expected = [
+            {'name': 'demoUser',
+             'enabled': True,
+             'tenantId': u.not_null,
+             'id': u.not_null,
+             'email': 'demo@demo.com'},
+            {'name': 'admin',
+             'enabled': True,
+             'tenantId': u.not_null,
+             'id': u.not_null,
+             'email': 'juju@localhost'},
+            {'name': 'cinder_cinderv2',
+             'enabled': True,
+             'tenantId': u.not_null,
+             'id': u.not_null,
+             'email': u'juju@localhost'}
+        ]
         actual = self.keystone.users.list()
         ret = u.validate_user_data(expected, actual)
         if ret:
             amulet.raise_status(amulet.FAIL, msg=ret)
 
-    def test_service_catalog(self):
+    def test_108_service_catalog(self):
         """Verify that the service catalog endpoint data is valid."""
-        endpoint_vol = {'adminURL': u.valid_url,
-                        'region': 'RegionOne',
-                        'publicURL': u.valid_url,
-                        'internalURL': u.valid_url}
-        endpoint_id = {'adminURL': u.valid_url,
-                       'region': 'RegionOne',
-                       'publicURL': u.valid_url,
-                       'internalURL': u.valid_url}
-        if self._get_openstack_release() > self.precise_essex:
-            endpoint_vol['id'] = u.not_null
-            endpoint_id['id'] = u.not_null
-        expected = {'volume': [endpoint_vol], 'identity': [endpoint_id]}
-        actual = self.keystone_demo.service_catalog.get_endpoints()
+        u.log.debug('Checking keystone service catalog...')
+        endpoint_check = {
+            'adminURL': u.valid_url,
+            'id': u.not_null,
+            'region': 'RegionOne',
+            'publicURL': u.valid_url,
+            'internalURL': u.valid_url
+        }
+        expected = {
+            'volume': [endpoint_check],
+            'identity': [endpoint_check]
+        }
+        actual = self.keystone.service_catalog.get_endpoints()
 
         ret = u.validate_svc_catalog_endpoint_data(expected, actual)
         if ret:
             amulet.raise_status(amulet.FAIL, msg=ret)
 
-    def test_keystone_endpoint(self):
+    def test_110_keystone_endpoint(self):
         """Verify the keystone endpoint data."""
+        u.log.debug('Checking keystone api endpoint data...')
         endpoints = self.keystone.endpoints.list()
         admin_port = '35357'
         internal_port = public_port = '5000'
-        expected = {'id': u.not_null,
-                    'region': 'RegionOne',
-                    'adminurl': u.valid_url,
-                    'internalurl': u.valid_url,
-                    'publicurl': u.valid_url,
-                    'service_id': u.not_null}
+        expected = {
+            'id': u.not_null,
+            'region': 'RegionOne',
+            'adminurl': u.valid_url,
+            'internalurl': u.valid_url,
+            'publicurl': u.valid_url,
+            'service_id': u.not_null
+        }
         ret = u.validate_endpoint_data(endpoints, admin_port, internal_port,
                                        public_port, expected)
         if ret:
             amulet.raise_status(amulet.FAIL,
                                 msg='keystone endpoint: {}'.format(ret))
 
-    def test_cinder_endpoint(self):
+    def test_112_cinder_endpoint(self):
         """Verify the cinder endpoint data."""
+        u.log.debug('Checking cinder endpoint...')
         endpoints = self.keystone.endpoints.list()
         admin_port = internal_port = public_port = '8776'
-        expected = {'id': u.not_null,
-                    'region': 'RegionOne',
-                    'adminurl': u.valid_url,
-                    'internalurl': u.valid_url,
-                    'publicurl': u.valid_url,
-                    'service_id': u.not_null}
+        expected = {
+            'id': u.not_null,
+            'region': 'RegionOne',
+            'adminurl': u.valid_url,
+            'internalurl': u.valid_url,
+            'publicurl': u.valid_url,
+            'service_id': u.not_null
+        }
+
         ret = u.validate_endpoint_data(endpoints, admin_port, internal_port,
                                        public_port, expected)
         if ret:
             amulet.raise_status(amulet.FAIL,
                                 msg='cinder endpoint: {}'.format(ret))
 
-    def test_keystone_shared_db_relation(self):
+    def test_200_keystone_mysql_shared_db_relation(self):
         """Verify the keystone shared-db relation data"""
+        u.log.debug('Checking keystone to mysql db relation data...')
         unit = self.keystone_sentry
         relation = ['shared-db', 'mysql:shared-db']
         expected = {
@@ -246,8 +281,9 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             message = u.relation_error('keystone shared-db', ret)
             amulet.raise_status(amulet.FAIL, msg=message)
 
-    def test_mysql_shared_db_relation(self):
+    def test_201_mysql_keystone_shared_db_relation(self):
         """Verify the mysql shared-db relation data"""
+        u.log.debug('Checking mysql to keystone db relation data...')
         unit = self.mysql_sentry
         relation = ['shared-db', 'keystone:shared-db']
         expected_data = {
@@ -260,8 +296,9 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             message = u.relation_error('mysql shared-db', ret)
             amulet.raise_status(amulet.FAIL, msg=message)
 
-    def test_keystone_identity_service_relation(self):
+    def test_202_keystone_cinder_identity_service_relation(self):
         """Verify the keystone identity-service relation data"""
+        u.log.debug('Checking keystone to cinder id relation data...')
         unit = self.keystone_sentry
         relation = ['identity-service', 'cinder:identity-service']
         expected = {
@@ -283,8 +320,9 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             message = u.relation_error('keystone identity-service', ret)
             amulet.raise_status(amulet.FAIL, msg=message)
 
-    def test_cinder_identity_service_relation(self):
+    def test_203_cinder_keystone_identity_service_relation(self):
         """Verify the cinder identity-service relation data"""
+        u.log.debug('Checking cinder to keystone id relation data...')
         unit = self.cinder_sentry
         relation = ['identity-service', 'keystone:identity-service']
         expected = {
@@ -305,55 +343,114 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             message = u.relation_error('cinder identity-service', ret)
             amulet.raise_status(amulet.FAIL, msg=message)
 
-    def test_z_restart_on_config_change(self):
-        """Verify that keystone is restarted when the config is changed.
-
-            Note(coreycb): The method name with the _z_ is a little odd
-            but it forces the test to run last.  It just makes things
-            easier because restarting services requires re-authorization.
-            """
-        self.d.configure('keystone', {'verbose': 'True'})
-        if not u.service_restarted(self.keystone_sentry, 'keystone-all',
-                                  '/etc/keystone/keystone.conf',
-                                  sleep_time=30):
-            self.d.configure('keystone', {'verbose': 'False'})
-            message = "keystone service didn't restart after config change"
-            amulet.raise_status(amulet.FAIL, msg=message)
-        self.d.configure('keystone', {'verbose': 'False'})
-
-    def test_default_config(self):
-        """Verify the data in the keystone config file's default section,
+    def test_300_keystone_default_config(self):
+        """Verify the data in the keystone config file,
            comparing some of the variables vs relation data."""
+        u.log.debug('Checking keystone config file...')
         unit = self.keystone_sentry
         conf = '/etc/keystone/keystone.conf'
-        relation = unit.relation('identity-service', 'cinder:identity-service')
-        expected = {'admin_token': relation['admin_token'],
-                    'admin_port': '35347',
-                    'public_port': '4990',
-                    'use_syslog': 'False',
-                    'log_config': '/etc/keystone/logging.conf',
-                    'debug': 'False',
-                    'verbose': 'False'}
+        ks_ci_rel = unit.relation('identity-service',
+                                  'cinder:identity-service')
+        my_ks_rel = self.mysql_sentry.relation('shared-db',
+                                               'keystone:shared-db')
+        db_uri = "mysql://{}:{}@{}/{}".format('keystone',
+                                              my_ks_rel['password'],
+                                              my_ks_rel['db_host'],
+                                              'keystone')
+        expected = {
+            'DEFAULT': {
+                'debug': 'False',
+                'verbose': 'False',
+                'admin_token': ks_ci_rel['admin_token'],
+                'use_syslog': 'False',
+                'log_config': '/etc/keystone/logging.conf',
+                'public_endpoint': u.valid_url,  # get specific
+                'admin_endpoint': u.valid_url,  # get specific
+            },
+            'extra_headers': {
+                'Distribution': 'Ubuntu'
+            },
+            'database': {
+                'connection': db_uri,
+                'idle_timeout': '200'
+            }
+        }
 
-        ret = u.validate_config_data(unit, conf, 'DEFAULT', expected)
-        if ret:
-            message = "keystone config error: {}".format(ret)
-            amulet.raise_status(amulet.FAIL, msg=message)
-
-    def test_database_config(self):
-        """Verify the data in the keystone config file's database (or sql
-           depending on release) section, comparing vs relation data."""
-        unit = self.keystone_sentry
-        conf = '/etc/keystone/keystone.conf'
-        relation = self.mysql_sentry.relation('shared-db', 'keystone:shared-db')
-        db_uri = "mysql://{}:{}@{}/{}".format('keystone', relation['password'],
-                                              relation['db_host'], 'keystone')
-        expected = {'connection': db_uri, 'idle_timeout': '200'}
-
-        if self._get_openstack_release() > self.precise_havana:
-            ret = u.validate_config_data(unit, conf, 'database', expected)
+        if self._get_openstack_release() >= self.trusty_kilo:
+            # Kilo and later
+            expected['eventlet_server'] = {
+                'admin_bind_host': '0.0.0.0',
+                'public_bind_host': '0.0.0.0',
+                'admin_port': '35347',
+                'public_port': '4990',
+            }
         else:
-            ret = u.validate_config_data(unit, conf, 'sql', expected)
-        if ret:
-            message = "keystone config error: {}".format(ret)
-            amulet.raise_status(amulet.FAIL, msg=message)
+            # Juno and earlier
+            expected['DEFAULT'].update({
+                'admin_port': '35347',
+                'public_port': '4990',
+                'bind_host': '0.0.0.0',
+            })
+
+        for section, pairs in expected.iteritems():
+            ret = u.validate_config_data(unit, conf, section, pairs)
+            if ret:
+                message = "keystone config error: {}".format(ret)
+                amulet.raise_status(amulet.FAIL, msg=message)
+
+    def test_302_keystone_logging_config(self):
+        """Verify the data in the keystone logging config file"""
+        u.log.debug('Checking keystone config file...')
+        unit = self.keystone_sentry
+        conf = '/etc/keystone/logging.conf'
+        expected = {
+            'logger_root': {
+                'level': 'WARNING',
+                'handlers': 'file',
+            },
+            'handlers': {
+                'keys': 'production,file,devel'
+            },
+            'handler_file': {
+                'level': 'DEBUG',
+                'args': "('/var/log/keystone/keystone.log', 'a')"
+            }
+        }
+
+        for section, pairs in expected.iteritems():
+            ret = u.validate_config_data(unit, conf, section, pairs)
+            if ret:
+                message = "keystone logging config error: {}".format(ret)
+                amulet.raise_status(amulet.FAIL, msg=message)
+
+    def test_900_keystone_restart_on_config_change(self):
+        """Verify that the specified services are restarted when the config
+           is changed."""
+        sentry = self.keystone_sentry
+        juju_service = 'keystone'
+
+        # Expected default and alternate values
+        set_default = {'use-syslog': 'False'}
+        set_alternate = {'use-syslog': 'True'}
+
+        # Config file affected by juju set config change
+        conf_file = '/etc/keystone/keystone.conf'
+
+        # Services which are expected to restart upon config change
+        services = ['keystone-all']
+
+        # Make config change, check for service restarts
+        u.log.debug('Making config change on {}...'.format(juju_service))
+        self.d.configure(juju_service, set_alternate)
+
+        sleep_time = 30
+        for s in services:
+            u.log.debug("Checking that service restarted: {}".format(s))
+            if not u.service_restarted(sentry, s,
+                                       conf_file, sleep_time=sleep_time):
+                self.d.configure(juju_service, set_default)
+                msg = "service {} didn't restart after config change".format(s)
+                amulet.raise_status(amulet.FAIL, msg=msg)
+            sleep_time = 0
+
+        self.d.configure(juju_service, set_default)

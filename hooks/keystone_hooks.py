@@ -159,10 +159,7 @@ def config_changed():
     if is_pki_enabled():
         initialise_pki()
 
-    # Update relations since SSL may have been configured. If we have peer
-    # units we can rely on the sync to do this in cluster relation.
-    if not peer_units():
-        update_all_identity_relation_units()
+    update_all_identity_relation_units()
 
     for rid in relation_ids('identity-admin'):
         admin_relation_changed(rid)

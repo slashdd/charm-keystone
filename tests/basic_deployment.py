@@ -73,8 +73,6 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             release = self._get_openstack_release_string()
             reqs_branch = 'stable/' + release
             keystone_branch = 'stable/' + release
-            if self._get_openstack_release() == self.trusty_icehouse:
-                keystone_branch = release + '-eol'
 
             openstack_origin_git = {
                 'repositories': [

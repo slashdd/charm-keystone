@@ -64,28 +64,25 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         if self.git:
             amulet_http_proxy = os.environ.get('AMULET_HTTP_PROXY')
 
+            reqs_repo = 'git://github.com/openstack/requirements'
+            keystone_repo = 'git://github.com/openstack/keystone'
             if self._get_openstack_release() == self.trusty_icehouse:
                 reqs_repo = 'git://github.com/coreycb/requirements'
-                keystone_repo = 'git://github.com/coreycb/keystone'
-            else:
-                reqs_repo = 'git://github.com/openstack/requirements'
-                keystone_repo = 'git://github.com/openstack/keystone'
 
             release = self._get_openstack_release_string()
             reqs_branch = 'stable/' + release
+            keystone_branch = 'stable/' + release
             if self._get_openstack_release() == self.trusty_icehouse:
                 keystone_branch = release + '-eol'
-            else:
-                keystone_branch = 'stable/' + release
 
             openstack_origin_git = {
                 'repositories': [
                     {'name': 'requirements',
                      'repository': reqs_repo,
-                     'branch': branch},
+                     'branch': reqs_branch},
                     {'name': 'keystone',
                      'repository': keystone_repo,
-                     'branch': branch},
+                     'branch': keystone_branch},
                 ],
                 'directory': '/mnt/openstack-git',
                 'http_proxy': amulet_http_proxy,

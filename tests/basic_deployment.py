@@ -68,6 +68,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             keystone_repo = 'git://github.com/openstack/keystone'
             if self._get_openstack_release() == self.trusty_icehouse:
                 reqs_repo = 'git://github.com/coreycb/requirements'
+                keystone_repo = 'git://github.com/coreycb/keystone'
 
             release = self._get_openstack_release_string()
             reqs_branch = 'stable/' + release

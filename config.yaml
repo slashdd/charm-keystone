@@ -130,7 +130,7 @@ options:
   identity-backend:
     type: string
     default: "sql"
-    description: 
+    description: |
       Keystone identity backend, valid options are: sql, ldap, kvs, pam.
   assignment-backend:
     type: string

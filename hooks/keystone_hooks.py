@@ -502,7 +502,12 @@ def ha_joined(relation_id=None):
                                         iface=iface,
                                         netmask=netmask)
             )
-            vip_group.append(vip_key)
+            if vip_key not in vip_group:
+                vip_group.append(vip_key)
+            else:
+                log("Resource '%s' (vip='%s') already exists in "
+                    "vip group - skipping" % (vip_key, vip),
+                    WARNING)
 
     if len(vip_group) >= 1:
         relation_set(relation_id=relation_id,

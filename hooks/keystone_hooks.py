@@ -76,6 +76,7 @@ from keystone_utils import (
     is_pki_enabled,
     ensure_ssl_dir,
     ensure_pki_dir_permissions,
+    ensure_permissions,
     force_ssl_sync,
     filter_null,
     ensure_ssl_dirs,
@@ -181,11 +182,18 @@ def initialise_pki():
     NOTE: keystone.conf [signing] section must be up-to-date prior to
           executing this.
     """
-    if is_ssl_cert_master():
+    if not peer_units() or is_ssl_cert_master():
         log("Ensuring PKI token certs created", level=DEBUG)
         cmd = ['keystone-manage', 'pki_setup', '--keystone-user', 'keystone',
                '--keystone-group', 'keystone']
         check_call(cmd)
+
+        # Ensure logfile has keystone perms since we may have just created it
+        # with root.
+        ensure_permissions('/var/log/keystone', user='keystone',
+                           group='keystone', perms=0o744)
+        ensure_permissions('/var/log/keystone/keystone.log', user='keystone',
+                           group='keystone', perms=0o644)
 
     ensure_pki_dir_permissions()
 

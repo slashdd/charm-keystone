@@ -245,8 +245,8 @@ def update_all_identity_relation_units(check_db_ready=True):
 
     log('Firing identity_changed hook for all related services.')
     for rid in relation_ids('identity-service'):
-            for unit in related_units(rid):
-                identity_changed(relation_id=rid, remote_unit=unit)
+        for unit in related_units(rid):
+            identity_changed(relation_id=rid, remote_unit=unit)
 
 
 @synchronize_ca_if_changed(force=True)

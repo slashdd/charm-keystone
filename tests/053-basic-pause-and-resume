@@ -1,0 +1,67 @@
+#!/usr/bin/python
+
+"""Test for keystone pause and resume actions."""
+
+import subprocess
+import time
+import yaml
+
+import basic_deployment
+
+
+class PauseResume(basic_deployment.KeystoneBasicDeployment):
+
+    def _run_action(self, unit_id, action, *args):
+        command = ["juju", "action", "do", unit_id, action]
+        command.extend(args)
+        print("Running command: %s\n" % " ".join(command))
+        try:
+            output = subprocess.check_output(command)
+        except Exception as e:
+            print("Failed: %s, %s\n" % (e, output))
+        parts = output.strip().split()
+        action_id = parts[-1]
+        return action_id
+
+    def _wait_on_action(self, action_id):
+        command = ["juju", "action", "fetch", action_id]
+        while True:
+            try:
+                output = subprocess.check_output(command)
+            except Exception as e:
+                print(e)
+                return False
+
+            data = yaml.safe_load(output)
+            if data["status"] == "completed":
+                return True
+            elif data["status"] == "failed":
+                return False
+            time.sleep(2)
+
+    def run(self):
+        super(PauseResume, self).run()
+        unit_name = "keystone/0"
+        unit = self.d.sentry.unit[unit_name]
+        assert self.is_keystone_running(unit), \
+            "keystone not running in initial state."
+        action_id = self._run_action(unit_name, "pause")
+        assert self._wait_on_action(action_id), "Pause action failed."
+
+        assert not self.is_keystone_running(unit), "keystone is still running!"
+        init_contents = unit.directory_contents("/etc/init/")
+        assert "keystone.override" in init_contents["files"], \
+            "Override file not created."
+
+        action_id = self._run_action(unit_name, "resume")
+        assert self._wait_on_action(action_id), "Resume action failed"
+        init_contents = unit.directory_contents("/etc/init/")
+        assert "keystone.override" not in init_contents["files"], \
+            "Override file not removed."
+        assert self.is_keystone_running(unit), \
+            "keystone not running after resume."
+
+
+if __name__ == "__main__":
+    p = PauseResume()
+    p.run()

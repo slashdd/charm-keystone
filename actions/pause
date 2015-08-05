@@ -2,9 +2,11 @@
 
 import sys
 
+sys.path.append("hooks")
+
 from charmhelpers.core import hookenv, host
 
 if __name__ == "__main__":
-    if not host.service_pause("mysql"):
+    if not host.service_pause("keystone"):
         hookenv.action_fail("Failed to pause service keystone.")
         sys.exit(-1)

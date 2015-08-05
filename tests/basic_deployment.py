@@ -38,6 +38,11 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         self._deploy()
         self._initialize_tests()
 
+    def _is_keystone_running(self, unit):
+        """Return whether the keystone unit is running."""
+        _, code = unit.run("pidof keystone")
+        return code == 0
+
     def _add_services(self):
         """Add services
 

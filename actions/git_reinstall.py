@@ -1,8 +1,6 @@
 #!/usr/bin/python
-import sys
-import traceback
 
-sys.path.append('hooks/')
+import traceback
 
 from charmhelpers.contrib.openstack.utils import (
     git_install_requested,

@@ -2,8 +2,6 @@
 
 import sys
 
-sys.path.append("hooks")
-
 from charmhelpers.core import hookenv, host
 
 if __name__ == "__main__":

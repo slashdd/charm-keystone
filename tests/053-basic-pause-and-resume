@@ -13,6 +13,8 @@ from charmhelpers.contrib.openstack.amulet.deployment import (
 
 class PauseResume(OpenStackAmuletDeployment):
 
+    KEYSTONE_SERVICES = ("keystone", "apache2", "haproxy")
+
     def __init__(self, series=None, openstack=None,
                  source=None, stable=False):
         """Deploy the entire test environment."""
@@ -24,9 +26,23 @@ class PauseResume(OpenStackAmuletDeployment):
         self._deploy()
 
     def is_keystone_running(self, unit):
-        """Return whether the keystone unit is running."""
-        _, code = unit.run("service keystone status | grep -q running")
-        return code == 0
+        """Return whether services on the keystone unit are running."""
+        running = []
+        for service in self.KEYSTONE_SERVICES:
+            _, code = unit.run(
+                "service {} status | grep -q running".format(service))
+            running.append(code == 0)
+        return all(running)
+
+    def get_service_overrides(self, unit):
+        """
+        Return a dict mapping service names to a boolean indicating whether
+        an override file exists for that service.
+        """
+        init_contents = unit.directory_contents("/etc/init/")
+        return {
+            service: "{}.override".format(service) in init_contents["files"]
+            for service in self.KEYSTONE_SERVICES}
 
     def _add_services(self):
         super(PauseResume, self)._add_services({"name": "keystone"}, [])
@@ -70,15 +86,13 @@ class PauseResume(OpenStackAmuletDeployment):
         assert self._wait_on_action(action_id), "Pause action failed."
 
         assert not self.is_keystone_running(unit), "keystone is still running!"
-        init_contents = unit.directory_contents("/etc/init/")
-        assert "keystone.override" in init_contents["files"], \
-            "Override file not created."
+        assert all(self.get_service_overrides().itervalues()), \
+            "Not all override files were created."
 
         action_id = self._run_action(unit_name, "resume")
         assert self._wait_on_action(action_id), "Resume action failed"
-        init_contents = unit.directory_contents("/etc/init/")
-        assert "keystone.override" not in init_contents["files"], \
-            "Override file not removed."
+        assert not any(self.get_service_overrides().itervalues()), \
+            "Not all override files were removed."
         assert self.is_keystone_running(unit), \
             "keystone not running after resume."
 

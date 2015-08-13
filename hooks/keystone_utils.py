@@ -14,6 +14,7 @@ import time
 import urlparse
 import uuid
 
+from itertools import chain
 from base64 import b64encode
 from collections import OrderedDict
 from copy import deepcopy
@@ -178,7 +179,6 @@ SSH_USER = 'juju_keystone'
 CA_CERT_PATH = '/usr/local/share/ca-certificates/keystone_juju_ca_cert.crt'
 SSL_SYNC_SEMAPHORE = threading.Semaphore()
 SSL_DIRS = [SSL_DIR, APACHE_SSL_DIR, CA_CERT_PATH]
-
 BASE_RESOURCE_MAP = OrderedDict([
     (KEYSTONE_CONF, {
         'services': BASE_SERVICES,
@@ -338,11 +338,15 @@ def api_port(service):
     return API_PORTS[service]
 
 
+def determine_services():
+    """Return a set of names for services in use."""
+    return set(chain(
+        *(conf['services'] for conf in resource_map().itervalues())))
+
+
 def determine_packages():
     # currently all packages match service names
-    packages = [] + BASE_PACKAGES
-    for k, v in resource_map().iteritems():
-        packages.extend(v['services'])
+    packages = list(determine_services) + BASE_PACKAGES
 
     if git_install_requested():
         packages.extend(BASE_GIT_PACKAGES)

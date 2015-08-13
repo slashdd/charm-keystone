@@ -4,7 +4,11 @@ import sys
 
 from charmhelpers.core import hookenv, host
 
+from hooks.keystone_utils import determine_services
+
+
 if __name__ == "__main__":
-    if not host.service_resume("keystone"):
-        hookenv.action_fail("Failed to resume service keystone.")
-        sys.exit(-1)
+    for service in determine_services():
+        if not host.service_resume(service):
+            hookenv.action_fail("Failed to resume service {}.".format(service))
+            sys.exit(-1)

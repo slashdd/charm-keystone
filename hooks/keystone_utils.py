@@ -346,7 +346,7 @@ def determine_services():
 
 def determine_packages():
     # currently all packages match service names
-    packages = list(determine_services) + BASE_PACKAGES
+    packages = list(determine_services()) + BASE_PACKAGES
 
     if git_install_requested():
         packages.extend(BASE_GIT_PACKAGES)

@@ -151,11 +151,6 @@ GIT_PACKAGE_BLACKLIST = [
     'keystone',
 ]
 
-API_PORTS = {
-    'keystone-admin': config('admin-port'),
-    'keystone-public': config('service-port')
-}
-
 KEYSTONE_CONF = "/etc/keystone/keystone.conf"
 KEYSTONE_LOGGER_CONF = "/etc/keystone/logging.conf"
 KEYSTONE_CONF_DIR = os.path.dirname(KEYSTONE_CONF)
@@ -335,7 +330,10 @@ def determine_ports():
 
 
 def api_port(service):
-    return API_PORTS[service]
+    return {
+        'keystone-admin': config('admin-port'),
+        'keystone-public': config('service-port')
+    }
 
 
 def determine_services():

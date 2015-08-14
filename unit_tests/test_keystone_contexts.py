@@ -45,6 +45,7 @@ class TestKeystoneContexts(CharmTestCase):
         self.assertTrue(mock_ensure_permissions.called)
         self.assertFalse(mock_get_ca.called)
 
+    @patch('keystone_utils.determine_ports')
     @patch('keystone_utils.is_ssl_cert_master')
     @patch('keystone_utils.is_ssl_enabled')
     @patch('charmhelpers.contrib.openstack.context.config')
@@ -60,7 +61,8 @@ class TestKeystoneContexts(CharmTestCase):
                                                 mock_is_clustered,
                                                 mock_config,
                                                 mock_is_ssl_enabled,
-                                                mock_is_ssl_cert_master):
+                                                mock_is_ssl_cert_master,
+                                                mock_determine_ports):
         mock_is_ssl_enabled.return_value = True
         mock_is_ssl_cert_master.return_value = True
         mock_https.return_value = True
@@ -69,6 +71,7 @@ class TestKeystoneContexts(CharmTestCase):
         mock_determine_apache_port.return_value = '34'
         mock_is_clustered.return_value = False
         mock_config.return_value = None
+        mock_determine_ports.return_value = ['12']
 
         ctxt = context.ApacheSSLContext()
         ctxt.enable_modules = MagicMock()

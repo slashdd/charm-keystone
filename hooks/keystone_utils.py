@@ -316,11 +316,8 @@ def restart_map():
 
 
 def services():
-    """Returns a list of services associate with this charm"""
-    _services = []
-    for v in restart_map().values():
-        _services = _services + v
-    return list(set(_services))
+    """Returns a list of services associated with this charm"""
+    return list(set(chain(*restart_map().values())))
 
 
 def determine_ports():
@@ -336,24 +333,14 @@ def api_port(service):
     }
 
 
-def determine_services():
-    """Return a set of names for services in use."""
-    return set(chain(
-        *(conf['services'] for conf in resource_map().itervalues())))
-
-
 def determine_packages():
     # currently all packages match service names
-    packages = list(determine_services()) + BASE_PACKAGES
-
+    packages = set(services()).union(BASE_PACKAGES)
     if git_install_requested():
-        packages.extend(BASE_GIT_PACKAGES)
-        # don't include packages that will be installed from git
-        packages = list(set(packages))
-        for p in GIT_PACKAGE_BLACKLIST:
-            packages.remove(p)
+        packages.update(BASE_GIT_PACKAGES)
+        packages.difference_update(GIT_PACKAGE_BLACKLIST)
 
-    return list(set(packages))
+    return sorted(packages)
 
 
 def save_script_rc():

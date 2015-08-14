@@ -12,11 +12,11 @@ from charmhelpers.core.hookenv import (
     config,
 )
 
-from keystone_utils import (
+from hooks.keystone_utils import (
     git_install,
 )
 
-from keystone_hooks import (
+from hooks.keystone_hooks import (
     config_changed,
 )
 

@@ -7,8 +7,13 @@ from charmhelpers.core import hookenv, host
 from hooks.keystone_utils import determine_services
 
 
+def resume_service(service):
+    result = host.service_resume(service)
+    if not result:
+        hookenv.action_fail("Failed to resume service {}.".format(service))
+    return result
+
 if __name__ == "__main__":
     for service in determine_services():
-        if not host.service_resume(service):
-            hookenv.action_fail("Failed to resume service {}.".format(service))
+        if not resume_service(service):
             sys.exit(-1)

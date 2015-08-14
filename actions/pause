@@ -7,8 +7,13 @@ from charmhelpers.core import hookenv, host
 from hooks.keystone_utils import determine_services
 
 
+def pause_service(service):
+    result = host.service_pause(service)
+    if not result:
+        hookenv.action_fail("Failed to pause service {}.".format(service))
+    return result
+
 if __name__ == "__main__":
     for service in determine_services():
-        if not host.service_pause(service):
-            hookenv.action_fail("Failed to pause service {}.".format(service))
+        if not pause_service(service):
             sys.exit(-1)

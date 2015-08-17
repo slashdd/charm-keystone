@@ -515,15 +515,15 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         unit = self.d.sentry.unit[unit_name]
         assert self.is_keystone_running(unit), \
             "keystone not running in initial state."
-        action_id = self._run_action(unit_name, "pause")
-        assert self._wait_on_action(action_id), "Pause action failed."
+        action_id = u.run_action(unit, "pause")
+        assert u.wait_on_action(action_id), "Pause action failed."
 
         assert not self.is_keystone_running(unit), "keystone is still running!"
         assert all(self.get_service_overrides(unit).itervalues()), \
             "Not all override files were created."
 
-        action_id = self._run_action(unit_name, "resume")
-        assert self._wait_on_action(action_id), "Resume action failed"
+        action_id = u.run_action(unit, "resume")
+        assert u.wait_on_action(action_id), "Resume action failed"
         assert not any(self.get_service_overrides(unit).itervalues()), \
             "Not all override files were removed."
         assert self.is_keystone_running(unit), \

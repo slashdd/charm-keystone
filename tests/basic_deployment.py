@@ -119,31 +119,6 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         }
         super(KeystoneBasicDeployment, self)._configure_services(configs)
 
-    def _run_action(self, unit_id, action, *args):
-        command = ["juju", "action", "do", unit_id, action]
-        command.extend(args)
-        print("Running command: %s\n" % " ".join(command))
-        output = subprocess.check_output(command)
-        parts = output.strip().split()
-        action_id = parts[-1]
-        return action_id
-
-    def _wait_on_action(self, action_id):
-        command = ["juju", "action", "fetch", action_id]
-        while True:
-            try:
-                output = subprocess.check_output(command)
-            except Exception as e:
-                print(e)
-                return False
-
-            data = yaml.safe_load(output)
-            if data["status"] == "completed":
-                return True
-            elif data["status"] == "failed":
-                return False
-            time.sleep(2)
-
     def _initialize_tests(self):
         """Perform final initialization before tests get run."""
         # Access the sentries for inspecting service units

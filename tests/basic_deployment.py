@@ -8,7 +8,6 @@ import amulet
 import os
 import time
 import yaml
-import subprocess
 
 from charmhelpers.contrib.openstack.amulet.deployment import (
     OpenStackAmuletDeployment

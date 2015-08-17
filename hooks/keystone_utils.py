@@ -330,7 +330,7 @@ def api_port(service):
     return {
         'keystone-admin': config('admin-port'),
         'keystone-public': config('service-port')
-    }
+    }[service]
 
 
 def determine_packages():

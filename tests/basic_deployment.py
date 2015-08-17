@@ -8,6 +8,7 @@ import amulet
 import os
 import time
 import yaml
+import subprocess
 
 from charmhelpers.contrib.openstack.amulet.deployment import (
     OpenStackAmuletDeployment
@@ -26,6 +27,8 @@ u = OpenStackAmuletUtils(DEBUG)
 class KeystoneBasicDeployment(OpenStackAmuletDeployment):
     """Amulet tests on a basic keystone deployment."""
 
+    SERVICES = ("keystone", "apache2", "haproxy")
+
     def __init__(self, series=None, openstack=None,
                  source=None, git=False, stable=False):
         """Deploy the entire test environment."""
@@ -37,6 +40,25 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         self._configure_services()
         self._deploy()
         self._initialize_tests()
+
+    def is_keystone_running(self, unit):
+        """Return whether services on the keystone unit are running."""
+        running = []
+        for service in self.SERVICES:
+            _, code = unit.run(
+                "service {} status | grep -q running".format(service))
+            running.append(code == 0)
+        return all(running)
+
+    def get_service_overrides(self, unit):
+        """
+        Return a dict mapping service names to a boolean indicating whether
+        an override file exists for that service.
+        """
+        init_contents = unit.directory_contents("/etc/init/")
+        return {
+            service: "{}.override".format(service) in init_contents["files"]
+            for service in self.SERVICES}
 
     def _add_services(self):
         """Add services
@@ -96,6 +118,31 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             'cinder': cinder_config
         }
         super(KeystoneBasicDeployment, self)._configure_services(configs)
+
+    def _run_action(self, unit_id, action, *args):
+        command = ["juju", "action", "do", unit_id, action]
+        command.extend(args)
+        print("Running command: %s\n" % " ".join(command))
+        output = subprocess.check_output(command)
+        parts = output.strip().split()
+        action_id = parts[-1]
+        return action_id
+
+    def _wait_on_action(self, action_id):
+        command = ["juju", "action", "fetch", action_id]
+        while True:
+            try:
+                output = subprocess.check_output(command)
+            except Exception as e:
+                print(e)
+                return False
+
+            data = yaml.safe_load(output)
+            if data["status"] == "completed":
+                return True
+            elif data["status"] == "failed":
+                return False
+            time.sleep(2)
 
     def _initialize_tests(self):
         """Perform final initialization before tests get run."""
@@ -462,3 +509,22 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             sleep_time = 0
 
         self.d.configure(juju_service, set_default)
+
+    def test_901_pause_resume(self):
+        unit_name = "keystone/0"
+        unit = self.d.sentry.unit[unit_name]
+        assert self.is_keystone_running(unit), \
+            "keystone not running in initial state."
+        action_id = self._run_action(unit_name, "pause")
+        assert self._wait_on_action(action_id), "Pause action failed."
+
+        assert not self.is_keystone_running(unit), "keystone is still running!"
+        assert all(self.get_service_overrides().itervalues()), \
+            "Not all override files were created."
+
+        action_id = self._run_action(unit_name, "resume")
+        assert self._wait_on_action(action_id), "Resume action failed"
+        assert not any(self.get_service_overrides().itervalues()), \
+            "Not all override files were removed."
+        assert self.is_keystone_running(unit), \
+            "keystone not running after resume."

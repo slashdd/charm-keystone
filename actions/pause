@@ -4,7 +4,7 @@ import sys
 
 from charmhelpers.core import hookenv, host
 
-from hooks.keystone_utils import determine_services
+from hooks.keystone_utils import services
 
 
 def pause_service(service):
@@ -14,6 +14,6 @@ def pause_service(service):
     return result
 
 if __name__ == "__main__":
-    for service in determine_services():
+    for service in services():
         if not pause_service(service):
             sys.exit(-1)

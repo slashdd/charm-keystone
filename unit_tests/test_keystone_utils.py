@@ -281,11 +281,13 @@ class TestKeystoneUtils(CharmTestCase):
         self.relation_set.assert_called_with(relation_id=relation_id,
                                              **filtered)
 
+    @patch('charmhelpers.contrib.openstack.ip.config')
     @patch.object(utils, 'ensure_valid_service')
     @patch.object(utils, 'add_endpoint')
     @patch.object(manager, 'KeystoneManager')
     def test_add_service_to_keystone_nosubset(
-            self, KeystoneManager, add_endpoint, ensure_valid_service):
+            self, KeystoneManager, add_endpoint, ensure_valid_service,
+            ip_config):
         relation_id = 'identity-service:0'
         remote_unit = 'unit/0'
 

@@ -316,7 +316,7 @@ def restart_map():
 
 
 def services():
-    """Returns a list of services associated with this charm"""
+    """Returns a list of (unique) services associated with this charm"""
     return list(set(chain(*restart_map().values())))
 
 
@@ -337,8 +337,8 @@ def determine_packages():
     # currently all packages match service names
     packages = set(services()).union(BASE_PACKAGES)
     if git_install_requested():
-        packages.update(BASE_GIT_PACKAGES)
-        packages.difference_update(GIT_PACKAGE_BLACKLIST)
+        packages |= set(BASE_GIT_PACKAGES)
+        packages -= set(GIT_PACKAGE_BLACKLIST)
 
     return sorted(packages)
 

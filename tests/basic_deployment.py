@@ -40,14 +40,10 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         self._deploy()
         self._initialize_tests()
 
-    def is_keystone_running(self, unit):
-        """Return whether services on the keystone unit are running."""
-        running = []
-        for service in self.SERVICES:
-            _, code = unit.run(
-                "service {} status | grep -q running".format(service))
-            running.append(code == 0)
-        return all(running)
+    def _assert_services(self, should_run):
+        u.get_unit_process_ids(
+            {self.keystone_sentry: self.SERVICES},
+            expect_success=should_run)
 
     def get_service_overrides(self, unit):
         """
@@ -485,14 +481,14 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         self.d.configure(juju_service, set_default)
 
     def test_901_pause_resume(self):
+        """Test pause and resume actions."""
         unit_name = "keystone/0"
         unit = self.d.sentry.unit[unit_name]
-        assert self.is_keystone_running(unit), \
-            "keystone not running in initial state."
+        self._assert_services(should_run=True)
         action_id = u.run_action(unit, "pause")
         assert u.wait_on_action(action_id), "Pause action failed."
 
-        assert not self.is_keystone_running(unit), "keystone is still running!"
+        self._assert_services(should_run=False)
         assert all(self.get_service_overrides(unit).itervalues()), \
             "Not all override files were created."
 
@@ -500,5 +496,4 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         assert u.wait_on_action(action_id), "Resume action failed"
         assert not any(self.get_service_overrides(unit).itervalues()), \
             "Not all override files were removed."
-        assert self.is_keystone_running(unit), \
-            "keystone not running after resume."
+        self._assert_services(should_run=True)

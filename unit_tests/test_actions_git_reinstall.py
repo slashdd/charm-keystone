@@ -36,8 +36,10 @@ class TestKeystoneActions(CharmTestCase):
     @patch.object(git_reinstall, 'action_fail')
     @patch.object(git_reinstall, 'git_install')
     @patch.object(git_reinstall, 'config_changed')
-    def test_git_reinstall(self, config_changed, git_install, action_fail,
-                           action_set):
+    @patch('charmhelpers.contrib.openstack.utils.config')
+    def test_git_reinstall(self, config, config_changed, git_install,
+                           action_fail, action_set):
+        config.return_value = openstack_origin_git
         self.test_config.set('openstack-origin-git', openstack_origin_git)
 
         git_reinstall.git_reinstall()

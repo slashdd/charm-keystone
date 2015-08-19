@@ -8,7 +8,7 @@ from hooks.keystone_utils import services
 
 
 def pause(args):
-    """Pause all the swift services.
+    """Pause all the Keystone services.
 
     @raises Exception if any services fail to stop
     """
@@ -21,7 +21,7 @@ def pause(args):
 
 
 def resume(args):
-    """Resume all the swift services.
+    """Resume all the Keystone services.
 
     @raises Exception if any services fail to start
     """

@@ -26,8 +26,6 @@ u = OpenStackAmuletUtils(DEBUG)
 class KeystoneBasicDeployment(OpenStackAmuletDeployment):
     """Amulet tests on a basic keystone deployment."""
 
-    SERVICES = ("keystone", "apache2", "haproxy")
-
     def __init__(self, series=None, openstack=None,
                  source=None, git=False, stable=False):
         """Deploy the entire test environment."""
@@ -42,7 +40,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
 
     def _assert_services(self, should_run):
         u.get_unit_process_ids(
-            {self.keystone_sentry: self.SERVICES},
+            {self.keystone_sentry: ("keystone-all", "apache2", "haproxy")},
             expect_success=should_run)
 
     def get_service_overrides(self, unit):
@@ -53,7 +51,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         init_contents = unit.directory_contents("/etc/init/")
         return {
             service: "{}.override".format(service) in init_contents["files"]
-            for service in self.SERVICES}
+            for service in ("keystone", "apache2", "haproxy")}
 
     def _add_services(self):
         """Add services

@@ -441,24 +441,25 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         set_default = {'use-syslog': 'False'}
         set_alternate = {'use-syslog': 'True'}
 
-        # Config file affected by juju set config change
-        conf_file = '/etc/keystone/keystone.conf'
-
-        # Services which are expected to restart upon config change
-        services = ['keystone-all']
+        # Services which are expected to restart upon config change,
+        # and corresponding config files affected by the change
+        services = {'keystone-all': '/etc/keystone/keystone.conf'}
 
         # Make config change, check for service restarts
         u.log.debug('Making config change on {}...'.format(juju_service))
+        mtime = u.get_sentry_time(sentry)
         self.d.configure(juju_service, set_alternate)
 
         sleep_time = 30
-        for s in services:
+        for s, conf_file in services.iteritems():
             u.log.debug("Checking that service restarted: {}".format(s))
-            if not u.service_restarted(sentry, s,
-                                       conf_file, sleep_time=sleep_time):
+            if not u.validate_service_config_changed(sentry, mtime, s,
+                                                     conf_file,
+                                                     sleep_time=sleep_time):
+
                 self.d.configure(juju_service, set_default)
                 msg = "service {} didn't restart after config change".format(s)
                 amulet.raise_status(amulet.FAIL, msg=msg)
-            sleep_time = 0
 
         self.d.configure(juju_service, set_default)
+        u.log.debug('OK')

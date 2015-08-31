@@ -4,3 +4,4 @@ exclude_lines =
     if __name__ == .__main__.:
 include=
     hooks/keystone_*
+    actions/actions.py

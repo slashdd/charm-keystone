@@ -92,9 +92,9 @@ class KeystoneRelationTests(CharmTestCase):
         self.configure_installation_source.assert_called_with(repo)
         self.assertTrue(self.apt_update.called)
         self.apt_install.assert_called_with(
-            ['haproxy', 'unison', 'python-keystoneclient',
-             'uuid', 'python-mysqldb', 'openssl', 'apache2',
-             'pwgen', 'python-six', 'keystone', 'python-psycopg2'], fatal=True)
+            ['apache2', 'haproxy', 'keystone', 'openssl', 'pwgen',
+             'python-keystoneclient', 'python-mysqldb', 'python-psycopg2',
+             'python-six', 'unison', 'uuid'], fatal=True)
         self.git_install.assert_called_with(None)
 
     @patch.object(utils, 'git_install_requested')
@@ -120,12 +120,12 @@ class KeystoneRelationTests(CharmTestCase):
         self.configure_installation_source.assert_called_with(repo)
         self.assertTrue(self.apt_update.called)
         self.apt_install.assert_called_with(
-            ['haproxy', 'unison', 'python-setuptools', 'python-keystoneclient',
-             'uuid', 'python-mysqldb', 'libmysqlclient-dev', 'libssl-dev',
-             'openssl', 'libffi-dev', 'apache2', 'python-pip', 'pwgen',
-             'python-six', 'libxslt1-dev', 'python-psycopg2', 'libyaml-dev',
-             'zlib1g-dev', 'python-dev', 'libxml2-dev'],
-            fatal=True)
+            ['apache2', 'haproxy', 'libffi-dev', 'libmysqlclient-dev',
+             'libssl-dev', 'libxml2-dev', 'libxslt1-dev', 'libyaml-dev',
+             'openssl', 'pwgen', 'python-dev', 'python-keystoneclient',
+             'python-mysqldb', 'python-pip', 'python-psycopg2',
+             'python-setuptools', 'python-six', 'unison', 'uuid',
+             'zlib1g-dev'], fatal=True)
         self.git_install.assert_called_with(projects_yaml)
 
     mod_ch_openstack_utils = 'charmhelpers.contrib.openstack.utils'

@@ -269,6 +269,10 @@ valid_services = {
     "midonet": {
         "type": "network-overlay",
         "desc": "MidoNet low-level API"
+    },
+    "cloudkitty": {
+        "type": "rating",
+        "desc": "CloudKitty Rating API"
     }
 }
 

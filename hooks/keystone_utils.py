@@ -14,6 +14,7 @@ import time
 import urlparse
 import uuid
 
+from itertools import chain
 from base64 import b64encode
 from collections import OrderedDict
 from copy import deepcopy
@@ -150,11 +151,6 @@ GIT_PACKAGE_BLACKLIST = [
     'keystone',
 ]
 
-API_PORTS = {
-    'keystone-admin': config('admin-port'),
-    'keystone-public': config('service-port')
-}
-
 KEYSTONE_CONF = "/etc/keystone/keystone.conf"
 KEYSTONE_LOGGER_CONF = "/etc/keystone/logging.conf"
 KEYSTONE_CONF_DIR = os.path.dirname(KEYSTONE_CONF)
@@ -178,7 +174,6 @@ SSH_USER = 'juju_keystone'
 CA_CERT_PATH = '/usr/local/share/ca-certificates/keystone_juju_ca_cert.crt'
 SSL_SYNC_SEMAPHORE = threading.Semaphore()
 SSL_DIRS = [SSL_DIR, APACHE_SSL_DIR, CA_CERT_PATH]
-
 BASE_RESOURCE_MAP = OrderedDict([
     (KEYSTONE_CONF, {
         'services': BASE_SERVICES,
@@ -321,11 +316,8 @@ def restart_map():
 
 
 def services():
-    """Returns a list of services associate with this charm"""
-    _services = []
-    for v in restart_map().values():
-        _services = _services + v
-    return list(set(_services))
+    """Returns a list of (unique) services associated with this charm"""
+    return list(set(chain(*restart_map().values())))
 
 
 def determine_ports():
@@ -335,23 +327,20 @@ def determine_ports():
 
 
 def api_port(service):
-    return API_PORTS[service]
+    return {
+        'keystone-admin': config('admin-port'),
+        'keystone-public': config('service-port')
+    }[service]
 
 
 def determine_packages():
     # currently all packages match service names
-    packages = [] + BASE_PACKAGES
-    for k, v in resource_map().iteritems():
-        packages.extend(v['services'])
-
+    packages = set(services()).union(BASE_PACKAGES)
     if git_install_requested():
-        packages.extend(BASE_GIT_PACKAGES)
-        # don't include packages that will be installed from git
-        packages = list(set(packages))
-        for p in GIT_PACKAGE_BLACKLIST:
-            packages.remove(p)
+        packages |= set(BASE_GIT_PACKAGES)
+        packages -= set(GIT_PACKAGE_BLACKLIST)
 
-    return list(set(packages))
+    return sorted(packages)
 
 
 def save_script_rc():

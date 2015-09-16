@@ -657,6 +657,30 @@ class KeystoneRelationTests(CharmTestCase):
         }
         self.relation_set.assert_called_with(**args)
 
+    def test_ha_joined_duplicate_vip_key(self):
+        self.get_hacluster_config.return_value = {
+            'vip': '10.10.10.10 10.10.10.11',
+            'ha-bindiface': 'em0',
+            'ha-mcastport': '8080'
+        }
+        self.get_iface_for_address.return_value = 'em1'
+        self.get_netmask_for_address.return_value = '255.255.255.0'
+        hooks.ha_joined()
+        args = {
+            'relation_id': None,
+            'corosync_bindiface': 'em0',
+            'corosync_mcastport': '8080',
+            'init_services': {'res_ks_haproxy': 'haproxy'},
+            'resources': {'res_ks_em1_vip': 'ocf:heartbeat:IPaddr2',
+                          'res_ks_haproxy': 'lsb:haproxy'},
+            'resource_params': {
+                'res_ks_em1_vip': 'params ip="10.10.10.10"'
+                                  ' cidr_netmask="255.255.255.0" nic="em1"',
+                'res_ks_haproxy': 'op monitor interval="5s"'},
+            'clones': {'cl_ks_haproxy': 'res_ks_haproxy'}
+        }
+        self.relation_set.assert_called_with(**args)
+
     def test_ha_joined_no_bound_ip(self):
         self.get_hacluster_config.return_value = {
             'vip': '10.10.10.10',

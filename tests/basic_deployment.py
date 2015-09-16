@@ -38,6 +38,21 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         self._deploy()
         self._initialize_tests()
 
+    def _assert_services(self, should_run):
+        u.get_unit_process_ids(
+            {self.keystone_sentry: ("keystone-all", "apache2", "haproxy")},
+            expect_success=should_run)
+
+    def get_service_overrides(self, unit):
+        """
+        Return a dict mapping service names to a boolean indicating whether
+        an override file exists for that service.
+        """
+        init_contents = unit.directory_contents("/etc/init/")
+        return {
+            service: "{}.override".format(service) in init_contents["files"]
+            for service in ("keystone", "apache2", "haproxy")}
+
     def _add_services(self):
         """Add services
 
@@ -441,24 +456,44 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         set_default = {'use-syslog': 'False'}
         set_alternate = {'use-syslog': 'True'}
 
-        # Config file affected by juju set config change
-        conf_file = '/etc/keystone/keystone.conf'
-
-        # Services which are expected to restart upon config change
-        services = ['keystone-all']
+        # Services which are expected to restart upon config change,
+        # and corresponding config files affected by the change
+        services = {'keystone-all': '/etc/keystone/keystone.conf'}
 
         # Make config change, check for service restarts
         u.log.debug('Making config change on {}...'.format(juju_service))
+        mtime = u.get_sentry_time(sentry)
         self.d.configure(juju_service, set_alternate)
 
         sleep_time = 30
-        for s in services:
+        for s, conf_file in services.iteritems():
             u.log.debug("Checking that service restarted: {}".format(s))
-            if not u.service_restarted(sentry, s,
-                                       conf_file, sleep_time=sleep_time):
+            if not u.validate_service_config_changed(sentry, mtime, s,
+                                                     conf_file,
+                                                     sleep_time=sleep_time):
+
                 self.d.configure(juju_service, set_default)
                 msg = "service {} didn't restart after config change".format(s)
                 amulet.raise_status(amulet.FAIL, msg=msg)
-            sleep_time = 0
 
         self.d.configure(juju_service, set_default)
+
+        u.log.debug('OK')
+
+    def test_901_pause_resume(self):
+        """Test pause and resume actions."""
+        unit_name = "keystone/0"
+        unit = self.d.sentry.unit[unit_name]
+        self._assert_services(should_run=True)
+        action_id = u.run_action(unit, "pause")
+        assert u.wait_on_action(action_id), "Pause action failed."
+
+        self._assert_services(should_run=False)
+        assert all(self.get_service_overrides(unit).itervalues()), \
+            "Not all override files were created."
+
+        action_id = u.run_action(unit, "resume")
+        assert u.wait_on_action(action_id), "Resume action failed"
+        assert not any(self.get_service_overrides(unit).itervalues()), \
+            "Not all override files were removed."
+        self._assert_services(should_run=True)

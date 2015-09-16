@@ -1,7 +1,8 @@
 branch: lp:charm-helpers
-destination: hooks/charmhelpers
+destination: charmhelpers
 include:
     - core
+    - cli
     - fetch
     - contrib.openstack|inc=*
     - contrib.storage

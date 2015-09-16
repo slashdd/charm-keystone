@@ -92,9 +92,9 @@ class KeystoneRelationTests(CharmTestCase):
         self.configure_installation_source.assert_called_with(repo)
         self.assertTrue(self.apt_update.called)
         self.apt_install.assert_called_with(
-            ['haproxy', 'unison', 'python-keystoneclient',
-             'uuid', 'python-mysqldb', 'openssl', 'apache2',
-             'pwgen', 'python-six', 'keystone', 'python-psycopg2'], fatal=True)
+            ['apache2', 'haproxy', 'keystone', 'openssl', 'pwgen',
+             'python-keystoneclient', 'python-mysqldb', 'python-psycopg2',
+             'python-six', 'unison', 'uuid'], fatal=True)
         self.git_install.assert_called_with(None)
 
     @patch.object(utils, 'git_install_requested')
@@ -120,12 +120,12 @@ class KeystoneRelationTests(CharmTestCase):
         self.configure_installation_source.assert_called_with(repo)
         self.assertTrue(self.apt_update.called)
         self.apt_install.assert_called_with(
-            ['haproxy', 'unison', 'python-setuptools', 'python-keystoneclient',
-             'uuid', 'python-mysqldb', 'libmysqlclient-dev', 'libssl-dev',
-             'openssl', 'libffi-dev', 'apache2', 'python-pip', 'pwgen',
-             'python-six', 'libxslt1-dev', 'python-psycopg2', 'libyaml-dev',
-             'zlib1g-dev', 'python-dev', 'libxml2-dev'],
-            fatal=True)
+            ['apache2', 'haproxy', 'libffi-dev', 'libmysqlclient-dev',
+             'libssl-dev', 'libxml2-dev', 'libxslt1-dev', 'libyaml-dev',
+             'openssl', 'pwgen', 'python-dev', 'python-keystoneclient',
+             'python-mysqldb', 'python-pip', 'python-psycopg2',
+             'python-setuptools', 'python-six', 'unison', 'uuid',
+             'zlib1g-dev'], fatal=True)
         self.git_install.assert_called_with(projects_yaml)
 
     mod_ch_openstack_utils = 'charmhelpers.contrib.openstack.utils'
@@ -306,6 +306,7 @@ class KeystoneRelationTests(CharmTestCase):
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
     @patch('keystone_utils.ensure_ssl_dirs')
+    @patch.object(hooks, 'ensure_permissions')
     @patch.object(hooks, 'ensure_pki_dir_permissions')
     @patch.object(hooks, 'ensure_ssl_dir')
     @patch.object(hooks, 'is_pki_enabled')
@@ -330,6 +331,7 @@ class KeystoneRelationTests(CharmTestCase):
                                               mock_is_ssl_cert_master,
                                               mock_is_pki_enabled,
                                               mock_ensure_ssl_dir,
+                                              mock_ensure_permissions,
                                               mock_ensure_pki_dir_permissions,
                                               mock_ensure_ssl_dirs,
                                               mock_ensure_ssl_cert_master,
@@ -368,6 +370,7 @@ class KeystoneRelationTests(CharmTestCase):
     @patch('keystone_utils.ensure_ssl_cert_master')
     @patch('keystone_utils.ensure_ssl_dirs')
     @patch.object(hooks, 'update_all_identity_relation_units')
+    @patch.object(hooks, 'ensure_permissions')
     @patch.object(hooks, 'ensure_pki_dir_permissions')
     @patch.object(hooks, 'ensure_ssl_dir')
     @patch.object(hooks, 'is_pki_enabled')
@@ -387,6 +390,7 @@ class KeystoneRelationTests(CharmTestCase):
                                                   mock_peer_units,
                                                   mock_is_pki_enabled,
                                                   mock_ensure_ssl_dir,
+                                                  mock_ensure_permissions,
                                                   mock_ensure_pki_permissions,
                                                   mock_update_all_id_rel_units,
                                                   ensure_ssl_dirs,
@@ -416,6 +420,7 @@ class KeystoneRelationTests(CharmTestCase):
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
     @patch('keystone_utils.ensure_ssl_dirs')
+    @patch.object(hooks, 'ensure_permissions')
     @patch.object(hooks, 'ensure_pki_dir_permissions')
     @patch.object(hooks, 'ensure_ssl_dir')
     @patch.object(hooks, 'is_pki_enabled')
@@ -439,6 +444,7 @@ class KeystoneRelationTests(CharmTestCase):
                                                    mock_is_ssl_cert_master,
                                                    mock_is_pki_enabled,
                                                    mock_ensure_ssl_dir,
+                                                   mock_ensure_permissions,
                                                    mock_ensure_pki_permissions,
                                                    mock_ensure_ssl_dirs,
                                                    mock_ensure_ssl_cert_master,

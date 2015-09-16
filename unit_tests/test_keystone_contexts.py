@@ -1,3 +1,5 @@
+import os
+
 import keystone_context as context
 from mock import patch, MagicMock
 
@@ -45,6 +47,7 @@ class TestKeystoneContexts(CharmTestCase):
         self.assertTrue(mock_ensure_permissions.called)
         self.assertFalse(mock_get_ca.called)
 
+    @patch('keystone_utils.determine_ports')
     @patch('keystone_utils.is_ssl_cert_master')
     @patch('keystone_utils.is_ssl_enabled')
     @patch('charmhelpers.contrib.openstack.context.config')
@@ -60,7 +63,8 @@ class TestKeystoneContexts(CharmTestCase):
                                                 mock_is_clustered,
                                                 mock_config,
                                                 mock_is_ssl_enabled,
-                                                mock_is_ssl_cert_master):
+                                                mock_is_ssl_cert_master,
+                                                mock_determine_ports):
         mock_is_ssl_enabled.return_value = True
         mock_is_ssl_cert_master.return_value = True
         mock_https.return_value = True
@@ -69,6 +73,7 @@ class TestKeystoneContexts(CharmTestCase):
         mock_determine_apache_port.return_value = '34'
         mock_is_clustered.return_value = False
         mock_config.return_value = None
+        mock_determine_ports.return_value = ['12']
 
         ctxt = context.ApacheSSLContext()
         ctxt.enable_modules = MagicMock()
@@ -83,6 +88,7 @@ class TestKeystoneContexts(CharmTestCase):
         self.assertTrue(mock_https.called)
         mock_unit_get.assert_called_with('private-address')
 
+    @patch('keystone_utils.api_port')
     @patch('charmhelpers.contrib.openstack.context.get_netmask_for_address')
     @patch('charmhelpers.contrib.openstack.context.get_address_in_network')
     @patch('charmhelpers.contrib.openstack.context.config')
@@ -95,7 +101,10 @@ class TestKeystoneContexts(CharmTestCase):
     def test_haproxy_context_service_enabled(
         self, mock_open, mock_log, mock_relation_get, mock_related_units,
             mock_unit_get, mock_relation_ids, mock_config,
-            mock_get_address_in_network, mock_get_netmask_for_address):
+            mock_get_address_in_network, mock_get_netmask_for_address,
+            mock_api_port):
+        os.environ['JUJU_UNIT_NAME'] = 'keystone'
+
         mock_relation_ids.return_value = ['identity-service:0', ]
         mock_unit_get.return_value = '1.2.3.4'
         mock_relation_get.return_value = '10.0.0.0'
@@ -104,19 +113,20 @@ class TestKeystoneContexts(CharmTestCase):
         mock_get_address_in_network.return_value = None
         mock_get_netmask_for_address.return_value = '255.255.255.0'
         self.determine_apache_port.return_value = '34'
+        mock_api_port.return_value = '12'
 
         ctxt = context.HAProxyContext()
 
         self.maxDiff = None
         self.assertEquals(
             ctxt(),
-            {'listen_ports': {'admin_port': 'keystone',
-                              'public_port': 'keystone'},
+            {'listen_ports': {'admin_port': '12',
+                              'public_port': '12'},
              'local_host': '127.0.0.1',
              'haproxy_host': '0.0.0.0',
              'stat_port': ':8888',
-             'service_ports': {'admin-port': ['keystone', '34'],
-                               'public-port': ['keystone', '34']},
+             'service_ports': {'admin-port': ['12', '34'],
+                               'public-port': ['12', '34']},
              'default_backend': '1.2.3.4',
              'frontends': {'1.2.3.4': {
                  'network': '1.2.3.4/255.255.255.0',

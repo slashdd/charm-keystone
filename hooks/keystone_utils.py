@@ -50,7 +50,8 @@ from charmhelpers.contrib.openstack.utils import (
     git_yaml_value,
     git_pip_venv_dir,
     os_release,
-    save_script_rc as _save_script_rc
+    save_script_rc as _save_script_rc,
+    set_os_workload_status,
 )
 
 from charmhelpers.contrib.python.packages import (
@@ -81,6 +82,7 @@ from charmhelpers.core.hookenv import (
     DEBUG,
     INFO,
     WARNING,
+    status_get,
 )
 
 from charmhelpers.fetch import (
@@ -1784,14 +1786,16 @@ def git_post_install(projects_yaml):
     service_restart('keystone')
 
 
-def check_ha_settings(configs):
+def check_optional_relations(configs):
     if relation_ids('ha'):
         try:
             get_hacluster_config()
-            return 'active', 'hacluster configs complete.'
         except:
             return ('blocked',
                     'hacluster missing configuration: '
                     'vip, vip_iface, vip_cidr')
+        required_interfaces = {'ha': ['cluster']}
+        set_os_workload_status(configs, required_interfaces)
+        return status_get()
     else:
-        return 'unknown', 'No ha clustering'
+        return 'unknown', 'No optional relations'

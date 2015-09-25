@@ -24,6 +24,7 @@ from charmhelpers.contrib.hahelpers.cluster import(
     determine_api_port,
     https,
     peer_units,
+    get_hacluster_config,
 )
 
 from charmhelpers.contrib.openstack import context, templating
@@ -269,6 +270,12 @@ valid_services = {
         "type": "rating",
         "desc": "CloudKitty Rating API"
     }
+}
+
+# The interface is said to be satisfied if anyone of the interfaces in the
+# list has a complete context.
+REQUIRED_INTERFACES = {
+    'database': ['shared-db', 'pgsql-db'],
 }
 
 
@@ -1775,3 +1782,16 @@ def git_post_install(projects_yaml):
            perms=0o644, templates_dir=templates_dir)
 
     service_restart('keystone')
+
+
+def check_ha_settings(configs):
+    if relation_ids('ha'):
+        try:
+            get_hacluster_config()
+            return 'active', 'hacluster configs complete.'
+        except:
+            return ('blocked',
+                    'hacluster missing configuration: '
+                    'vip, vip_iface, vip_cidr')
+    else:
+        return 'unknown', 'No ha clustering'

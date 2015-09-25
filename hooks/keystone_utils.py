@@ -268,6 +268,10 @@ valid_services = {
     "cloudkitty": {
         "type": "rating",
         "desc": "CloudKitty Rating API"
+    },
+    "ironic": {
+        "type": "baremetal",
+        "desc": "Ironic bare metal provisioning service"
     }
 }
 

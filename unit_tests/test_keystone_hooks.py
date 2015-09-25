@@ -142,7 +142,8 @@ class KeystoneRelationTests(CharmTestCase):
 
         cfg_dict = {'prefer-ipv6': False,
                     'database': 'keystone',
-                    'database-user': 'keystone'}
+                    'database-user': 'keystone',
+                    'vip': None}
 
         class mock_cls_config():
             def __call__(self, key):

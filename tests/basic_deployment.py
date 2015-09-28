@@ -43,16 +43,6 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             {self.keystone_sentry: ("keystone-all", "apache2", "haproxy")},
             expect_success=should_run)
 
-    def get_service_overrides(self, unit):
-        """
-        Return a dict mapping service names to a boolean indicating whether
-        an override file exists for that service.
-        """
-        init_contents = unit.directory_contents("/etc/init/")
-        return {
-            service: "{}.override".format(service) in init_contents["files"]
-            for service in ("keystone", "apache2", "haproxy")}
-
     def _add_services(self):
         """Add services
 
@@ -489,11 +479,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         assert u.wait_on_action(action_id), "Pause action failed."
 
         self._assert_services(should_run=False)
-        assert all(self.get_service_overrides(unit).itervalues()), \
-            "Not all override files were created."
 
         action_id = u.run_action(unit, "resume")
         assert u.wait_on_action(action_id), "Resume action failed"
-        assert not any(self.get_service_overrides(unit).itervalues()), \
-            "Not all override files were removed."
         self._assert_services(should_run=True)

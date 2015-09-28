@@ -141,6 +141,7 @@ class KeystoneRelationTests(CharmTestCase):
                        mock_hooks_config):
 
         cfg_dict = {'prefer-ipv6': False,
+                    'vip': '1.2.3.4',
                     'database': 'keystone',
                     'database-user': 'keystone'}
 

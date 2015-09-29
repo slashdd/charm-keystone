@@ -553,10 +553,10 @@ def ha_joined(relation_id=None):
 
 
 @hooks.hook('ha-relation-changed')
-@restart_on_change(restart_map())
-@synchronize_ca_if_changed()
 @os_workload_status(CONFIGS, REQUIRED_INTERFACES,
                     charm_func=check_optional_relations)
+@restart_on_change(restart_map())
+@synchronize_ca_if_changed()
 def ha_changed():
     CONFIGS.write_all()
 

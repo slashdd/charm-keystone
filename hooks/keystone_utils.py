@@ -24,6 +24,7 @@ from charmhelpers.contrib.hahelpers.cluster import(
     determine_api_port,
     https,
     peer_units,
+    get_hacluster_config,
 )
 
 from charmhelpers.contrib.openstack import context, templating
@@ -49,7 +50,8 @@ from charmhelpers.contrib.openstack.utils import (
     git_yaml_value,
     git_pip_venv_dir,
     os_release,
-    save_script_rc as _save_script_rc
+    save_script_rc as _save_script_rc,
+    set_os_workload_status,
 )
 
 from charmhelpers.contrib.python.packages import (
@@ -80,6 +82,7 @@ from charmhelpers.core.hookenv import (
     DEBUG,
     INFO,
     WARNING,
+    status_get,
 )
 
 from charmhelpers.fetch import (
@@ -269,6 +272,12 @@ valid_services = {
         "type": "rating",
         "desc": "CloudKitty Rating API"
     }
+}
+
+# The interface is said to be satisfied if anyone of the interfaces in the
+# list has a complete context.
+REQUIRED_INTERFACES = {
+    'database': ['shared-db', 'pgsql-db'],
 }
 
 
@@ -1774,3 +1783,18 @@ def git_post_install(projects_yaml):
            perms=0o644, templates_dir=templates_dir)
 
     service_restart('keystone')
+
+
+def check_optional_relations(configs):
+    if relation_ids('ha'):
+        try:
+            get_hacluster_config()
+        except:
+            return ('blocked',
+                    'hacluster missing configuration: '
+                    'vip, vip_iface, vip_cidr')
+        required_interfaces = {'ha': ['cluster']}
+        set_os_workload_status(configs, required_interfaces)
+        return status_get()
+    else:
+        return 'unknown', 'No optional relations'

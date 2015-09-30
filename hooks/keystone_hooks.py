@@ -523,6 +523,13 @@ def ha_joined(relation_id=None):
 
         if iface is not None:
             vip_key = 'res_ks_{}_vip'.format(iface)
+            if vip_key in vip_group:
+                log("Resource '%s' (vip='%s') already exists in "
+                    "vip group - skipping" % (vip_key, vip),
+                    WARNING)
+                continue
+
+            vip_group.append(vip_key)
             resources[vip_key] = res_ks_vip
             resource_params[vip_key] = (
                 'params {ip}="{vip}" cidr_netmask="{netmask}"'
@@ -531,7 +538,6 @@ def ha_joined(relation_id=None):
                                         iface=iface,
                                         netmask=netmask)
             )
-            vip_group.append(vip_key)
 
     if len(vip_group) >= 1:
         relation_set(relation_id=relation_id,

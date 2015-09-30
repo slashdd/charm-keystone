@@ -170,7 +170,7 @@ class TestKeystoneUtils(CharmTestCase):
         self.service_stop.assert_called_with('keystone')
         cmd = ['sudo', '-u', 'keystone', 'keystone-manage', 'db_sync']
         self.subprocess.check_output.assert_called_with(cmd)
-        self.service_start.assert_called_wkth('keystone')
+        self.service_start.assert_called_with('keystone')
 
     @patch.object(utils, 'resolve_address')
     @patch.object(utils, 'b64encode')

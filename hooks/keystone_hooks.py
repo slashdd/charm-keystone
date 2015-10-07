@@ -47,7 +47,7 @@ from charmhelpers.contrib.openstack.utils import (
     git_install_requested,
     openstack_upgrade_available,
     sync_db_with_multi_ipv6_addresses,
-    os_workload_status,
+    set_os_workload_status,
 )
 
 from keystone_utils import (
@@ -117,8 +117,6 @@ CONFIGS = register_configs()
 
 
 @hooks.hook('install.real')
-@os_workload_status(CONFIGS, REQUIRED_INTERFACES,
-                    charm_func=check_optional_relations)
 def install():
     status_set('maintenance', 'Executing pre-install')
     execd_preinstall()
@@ -132,8 +130,6 @@ def install():
 
 
 @hooks.hook('config-changed')
-@os_workload_status(CONFIGS, REQUIRED_INTERFACES,
-                    charm_func=check_optional_relations)
 @restart_on_change(restart_map())
 @synchronize_ca_if_changed(fatal=True)
 def config_changed():
@@ -210,8 +206,6 @@ def initialise_pki():
 
 
 @hooks.hook('shared-db-relation-joined')
-@os_workload_status(CONFIGS, REQUIRED_INTERFACES,
-                    charm_func=check_optional_relations)
 def db_joined():
     if is_relation_made('pgsql-db'):
         # error, postgresql is used
@@ -230,8 +224,6 @@ def db_joined():
 
 
 @hooks.hook('pgsql-db-relation-joined')
-@os_workload_status(CONFIGS, REQUIRED_INTERFACES,
-                    charm_func=check_optional_relations)
 def pgsql_db_joined():
     if is_relation_made('shared-db'):
         # raise error
@@ -270,8 +262,6 @@ def update_all_identity_relation_units_force_sync():
 
 
 @hooks.hook('shared-db-relation-changed')
-@os_workload_status(CONFIGS, REQUIRED_INTERFACES,
-                    charm_func=check_optional_relations)
 @restart_on_change(restart_map())
 @synchronize_ca_if_changed()
 def db_changed():
@@ -295,8 +285,6 @@ def db_changed():
 
 
 @hooks.hook('pgsql-db-relation-changed')
-@os_workload_status(CONFIGS, REQUIRED_INTERFACES,
-                    charm_func=check_optional_relations)
 @restart_on_change(restart_map())
 @synchronize_ca_if_changed()
 def pgsql_db_changed():
@@ -496,8 +484,6 @@ def leader_settings_changed():
 
 
 @hooks.hook('ha-relation-joined')
-@os_workload_status(CONFIGS, REQUIRED_INTERFACES,
-                    charm_func=check_optional_relations)
 def ha_joined(relation_id=None):
     cluster_config = get_hacluster_config()
     resources = {
@@ -559,8 +545,6 @@ def ha_joined(relation_id=None):
 
 
 @hooks.hook('ha-relation-changed')
-@os_workload_status(CONFIGS, REQUIRED_INTERFACES,
-                    charm_func=check_optional_relations)
 @restart_on_change(restart_map())
 @synchronize_ca_if_changed()
 def ha_changed():
@@ -645,6 +629,8 @@ def main():
         hooks.execute(sys.argv)
     except UnregisteredHookError as e:
         log('Unknown hook {} - skipping.'.format(e))
+    set_os_workload_status(CONFIGS, REQUIRED_INTERFACES,
+                           charm_func=check_optional_relations)
 
 
 if __name__ == '__main__':

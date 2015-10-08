@@ -540,6 +540,37 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertFalse(self.openstack_upgrade_available.called)
         self.assertFalse(self.do_openstack_upgrade.called)
 
+    @patch.object(hooks, 'git_install_requested')
+    @patch.object(hooks, 'config_value_changed')
+    @patch.object(hooks, 'ensure_ssl_dir')
+    @patch.object(hooks, 'configure_https')
+    @patch.object(hooks, 'is_pki_enabled')
+    @patch.object(hooks, 'is_ssl_cert_master')
+    @patch.object(hooks, 'peer_units')
+    @patch.object(unison, 'get_homedir')
+    @patch.object(unison, 'ensure_user')
+    @patch('keystone_utils.ensure_ssl_cert_master')
+    def test_config_changed_with_openstack_upgrade_action(self,
+                                                          ensure_ssl_cert,
+                                                          ensure_user,
+                                                          get_home,
+                                                          peer_units, is_ssl,
+                                                          is_pki, config_https,
+                                                          ensure_ssl_dir,
+                                                          config_value_changed,
+                                                          git_requested):
+        ensure_ssl_cert.return_value = False
+        is_pki.return_value = False
+        peer_units.return_value = []
+
+        git_requested.return_value = False
+        self.openstack_upgrade_available.return_value = True
+        self.test_config.set('action-managed-upgrade', True)
+
+        hooks.config_changed()
+
+        self.assertFalse(self.do_openstack_upgrade.called)
+
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
     @patch.object(hooks, 'hashlib')

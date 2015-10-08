@@ -149,7 +149,7 @@ def config_changed():
         if config_value_changed('openstack-origin-git'):
             status_set('maintenance', 'Running Git install')
             git_install(config('openstack-origin-git'))
-    else:
+    elif not config('action-managed-upgrade'):
         if openstack_upgrade_available('keystone'):
             status_set('maintenance', 'Running openstack upgrade')
             do_openstack_upgrade(configs=CONFIGS)

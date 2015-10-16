@@ -395,7 +395,7 @@ def do_openstack_upgrade(configs):
         else:
             log("Database not ready - deferring to shared-db relation",
                 level=INFO)
-            return
+    os.execl('./hooks/config-changed', '')
 
 
 def is_db_initialised():

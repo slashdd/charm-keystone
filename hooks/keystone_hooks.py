@@ -154,6 +154,13 @@ def config_changed():
             status_set('maintenance', 'Running openstack upgrade')
             do_openstack_upgrade(configs=CONFIGS)
 
+    config_changed_postupgrade()
+
+
+@hooks.hook('config-changed-postupgrade')
+@restart_on_change(restart_map())
+@synchronize_ca_if_changed(fatal=True)
+def config_changed_postupgrade():
     # Ensure ssl dir exists and is unison-accessible
     ensure_ssl_dir()
 

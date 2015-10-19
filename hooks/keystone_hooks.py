@@ -53,7 +53,7 @@ from charmhelpers.contrib.openstack.utils import (
 from keystone_utils import (
     add_service_to_keystone,
     determine_packages,
-    do_openstack_upgrade,
+    do_openstack_upgrade_reexec,
     ensure_initial_admin,
     get_admin_passwd,
     git_install,
@@ -152,7 +152,7 @@ def config_changed():
     elif not config('action-managed-upgrade'):
         if openstack_upgrade_available('keystone'):
             status_set('maintenance', 'Running openstack upgrade')
-            do_openstack_upgrade(configs=CONFIGS)
+            do_openstack_upgrade_reexec(configs=CONFIGS)
 
     config_changed_postupgrade()
 

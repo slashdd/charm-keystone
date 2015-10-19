@@ -51,7 +51,7 @@ TO_PATCH = [
     # keystone_utils
     'restart_map',
     'register_configs',
-    'do_openstack_upgrade',
+    'do_openstack_upgrade_reexec',
     'openstack_upgrade_available',
     'save_script_rc',
     'migrate_database',
@@ -467,7 +467,7 @@ class KeystoneRelationTests(CharmTestCase):
         ensure_user.assert_called_with(user=self.ssh_user, group='keystone')
         get_homedir.assert_called_with(self.ssh_user)
 
-        self.assertTrue(self.do_openstack_upgrade.called)
+        self.assertTrue(self.do_openstack_upgrade_reexec.called)
 
         self.save_script_rc.assert_called_with()
         configure_https.assert_called_with()
@@ -538,7 +538,7 @@ class KeystoneRelationTests(CharmTestCase):
         hooks.config_changed()
         self.git_install.assert_called_with(projects_yaml)
         self.assertFalse(self.openstack_upgrade_available.called)
-        self.assertFalse(self.do_openstack_upgrade.called)
+        self.assertFalse(self.do_openstack_upgrade_reexec.called)
 
     @patch.object(hooks, 'git_install_requested')
     @patch.object(hooks, 'config_value_changed')
@@ -569,7 +569,7 @@ class KeystoneRelationTests(CharmTestCase):
 
         hooks.config_changed()
 
-        self.assertFalse(self.do_openstack_upgrade.called)
+        self.assertFalse(self.do_openstack_upgrade_reexec.called)
 
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')

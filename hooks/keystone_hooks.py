@@ -121,6 +121,10 @@ def install():
     status_set('maintenance', 'Executing pre-install')
     execd_preinstall()
     configure_installation_source(config('openstack-origin'))
+
+    unison.ensure_user(user=SSH_USER, group='juju_keystone')
+    unison.ensure_user(user=SSH_USER, group='keystone')
+
     status_set('maintenance', 'Installing apt packages')
     apt_update()
     apt_install(determine_packages(), fatal=True)

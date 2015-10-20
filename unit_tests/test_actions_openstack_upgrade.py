@@ -12,16 +12,16 @@ from test_utils import (
 )
 
 TO_PATCH = [
-    'config_changed',
     'do_openstack_upgrade',
+    'os',
 ]
 
 
-class TestCinderUpgradeActions(CharmTestCase):
+class TestKeystoneUpgradeActions(CharmTestCase):
 
     def setUp(self):
-        super(TestCinderUpgradeActions, self).setUp(openstack_upgrade,
-                                                    TO_PATCH)
+        super(TestKeystoneUpgradeActions, self).setUp(openstack_upgrade,
+                                                      TO_PATCH)
 
     @patch.object(hooks, 'register_configs')
     @patch('charmhelpers.contrib.openstack.utils.config')
@@ -37,7 +37,8 @@ class TestCinderUpgradeActions(CharmTestCase):
         openstack_upgrade.openstack_upgrade()
 
         self.assertTrue(self.do_openstack_upgrade.called)
-        self.assertTrue(self.config_changed.called)
+        self.os.execl.assert_called_with('./hooks/config-changed-postupgrade',
+                                         '')
 
     @patch.object(hooks, 'register_configs')
     @patch('charmhelpers.contrib.openstack.utils.config')
@@ -53,4 +54,4 @@ class TestCinderUpgradeActions(CharmTestCase):
         openstack_upgrade.openstack_upgrade()
 
         self.assertFalse(self.do_openstack_upgrade.called)
-        self.assertFalse(self.config_changed.called)
+        self.assertFalse(self.os.execl.called)

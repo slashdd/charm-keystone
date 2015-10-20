@@ -128,6 +128,9 @@ def install():
     status_set('maintenance', 'Git install')
     git_install(config('openstack-origin-git'))
 
+    unison.ensure_user(user=SSH_USER, group='juju_keystone')
+    unison.ensure_user(user=SSH_USER, group='keystone')
+
 
 @hooks.hook('config-changed')
 @restart_on_change(restart_map())

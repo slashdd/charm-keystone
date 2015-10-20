@@ -83,13 +83,15 @@ class KeystoneRelationTests(CharmTestCase):
         self.ssh_user = 'juju_keystone'
 
     @patch.object(utils, 'git_install_requested')
-    def test_install_hook(self, git_requested):
+    @patch.object(unison, 'ensure_user')
+    def test_install_hook(self, ensure_user, git_requested):
         git_requested.return_value = False
         repo = 'cloud:precise-grizzly'
         self.test_config.set('openstack-origin', repo)
         hooks.install()
         self.assertTrue(self.execd_preinstall.called)
         self.configure_installation_source.assert_called_with(repo)
+        ensure_user.assert_called_with(user=self.ssh_user, group='keystone')
         self.assertTrue(self.apt_update.called)
         self.apt_install.assert_called_with(
             ['apache2', 'haproxy', 'keystone', 'openssl', 'pwgen',
@@ -98,7 +100,8 @@ class KeystoneRelationTests(CharmTestCase):
         self.git_install.assert_called_with(None)
 
     @patch.object(utils, 'git_install_requested')
-    def test_install_hook_git(self, git_requested):
+    @patch.object(unison, 'ensure_user')
+    def test_install_hook_git(self, ensure_user, git_requested):
         git_requested.return_value = True
         repo = 'cloud:trusty-juno'
         openstack_origin_git = {
@@ -118,6 +121,7 @@ class KeystoneRelationTests(CharmTestCase):
         hooks.install()
         self.assertTrue(self.execd_preinstall.called)
         self.configure_installation_source.assert_called_with(repo)
+        ensure_user.assert_called_with(user=self.ssh_user, group='keystone')
         self.assertTrue(self.apt_update.called)
         self.apt_install.assert_called_with(
             ['apache2', 'haproxy', 'libffi-dev', 'libmysqlclient-dev',

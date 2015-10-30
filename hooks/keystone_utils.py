@@ -372,7 +372,7 @@ def save_script_rc():
 
 def do_openstack_upgrade_reexec(configs):
     do_openstack_upgrade(configs)
-    log("Re-execing hook to pickup upgraded packages",  level=INFO)
+    log("Re-execing hook to pickup upgraded packages", level=INFO)
     os.execl('./hooks/config-changed-postupgrade', '')
 
 

@@ -1,11 +1,7 @@
 from mock import patch
 
-with patch('charmhelpers.core.hookenv.config') as config:
-    config.return_value = 'keystone'
-    import keystone_utils as utils  # noqa
-
-    with patch('keystone_utils.register_configs') as register_configs:
-        import git_reinstall
+with patch('hooks.keystone_utils.register_configs') as register_configs:
+    import git_reinstall
 
 from test_utils import (
     CharmTestCase

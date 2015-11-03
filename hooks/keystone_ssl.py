@@ -323,7 +323,7 @@ class JujuCA(object):
 
     @property
     def ca_key_path(self):
-        return os.path.join(self.ca_dir, 'private',  'cacert.key')
+        return os.path.join(self.ca_dir, 'private', 'cacert.key')
 
     @property
     def root_ca_cert_path(self):
@@ -331,7 +331,7 @@ class JujuCA(object):
 
     @property
     def root_ca_key_path(self):
-        return os.path.join(self.root_ca_dir, 'private',  'cacert.key')
+        return os.path.join(self.root_ca_dir, 'private', 'cacert.key')
 
     def get_ca_bundle(self):
         int_cert = open(self.ca_cert_path).read()

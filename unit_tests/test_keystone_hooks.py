@@ -312,9 +312,9 @@ class KeystoneRelationTests(CharmTestCase):
     @patch('keystone_utils.ensure_ssl_cert_master')
     @patch('keystone_utils.ensure_ssl_dirs')
     @patch.object(hooks, 'ensure_permissions')
+    @patch.object(hooks, 'ensure_pki_cert_paths')
     @patch.object(hooks, 'ensure_pki_dir_permissions')
     @patch.object(hooks, 'ensure_ssl_dir')
-    @patch.object(hooks, 'is_pki_enabled')
     @patch.object(hooks, 'is_ssl_cert_master')
     @patch.object(hooks, 'send_ssl_sync_request')
     @patch.object(hooks, 'peer_units')
@@ -334,15 +334,14 @@ class KeystoneRelationTests(CharmTestCase):
                                               mock_peer_units,
                                               mock_send_ssl_sync_request,
                                               mock_is_ssl_cert_master,
-                                              mock_is_pki_enabled,
                                               mock_ensure_ssl_dir,
+                                              mock_ensure_pki_cert_paths,
                                               mock_ensure_permissions,
                                               mock_ensure_pki_dir_permissions,
                                               mock_ensure_ssl_dirs,
                                               mock_ensure_ssl_cert_master,
                                               mock_log, git_requested):
         git_requested.return_value = False
-        mock_is_pki_enabled.return_value = True
         mock_is_ssl_cert_master.return_value = True
         self.is_db_initialised.return_value = True
         self.is_db_ready.return_value = True
@@ -376,9 +375,9 @@ class KeystoneRelationTests(CharmTestCase):
     @patch('keystone_utils.ensure_ssl_dirs')
     @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(hooks, 'ensure_permissions')
+    @patch.object(hooks, 'ensure_pki_cert_paths')
     @patch.object(hooks, 'ensure_pki_dir_permissions')
     @patch.object(hooks, 'ensure_ssl_dir')
-    @patch.object(hooks, 'is_pki_enabled')
     @patch.object(hooks, 'peer_units')
     @patch.object(hooks, 'is_ssl_cert_master')
     @patch.object(hooks, 'cluster_joined')
@@ -393,16 +392,15 @@ class KeystoneRelationTests(CharmTestCase):
                                                   ensure_user, cluster_joined,
                                                   mock_is_ssl_cert_master,
                                                   mock_peer_units,
-                                                  mock_is_pki_enabled,
                                                   mock_ensure_ssl_dir,
                                                   mock_ensure_permissions,
+                                                  mock_ensure_pki_cert_paths,
                                                   mock_ensure_pki_permissions,
                                                   mock_update_all_id_rel_units,
                                                   ensure_ssl_dirs,
                                                   mock_ensure_ssl_cert_master,
                                                   mock_log, git_requested):
         git_requested.return_value = False
-        mock_is_pki_enabled.return_value = True
         mock_is_ssl_cert_master.return_value = True
         mock_peer_units.return_value = []
         self.openstack_upgrade_available.return_value = False
@@ -426,9 +424,9 @@ class KeystoneRelationTests(CharmTestCase):
     @patch('keystone_utils.ensure_ssl_cert_master')
     @patch('keystone_utils.ensure_ssl_dirs')
     @patch.object(hooks, 'ensure_permissions')
+    @patch.object(hooks, 'ensure_pki_cert_paths')
     @patch.object(hooks, 'ensure_pki_dir_permissions')
     @patch.object(hooks, 'ensure_ssl_dir')
-    @patch.object(hooks, 'is_pki_enabled')
     @patch.object(hooks, 'is_ssl_cert_master')
     @patch.object(hooks, 'send_ssl_sync_request')
     @patch.object(hooks, 'peer_units')
@@ -447,15 +445,14 @@ class KeystoneRelationTests(CharmTestCase):
                                                    mock_peer_units,
                                                    mock_send_ssl_sync_request,
                                                    mock_is_ssl_cert_master,
-                                                   mock_is_pki_enabled,
                                                    mock_ensure_ssl_dir,
                                                    mock_ensure_permissions,
+                                                   mock_ensure_pki_cert_paths,
                                                    mock_ensure_pki_permissions,
                                                    mock_ensure_ssl_dirs,
                                                    mock_ensure_ssl_cert_master,
                                                    mock_log, git_requested):
         git_requested.return_value = False
-        mock_is_pki_enabled.return_value = True
         mock_is_ssl_cert_master.return_value = True
         self.is_db_ready.return_value = True
         self.is_db_initialised.return_value = True
@@ -485,12 +482,12 @@ class KeystoneRelationTests(CharmTestCase):
             remote_unit='unit/0')
         admin_relation_changed.assert_called_with('identity-service:0')
 
+    @patch.object(hooks, 'initialise_pki')
     @patch.object(hooks, 'git_install_requested')
     @patch.object(hooks, 'config_value_changed')
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
     @patch.object(hooks, 'ensure_ssl_dir')
-    @patch.object(hooks, 'is_pki_enabled')
     @patch.object(hooks, 'send_ssl_sync_request')
     @patch.object(hooks, 'is_db_initialised')
     @patch.object(hooks, 'is_db_ready')
@@ -510,14 +507,13 @@ class KeystoneRelationTests(CharmTestCase):
                                         mock_is_db_ready,
                                         mock_is_db_initialised,
                                         mock_send_ssl_sync_request,
-                                        mock_is_pki_enabled,
                                         mock_ensure_ssl_dir,
                                         mock_ensure_ssl_cert_master,
                                         mock_log, config_val_changed,
-                                        git_requested):
+                                        git_requested,
+                                        mock_initialise_pki):
         git_requested.return_value = True
         mock_ensure_ssl_cert_master.return_value = False
-        mock_is_pki_enabled.return_value = False
         self.openstack_upgrade_available.return_value = False
         self.is_elected_leader.return_value = True
         mock_peer_units.return_value = []
@@ -544,11 +540,11 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertFalse(self.openstack_upgrade_available.called)
         self.assertFalse(self.do_openstack_upgrade_reexec.called)
 
+    @patch.object(hooks, 'initialise_pki')
     @patch.object(hooks, 'git_install_requested')
     @patch.object(hooks, 'config_value_changed')
     @patch.object(hooks, 'ensure_ssl_dir')
     @patch.object(hooks, 'configure_https')
-    @patch.object(hooks, 'is_pki_enabled')
     @patch.object(hooks, 'is_ssl_cert_master')
     @patch.object(hooks, 'peer_units')
     @patch.object(unison, 'get_homedir')
@@ -559,12 +555,12 @@ class KeystoneRelationTests(CharmTestCase):
                                                           ensure_user,
                                                           get_home,
                                                           peer_units, is_ssl,
-                                                          is_pki, config_https,
+                                                          config_https,
                                                           ensure_ssl_dir,
                                                           config_value_changed,
-                                                          git_requested):
+                                                          git_requested,
+                                                          mock_initialise_pki):
         ensure_ssl_cert.return_value = False
-        is_pki.return_value = False
         peer_units.return_value = []
 
         git_requested.return_value = False
@@ -619,6 +615,7 @@ class KeystoneRelationTests(CharmTestCase):
             user=self.ssh_user, group='juju_keystone',
             peer_interface='cluster', ensure_local_user=True)
 
+    @patch.object(hooks, 'initialise_pki')
     @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(hooks, 'get_ssl_sync_request_units')
     @patch.object(hooks, 'is_ssl_cert_master')
@@ -638,7 +635,8 @@ class KeystoneRelationTests(CharmTestCase):
                              mock_peer_units,
                              mock_is_ssl_cert_master,
                              mock_get_ssl_sync_request_units,
-                             mock_update_all_identity_relation_units):
+                             mock_update_all_identity_relation_units,
+                             mock_initialise_pki):
 
         relation_settings = {'foo_passwd': '123',
                              'identity-service:16_foo': 'bar'}

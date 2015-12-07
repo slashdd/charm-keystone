@@ -479,22 +479,11 @@ class TestKeystoneUtils(CharmTestCase):
         self.assertTrue(utils.is_db_ready())
 
     @patch.object(utils, 'peer_units')
-    @patch.object(utils, 'is_ssl_enabled')
-    def test_ensure_ssl_cert_master_no_ssl(self, mock_is_ssl_enabled,
-                                           mock_peer_units):
-        mock_is_ssl_enabled.return_value = False
-        self.assertFalse(utils.ensure_ssl_cert_master())
-        self.assertFalse(self.relation_set.called)
-
-    @patch.object(utils, 'peer_units')
-    @patch.object(utils, 'is_ssl_enabled')
-    def test_ensure_ssl_cert_master_ssl_no_peers(self, mock_is_ssl_enabled,
-                                                 mock_peer_units):
+    def test_ensure_ssl_cert_master_ssl_no_peers(self, mock_peer_units):
         def mock_rel_get(unit=None, **kwargs):
             return None
 
         self.relation_get.side_effect = mock_rel_get
-        mock_is_ssl_enabled.return_value = True
         self.relation_ids.return_value = ['cluster:0']
         self.local_unit.return_value = 'unit/0'
         self.related_units.return_value = []
@@ -508,9 +497,7 @@ class TestKeystoneUtils(CharmTestCase):
                                              relation_settings=settings)
 
     @patch.object(utils, 'peer_units')
-    @patch.object(utils, 'is_ssl_enabled')
     def test_ensure_ssl_cert_master_ssl_master_no_peers(self,
-                                                        mock_is_ssl_enabled,
                                                         mock_peer_units):
         def mock_rel_get(unit=None, **kwargs):
             if unit == 'unit/0':
@@ -519,7 +506,6 @@ class TestKeystoneUtils(CharmTestCase):
             return None
 
         self.relation_get.side_effect = mock_rel_get
-        mock_is_ssl_enabled.return_value = True
         self.relation_ids.return_value = ['cluster:0']
         self.local_unit.return_value = 'unit/0'
         self.related_units.return_value = []
@@ -533,10 +519,7 @@ class TestKeystoneUtils(CharmTestCase):
                                              relation_settings=settings)
 
     @patch.object(utils, 'peer_units')
-    @patch.object(utils, 'is_ssl_enabled')
-    def test_ensure_ssl_cert_master_ssl_not_leader(self, mock_is_ssl_enabled,
-                                                   mock_peer_units):
-        mock_is_ssl_enabled.return_value = True
+    def test_ensure_ssl_cert_master_ssl_not_leader(self, mock_peer_units):
         self.relation_ids.return_value = ['cluster:0']
         self.local_unit.return_value = 'unit/0'
         mock_peer_units.return_value = ['unit/1']
@@ -546,9 +529,7 @@ class TestKeystoneUtils(CharmTestCase):
         self.assertFalse(self.relation_set.called)
 
     @patch.object(utils, 'peer_units')
-    @patch.object(utils, 'is_ssl_enabled')
     def test_ensure_ssl_cert_master_is_leader_new_peer(self,
-                                                       mock_is_ssl_enabled,
                                                        mock_peer_units):
         def mock_rel_get(unit=None, **kwargs):
             if unit == 'unit/0':
@@ -557,7 +538,6 @@ class TestKeystoneUtils(CharmTestCase):
             return 'unknown'
 
         self.relation_get.side_effect = mock_rel_get
-        mock_is_ssl_enabled.return_value = True
         self.relation_ids.return_value = ['cluster:0']
         self.local_unit.return_value = 'unit/0'
         mock_peer_units.return_value = ['unit/1']
@@ -570,9 +550,7 @@ class TestKeystoneUtils(CharmTestCase):
                                              relation_settings=settings)
 
     @patch.object(utils, 'peer_units')
-    @patch.object(utils, 'is_ssl_enabled')
     def test_ensure_ssl_cert_master_is_leader_no_new_peer(self,
-                                                          mock_is_ssl_enabled,
                                                           mock_peer_units):
         def mock_rel_get(unit=None, **kwargs):
             if unit == 'unit/0':
@@ -581,7 +559,6 @@ class TestKeystoneUtils(CharmTestCase):
             return 'unit/0'
 
         self.relation_get.side_effect = mock_rel_get
-        mock_is_ssl_enabled.return_value = True
         self.relation_ids.return_value = ['cluster:0']
         self.local_unit.return_value = 'unit/0'
         mock_peer_units.return_value = ['unit/1']
@@ -621,9 +598,7 @@ class TestKeystoneUtils(CharmTestCase):
         )
 
     @patch.object(utils, 'peer_units')
-    @patch.object(utils, 'is_ssl_enabled')
     def test_ensure_ssl_cert_master_is_leader_bad_votes(self,
-                                                        mock_is_ssl_enabled,
                                                         mock_peer_units):
         counter = {0: 0}
 
@@ -637,7 +612,6 @@ class TestKeystoneUtils(CharmTestCase):
             return ret
 
         self.relation_get.side_effect = mock_rel_get
-        mock_is_ssl_enabled.return_value = True
         self.relation_ids.return_value = ['cluster:0']
         self.local_unit.return_value = 'unit/0'
         mock_peer_units.return_value = ['unit/1']

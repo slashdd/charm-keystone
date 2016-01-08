@@ -271,6 +271,33 @@ def update_all_identity_relation_units_force_sync():
     update_all_identity_relation_units()
 
 
+def leader_init_db_if_ready(use_current_context=False):
+    """ Initialise the keystone db if it is ready and mark it as initialised.
+
+    NOTE: this must be idempotent.
+    """
+    if not is_elected_leader(CLUSTER_RES):
+        log("Not leader - skipping db init", level=DEBUG)
+        return
+
+    if is_db_initialised():
+        log("Database already initialised - skipping db init", level=DEBUG)
+        return
+
+    # Bugs 1353135 & 1187508. Dbs can appear to be ready before the
+    # units acl entry has been added. So, if the db supports passing
+    # a list of permitted units then check if we're in the list.
+    if not is_db_ready(use_current_context=use_current_context):
+        log('Allowed_units list provided and this unit not present',
+            level=INFO)
+        return
+
+    migrate_database()
+    # Ensure any existing service entries are updated in the
+    # new database backend. Also avoid duplicate db ready check.
+    update_all_identity_relation_units(check_db_ready=False)
+
+
 @hooks.hook('shared-db-relation-changed')
 @restart_on_change(restart_map())
 @synchronize_ca_if_changed()
@@ -279,19 +306,7 @@ def db_changed():
         log('shared-db relation incomplete. Peer not ready?')
     else:
         CONFIGS.write(KEYSTONE_CONF)
-        if is_elected_leader(CLUSTER_RES):
-            # Bugs 1353135 & 1187508. Dbs can appear to be ready before the
-            # units acl entry has been added. So, if the db supports passing
-            # a list of permitted units then check if we're in the list.
-            if not is_db_ready(use_current_context=True):
-                log('Allowed_units list provided and this unit not present',
-                    level=INFO)
-                return
-
-            migrate_database()
-            # Ensure any existing service entries are updated in the
-            # new database backend. Also avoid duplicate db ready check.
-            update_all_identity_relation_units(check_db_ready=False)
+        leader_init_db_if_ready(use_current_context=True)
 
 
 @hooks.hook('pgsql-db-relation-changed')
@@ -302,16 +317,7 @@ def pgsql_db_changed():
         log('pgsql-db relation incomplete. Peer not ready?')
     else:
         CONFIGS.write(KEYSTONE_CONF)
-        if is_elected_leader(CLUSTER_RES):
-            if not is_db_ready(use_current_context=True):
-                log('Allowed_units list provided and this unit not present',
-                    level=INFO)
-                return
-
-            migrate_database()
-            # Ensure any existing service entries are updated in the
-            # new database backend. Also avoid duplicate db ready check.
-            update_all_identity_relation_units(check_db_ready=False)
+        leader_init_db_if_ready(use_current_context=True)
 
 
 @hooks.hook('identity-service-relation-changed')
@@ -612,6 +618,10 @@ def upgrade_charm():
     ensure_ssl_dirs()
 
     CONFIGS.write_all()
+
+    # See LP bug 1519035
+    leader_init_db_if_ready()
+
     update_nrpe_config()
 
     if is_elected_leader(CLUSTER_RES):

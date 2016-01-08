@@ -647,7 +647,9 @@ class HAProxyContext(OSContextGenerator):
 
         db = kv()
         ctxt['stat_password'] = db.get('stat-password')
+        print "ctxt[\'stat_password\'] = %s" % ctxt['stat_password']
         if not ctxt['stat_password']:
+            print "HELLO AGAIN"
             ctxt['stat_password'] = db.set('stat-password',
                                            pwgen(32))
             db.flush()

@@ -11,7 +11,7 @@ include:
         - cluster
     - contrib.python
     - contrib.unison
-    - payload.execd
+    - payload
     - contrib.peerstorage
     - contrib.network.ip
     - contrib.python.packages

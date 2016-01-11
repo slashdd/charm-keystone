@@ -91,10 +91,11 @@ class TestKeystoneContexts(CharmTestCase):
     @patch('charmhelpers.contrib.openstack.context.related_units')
     @patch('charmhelpers.contrib.openstack.context.relation_get')
     @patch('charmhelpers.contrib.openstack.context.log')
+    @patch('charmhelpers.contrib.openstack.context.kv')
     @patch('__builtin__.open')
     def test_haproxy_context_service_enabled(
-        self, mock_open, mock_log, mock_relation_get, mock_related_units,
-            mock_unit_get, mock_relation_ids, mock_config,
+        self, mock_open, mock_kv, mock_log, mock_relation_get,
+            mock_related_units, mock_unit_get, mock_relation_ids, mock_config,
             mock_get_address_in_network, mock_get_netmask_for_address,
             mock_api_port):
         os.environ['JUJU_UNIT_NAME'] = 'keystone'
@@ -108,6 +109,7 @@ class TestKeystoneContexts(CharmTestCase):
         mock_get_netmask_for_address.return_value = '255.255.255.0'
         self.determine_apache_port.return_value = '34'
         mock_api_port.return_value = '12'
+        mock_kv().get.return_value = 'abcdefghijklmnopqrstuvwxyz123456'
 
         ctxt = context.HAProxyContext()
 
@@ -118,7 +120,8 @@ class TestKeystoneContexts(CharmTestCase):
                               'public_port': '12'},
              'local_host': '127.0.0.1',
              'haproxy_host': '0.0.0.0',
-             'stat_port': ':8888',
+             'stat_port': '8888',
+             'stat_password': 'abcdefghijklmnopqrstuvwxyz123456',
              'service_ports': {'admin-port': ['12', '34'],
                                'public-port': ['12', '34']},
              'default_backend': '1.2.3.4',

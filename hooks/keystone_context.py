@@ -189,7 +189,7 @@ class KeystoneContext(context.OSContextGenerator):
     def __call__(self):
         from keystone_utils import (
             api_port, set_admin_token, endpoint_url, resolve_address,
-            PUBLIC, ADMIN, PKI_CERTS_DIR, SSH_USER, ensure_permissions,
+            PUBLIC, ADMIN, PKI_CERTS_DIR, ensure_pki_cert_paths,
         )
         ctxt = {}
         ctxt['token'] = set_admin_token(config('admin-token'))
@@ -219,32 +219,16 @@ class KeystoneContext(context.OSContextGenerator):
 
         enable_pki = config('enable-pki')
         if enable_pki and bool_from_string(enable_pki):
-            ctxt['signing'] = True
+            log("Enabling PKI", level=DEBUG)
             ctxt['token_provider'] = 'pki'
 
-        if 'token_provider' in ctxt:
-            log("Configuring PKI token cert paths", level=DEBUG)
-            certs = os.path.join(PKI_CERTS_DIR, 'certs')
-            privates = os.path.join(PKI_CERTS_DIR, 'privates')
-            for path in [PKI_CERTS_DIR, certs, privates]:
-                perms = 0o755
-                if not os.path.isdir(path):
-                    mkdir(path=path, owner=SSH_USER, group='keystone',
-                          perms=perms)
-                else:
-                    # Ensure accessible by ssh user and group (for sync).
-                    ensure_permissions(path, user=SSH_USER,
-                                       group='keystone', perms=perms)
-
-            signing_paths = {'certfile': os.path.join(certs,
-                                                      'signing_cert.pem'),
-                             'keyfile': os.path.join(privates,
-                                                     'signing_key.pem'),
-                             'ca_certs': os.path.join(certs, 'ca.pem'),
-                             'ca_key': os.path.join(certs, 'ca_key.pem')}
-
-            for key, val in signing_paths.iteritems():
-                ctxt[key] = val
+        ensure_pki_cert_paths()
+        certs = os.path.join(PKI_CERTS_DIR, 'certs')
+        privates = os.path.join(PKI_CERTS_DIR, 'privates')
+        ctxt.update({'certfile': os.path.join(certs, 'signing_cert.pem'),
+                     'keyfile': os.path.join(privates, 'signing_key.pem'),
+                     'ca_certs': os.path.join(certs, 'ca.pem'),
+                     'ca_key': os.path.join(certs, 'ca_key.pem')})
 
         # Base endpoint URL's which are used in keystone responses
         # to unauthenticated requests to redirect clients to the
@@ -255,6 +239,7 @@ class KeystoneContext(context.OSContextGenerator):
         ctxt['admin_endpoint'] = endpoint_url(
             resolve_address(ADMIN),
             api_port('keystone-admin')).rstrip('v2.0')
+
         return ctxt
 
 

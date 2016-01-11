@@ -75,7 +75,6 @@ from keystone_utils import (
     clear_ssl_synced_units,
     is_db_initialised,
     update_certs_if_available,
-    is_pki_enabled,
     ensure_ssl_dir,
     ensure_pki_dir_permissions,
     ensure_permissions,
@@ -84,6 +83,7 @@ from keystone_utils import (
     ensure_ssl_dirs,
     REQUIRED_INTERFACES,
     check_optional_relations,
+    ensure_pki_cert_paths,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -177,8 +177,7 @@ def config_changed_postupgrade():
     update_nrpe_config()
     CONFIGS.write_all()
 
-    if is_pki_enabled():
-        initialise_pki()
+    initialise_pki()
 
     update_all_identity_relation_units()
 
@@ -194,11 +193,14 @@ def config_changed_postupgrade():
 
 @synchronize_ca_if_changed(fatal=True)
 def initialise_pki():
-    """Create certs and keys required for PKI token signing.
+    """Create certs and keys required for token signing.
+
+    Used for PKI and signing token revocation list.
 
     NOTE: keystone.conf [signing] section must be up-to-date prior to
           executing this.
     """
+    ensure_pki_cert_paths()
     if not peer_units() or is_ssl_cert_master():
         log("Ensuring PKI token certs created", level=DEBUG)
         cmd = ['keystone-manage', 'pki_setup', '--keystone-user', 'keystone',
@@ -379,44 +381,36 @@ def send_ssl_sync_request():
     Note the we do nothing if the setting is already applied.
     """
     unit = local_unit().replace('/', '-')
-    count = 0
+    # Start with core config (e.g. used for signing revoked token list)
+    ssl_config = 0b1
 
     use_https = config('use-https')
     if use_https and bool_from_string(use_https):
-        count += 1
+        ssl_config ^= 0b10
 
     https_service_endpoints = config('https-service-endpoints')
     if (https_service_endpoints and
             bool_from_string(https_service_endpoints)):
-        count += 2
+        ssl_config ^= 0b100
 
     enable_pki = config('enable-pki')
     if enable_pki and bool_from_string(enable_pki):
-        count += 3
+        ssl_config ^= 0b1000
 
     key = 'ssl-sync-required-%s' % (unit)
-    settings = {key: count}
+    settings = {key: ssl_config}
 
-    # If all ssl is disabled ensure this is set to 0 so that cluster hook runs
-    # and endpoints are updated.
-    if not count:
-        log("Setting %s=%s" % (key, count), level=DEBUG)
-        for rid in relation_ids('cluster'):
-            relation_set(relation_id=rid, relation_settings=settings)
-
-        return
-
-    prev = 0
+    prev = 0b0
     rid = None
     for rid in relation_ids('cluster'):
         for unit in related_units(rid):
-            _prev = relation_get(rid=rid, unit=unit, attribute=key) or 0
+            _prev = relation_get(rid=rid, unit=unit, attribute=key) or 0b0
             if _prev and _prev > prev:
-                prev = _prev
+                prev = bin(_prev)
 
-    if rid and prev < count:
+    if rid and prev ^ ssl_config:
         clear_ssl_synced_units()
-        log("Setting %s=%s" % (key, count), level=DEBUG)
+        log("Setting %s=%s" % (key, bin(ssl_config)), level=DEBUG)
         relation_set(relation_id=rid, relation_settings=settings)
 
 
@@ -461,8 +455,7 @@ def cluster_changed():
 
     check_peer_actions()
 
-    if is_pki_enabled():
-        initialise_pki()
+    initialise_pki()
 
     # Figure out if we need to mandate a sync
     units = get_ssl_sync_request_units()

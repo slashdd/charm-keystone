@@ -963,20 +963,6 @@ def is_ssl_cert_master(votes=None):
     return False
 
 
-def is_ssl_enabled():
-    use_https = config('use-https')
-    https_service_endpoints = config('https-service-endpoints')
-    if ((use_https and bool_from_string(use_https)) or
-            (https_service_endpoints and
-                bool_from_string(https_service_endpoints)) or
-            is_pki_enabled()):
-        log("SSL/HTTPS is enabled", level=DEBUG)
-        return True
-
-    log("SSL/HTTPS is NOT enabled", level=DEBUG)
-    return False
-
-
 def get_ssl_cert_master_votes():
     """Returns a list of unique votes."""
     votes = []
@@ -997,10 +983,6 @@ def ensure_ssl_cert_master():
     Normally the cluster leader will take control but we allow for this to be
     ignored since this could be called before the cluster is ready.
     """
-    # Don't do anything if we are not in ssl/https mode
-    if not is_ssl_enabled():
-        return False
-
     master_override = False
     elect = is_elected_leader(CLUSTER_RES)
 
@@ -1058,6 +1040,23 @@ def is_pki_enabled():
         return True
 
     return False
+
+
+def ensure_pki_cert_paths():
+    certs = os.path.join(PKI_CERTS_DIR, 'certs')
+    privates = os.path.join(PKI_CERTS_DIR, 'privates')
+    not_exists = [p for p in [PKI_CERTS_DIR, certs, privates]
+                  if not os.path.exists(p)]
+    if not_exists:
+        log("Configuring token signing cert paths", level=DEBUG)
+        perms = 0o755
+        for path in not_exists:
+            if not os.path.isdir(path):
+                mkdir(path=path, owner=SSH_USER, group='keystone', perms=perms)
+            else:
+                # Ensure accessible by ssh user and group (for sync).
+                ensure_permissions(path, user=SSH_USER, group='keystone',
+                                   perms=perms)
 
 
 def ensure_pki_dir_permissions():
@@ -1131,10 +1130,10 @@ def synchronize_ca(fatal=False):
         peer_service_actions['restart'].append('apache2')
         peer_actions.append('update-ca-certificates')
 
-    if is_pki_enabled():
-        log("Syncing token certs", level=DEBUG)
-        paths_to_sync.append(PKI_CERTS_DIR)
-        peer_actions.append('ensure-pki-permissions')
+    # NOTE: certs needed for token signing e.g. pki and revocation list query.
+    log("Syncing token certs", level=DEBUG)
+    paths_to_sync.append(PKI_CERTS_DIR)
+    peer_actions.append('ensure-pki-permissions')
 
     if not paths_to_sync:
         log("Nothing to sync - skipping", level=DEBUG)

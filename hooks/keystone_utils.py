@@ -505,9 +505,6 @@ def delete_service_entry(service_name, service_type):
                                       token=get_admin_token())
     service_id = manager.resolve_service_id(service_name, service_type)
     if service_id:
-        print "Hi!"
-        print service_id
-        print manager.api.services.delete
         manager.api.services.delete(service_id)
         log("Deleted service entry '%s'" % service_name, level=DEBUG)
 

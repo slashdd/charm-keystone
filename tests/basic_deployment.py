@@ -56,6 +56,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
            """
         this_service = {'name': 'keystone'}
         other_services = [{'name': 'mysql'},
+                          {'name': 'rabbitmq-server'},  # satisfy wrkload stat
                           {'name': 'cinder'}]
         super(KeystoneBasicDeployment, self)._add_services(this_service,
                                                            other_services)
@@ -63,6 +64,8 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
     def _add_relations(self):
         """Add all of the relations for the services."""
         relations = {'keystone:shared-db': 'mysql:shared-db',
+                     'cinder:shared-db': 'mysql:shared-db',
+                     'cinder:amqp': 'rabbitmq-server:amqp',
                      'cinder:identity-service': 'keystone:identity-service'}
         super(KeystoneBasicDeployment, self)._add_relations(relations)
 

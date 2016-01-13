@@ -703,3 +703,25 @@ class TestKeystoneUtils(CharmTestCase):
         ]
         self.assertEquals(render.call_args_list, expected)
         service_restart.assert_called_with('keystone')
+
+    @patch.object(manager, 'KeystoneManager')
+    def test_is_service_present(self, KeystoneManager):
+        mock_keystone = MagicMock()
+        mock_keystone.resolve_service_id.return_value = 'sid1'
+        KeystoneManager.return_value = mock_keystone
+        self.assertTrue(utils.is_service_present('bob', 'bill'))
+
+    @patch.object(manager, 'KeystoneManager')
+    def test_is_service_present_false(self, KeystoneManager):
+        mock_keystone = MagicMock()
+        mock_keystone.resolve_service_id.return_value = None
+        KeystoneManager.return_value = mock_keystone
+        self.assertFalse(utils.is_service_present('bob', 'bill'))
+
+    @patch.object(manager, 'KeystoneManager')
+    def test_delete_service_entry(self, KeystoneManager):
+        mock_keystone = MagicMock()
+        mock_keystone.resolve_service_id.return_value = 'sid1'
+        KeystoneManager.return_value = mock_keystone
+        utils.delete_service_entry('bob', 'bill')
+        mock_keystone.api.services.delete.assert_called_with('sid1')

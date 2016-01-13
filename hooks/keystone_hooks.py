@@ -84,6 +84,8 @@ from keystone_utils import (
     REQUIRED_INTERFACES,
     check_optional_relations,
     ensure_pki_cert_paths,
+    is_service_present,
+    delete_service_entry,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -341,6 +343,8 @@ def identity_changed(relation_id=None, remote_unit=None):
             return
 
         add_service_to_keystone(relation_id, remote_unit)
+        if is_service_present('neutron', 'network'):
+            delete_service_entry('quantum', 'network')
         settings = relation_get(rid=relation_id, unit=remote_unit)
         service = settings.get('service', None)
         if service:

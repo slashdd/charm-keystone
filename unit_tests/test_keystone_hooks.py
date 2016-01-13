@@ -71,6 +71,8 @@ TO_PATCH = [
     'get_netmask_for_address',
     'get_address_in_network',
     'git_install',
+    'is_service_present',
+    'delete_service_entry',
 ]
 
 
@@ -623,6 +625,7 @@ class KeystoneRelationTests(CharmTestCase):
                                      mock_log, mock_is_db_initialised):
         mock_is_db_initialised.return_value = True
         self.is_db_ready.return_value = True
+        self.is_service_present.return_value = True
         mock_ensure_ssl_cert_master.return_value = False
         hooks.identity_changed(
             relation_id='identity-service:0',
@@ -630,6 +633,28 @@ class KeystoneRelationTests(CharmTestCase):
         self.add_service_to_keystone.assert_called_with(
             'identity-service:0',
             'unit/0')
+        self.delete_service_entry.assert_called_with(
+            'quantum',
+            'network')
+
+    @patch.object(hooks, 'is_db_initialised')
+    @patch('keystone_utils.log')
+    @patch('keystone_utils.ensure_ssl_cert_master')
+    @patch.object(hooks, 'hashlib')
+    @patch.object(hooks, 'send_notifications')
+    def test_identity_changed_leader_no_neutron(self, mock_send_notifications,
+                                                mock_hashlib,
+                                                mock_ensure_ssl_cert_master,
+                                                mock_log,
+                                                mock_is_db_initialised):
+        mock_is_db_initialised.return_value = True
+        self.is_db_ready.return_value = True
+        self.is_service_present.return_value = False
+        mock_ensure_ssl_cert_master.return_value = False
+        hooks.identity_changed(
+            relation_id='identity-service:0',
+            remote_unit='unit/0')
+        self.assertFalse(self.delete_service_entry.called)
 
     @patch.object(hooks, 'local_unit')
     @patch('keystone_utils.log')

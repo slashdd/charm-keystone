@@ -244,6 +244,10 @@ valid_services = {
         "type": "network",
         "desc": "Quantum Networking Service"
     },
+    "neutron": {
+        "type": "network",
+        "desc": "Neutron Networking Service"
+    },
     "oxygen": {
         "type": "oxygen",
         "desc": "Oxygen Cloud Image Service"
@@ -484,6 +488,25 @@ def get_admin_token():
                     error_out('Could not parse admin_token line from %s' %
                               KEYSTONE_CONF)
     error_out('Could not find admin_token line in %s' % KEYSTONE_CONF)
+
+
+def is_service_present(service_name, service_type):
+    import manager
+    manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
+                                      token=get_admin_token())
+    service_id = manager.resolve_service_id(service_name, service_type)
+    return service_id is not None
+
+
+def delete_service_entry(service_name, service_type):
+    """ Delete a service from keystone"""
+    import manager
+    manager = manager.KeystoneManager(endpoint=get_local_endpoint(),
+                                      token=get_admin_token())
+    service_id = manager.resolve_service_id(service_name, service_type)
+    if service_id:
+        manager.api.services.delete(service_id)
+        log("Deleted service entry '%s'" % service_name, level=DEBUG)
 
 
 def create_service_entry(service_name, service_type, service_desc, owner=None):

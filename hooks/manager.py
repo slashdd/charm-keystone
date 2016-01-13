@@ -28,12 +28,16 @@ class KeystoneManager(object):
             if name == u['name']:
                 return u['id']
 
-    def resolve_service_id(self, name):
+    def resolve_service_id(self, name, service_type=None):
         """Find the service_id of a given service"""
         services = [s._info for s in self.api.services.list()]
         for s in services:
-            if name == s['name']:
-                return s['id']
+            if service_type:
+                if name == s['name'] and service_type == s['type']:
+                    return s['id']
+            else:
+                if name == s['name']:
+                    return s['id']
 
     def resolve_service_id_by_type(self, type):
         """Find the service_id of a given service"""

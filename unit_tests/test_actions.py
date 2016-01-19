@@ -1,15 +1,19 @@
 import mock
+from mock import patch
 
 from test_utils import CharmTestCase
 
-import actions.actions
+with patch('actions.hooks.keystone_utils.is_paused') as is_paused:
+    with patch('actions.hooks.keystone_utils.register_configs') as configs:
+        import actions.actions
 
 
 class PauseTestCase(CharmTestCase):
 
     def setUp(self):
         super(PauseTestCase, self).setUp(
-            actions.actions, ["service_pause", "status_set"])
+            actions.actions, ["service_pause", "HookData", "kv",
+                              "assess_status"])
 
     def test_pauses_services(self):
         """Pause action pauses all Keystone services."""
@@ -22,7 +26,8 @@ class PauseTestCase(CharmTestCase):
         self.service_pause.side_effect = fake_service_pause
 
         actions.actions.pause([])
-        self.assertEqual(pause_calls, ['haproxy', 'keystone', 'apache2'])
+        self.assertItemsEqual(
+            pause_calls, ['haproxy', 'keystone', 'apache2'])
 
     def test_bails_out_early_on_error(self):
         """Pause action fails early if there are errors stopping a service."""
@@ -41,32 +46,20 @@ class PauseTestCase(CharmTestCase):
             actions.actions.pause, [])
         self.assertEqual(pause_calls, ['haproxy'])
 
-    def test_status_mode(self):
-        """Pause action sets the status to maintenance."""
-        status_calls = []
-        self.status_set.side_effect = lambda state, msg: status_calls.append(
-            state)
+    def test_pause_sets_value(self):
+        """Pause action sets the unit-paused value to True."""
+        self.HookData()().return_value = True
 
         actions.actions.pause([])
-        self.assertEqual(status_calls, ["maintenance"])
-
-    def test_status_message(self):
-        """Pause action sets a status message reflecting that it's paused."""
-        status_calls = []
-        self.status_set.side_effect = lambda state, msg: status_calls.append(
-            msg)
-
-        actions.actions.pause([])
-        self.assertEqual(
-            status_calls, ["Paused. "
-                           "Use 'resume' action to resume normal service."])
+        self.kv().set.assert_called_with('unit-paused', True)
 
 
 class ResumeTestCase(CharmTestCase):
 
     def setUp(self):
         super(ResumeTestCase, self).setUp(
-            actions.actions, ["service_resume", "status_set"])
+            actions.actions, ["service_resume", "HookData", "kv",
+                              "assess_status"])
 
     def test_resumes_services(self):
         """Resume action resumes all Keystone services."""
@@ -97,23 +90,12 @@ class ResumeTestCase(CharmTestCase):
             actions.actions.resume, [])
         self.assertEqual(resume_calls, ['haproxy'])
 
-    def test_status_mode(self):
-        """Resume action sets the status to maintenance."""
-        status_calls = []
-        self.status_set.side_effect = lambda state, msg: status_calls.append(
-            state)
+    def test_resume_sets_value(self):
+        """Resume action sets the unit-paused value to False."""
+        self.HookData()().return_value = True
 
         actions.actions.resume([])
-        self.assertEqual(status_calls, ["active"])
-
-    def test_status_message(self):
-        """Resume action sets an empty status message."""
-        status_calls = []
-        self.status_set.side_effect = lambda state, msg: status_calls.append(
-            msg)
-
-        actions.actions.resume([])
-        self.assertEqual(status_calls, [""])
+        self.kv().set.assert_called_with('unit-paused', False)
 
 
 class MainTestCase(CharmTestCase):

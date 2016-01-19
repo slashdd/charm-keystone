@@ -83,6 +83,7 @@ from charmhelpers.core.hookenv import (
     INFO,
     WARNING,
     status_get,
+    status_set,
 )
 
 from charmhelpers.fetch import (
@@ -115,6 +116,12 @@ from charmhelpers.core.templating import render
 
 import keystone_context
 import keystone_ssl as ssl
+
+from charmhelpers.core.unitdata import (
+    HookData,
+    kv,
+)
+
 
 TEMPLATES = 'templates/'
 
@@ -1829,3 +1836,31 @@ def check_optional_relations(configs):
         return status_get()
     else:
         return 'unknown', 'No optional relations'
+
+
+def is_paused(status_get=status_get):
+    """Is the unit paused?"""
+    with HookData()():
+        if kv().get('unit-paused'):
+            return True
+        else:
+            return False
+
+
+def assess_status(configs):
+    """Assess status of current unit
+
+    Decides what the state of the unit should be based on the current
+    configuration.
+
+    @param configs: a templating.OSConfigRenderer() object
+    """
+
+    if is_paused():
+        status_set("maintenance",
+                   "Paused. Use 'resume' action to resume normal service.")
+        return
+
+    # set the status according to the current state of the contexts
+    set_os_workload_status(
+        configs, REQUIRED_INTERFACES, charm_func=check_optional_relations)

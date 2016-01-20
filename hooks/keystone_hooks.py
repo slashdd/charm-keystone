@@ -47,7 +47,6 @@ from charmhelpers.contrib.openstack.utils import (
     git_install_requested,
     openstack_upgrade_available,
     sync_db_with_multi_ipv6_addresses,
-    set_os_workload_status,
 )
 
 from keystone_utils import (
@@ -81,11 +80,10 @@ from keystone_utils import (
     force_ssl_sync,
     filter_null,
     ensure_ssl_dirs,
-    REQUIRED_INTERFACES,
-    check_optional_relations,
     ensure_pki_cert_paths,
     is_service_present,
     delete_service_entry,
+    assess_status,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -646,8 +644,7 @@ def main():
         hooks.execute(sys.argv)
     except UnregisteredHookError as e:
         log('Unknown hook {} - skipping.'.format(e))
-    set_os_workload_status(CONFIGS, REQUIRED_INTERFACES,
-                           charm_func=check_optional_relations)
+    assess_status(CONFIGS)
 
 
 if __name__ == '__main__':

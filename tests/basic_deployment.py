@@ -6,7 +6,6 @@ Basic keystone amulet functional tests.
 
 import amulet
 import os
-import time
 import yaml
 
 from charmhelpers.contrib.openstack.amulet.deployment import (
@@ -36,6 +35,11 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         self._add_relations()
         self._configure_services()
         self._deploy()
+
+        u.log.info('Waiting on extended status checks...')
+        exclude_services = ['mysql']
+        self._auto_wait_for_status(exclude_services=exclude_services)
+
         self._initialize_tests()
 
     def _assert_services(self, should_run):
@@ -52,6 +56,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
            """
         this_service = {'name': 'keystone'}
         other_services = [{'name': 'mysql'},
+                          {'name': 'rabbitmq-server'},  # satisfy wrkload stat
                           {'name': 'cinder'}]
         super(KeystoneBasicDeployment, self)._add_services(this_service,
                                                            other_services)
@@ -59,6 +64,8 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
     def _add_relations(self):
         """Add all of the relations for the services."""
         relations = {'keystone:shared-db': 'mysql:shared-db',
+                     'cinder:shared-db': 'mysql:shared-db',
+                     'cinder:amqp': 'rabbitmq-server:amqp',
                      'cinder:identity-service': 'keystone:identity-service'}
         super(KeystoneBasicDeployment, self)._add_relations(relations)
 
@@ -112,9 +119,6 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             self._get_openstack_release()))
         u.log.debug('openstack release str: {}'.format(
             self._get_openstack_release_string()))
-
-        # Let things settle a bit before moving forward
-        time.sleep(30)
 
         # Authenticate keystone admin
         self.keystone = u.authenticate_keystone_admin(self.keystone_sentry,

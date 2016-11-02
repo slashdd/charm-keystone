@@ -261,15 +261,15 @@ class TestKeystoneUtils(CharmTestCase):
     def test_add_service_to_keystone_no_clustered_no_https_complete_values(
             self, KeystoneManager, add_endpoint, ensure_valid_service,
             _resolve_address, create_user, get_admin_domain_id,
-            get_api_version):
+            get_api_version, test_api_version=2):
         get_admin_domain_id.return_value = None
-        get_api_version.return_value = 2
+        get_api_version.return_value = test_api_version
         relation_id = 'identity-service:0'
         remote_unit = 'unit/0'
         self.get_admin_token.return_value = 'token'
         self.get_service_password.return_value = 'password'
         self.test_config.set('service-tenant', 'tenant')
-        self.test_config.set('admin-role', 'admin')
+        self.test_config.set('admin-role', 'Admin')
         self.get_requested_roles.return_value = ['role1', ]
         _resolve_address.return_value = '10.0.0.3'
         self.test_config.set('admin-port', 80)
@@ -278,6 +278,12 @@ class TestKeystoneUtils(CharmTestCase):
         self.test_config.set('https-service-endpoints', 'False')
         self.get_local_endpoint.return_value = 'http://localhost:80/v2.0/'
         self.relation_ids.return_value = ['cluster/0']
+
+        service_domain = None
+        service_role = 'Admin'
+        if test_api_version > 2:
+            service_domain = 'service_domain'
+            service_role = 'service'
 
         mock_keystone = MagicMock()
         mock_keystone.resolve_tenant_id.return_value = 'tenant_id'
@@ -299,23 +305,31 @@ class TestKeystoneUtils(CharmTestCase):
                                         internalurl='192.168.1.2')
         self.assertTrue(self.get_admin_token.called)
         self.get_service_password.assert_called_with('keystone')
-        create_user.assert_called_with('keystone', 'password', 'tenant', None)
-        self.grant_role.assert_called_with('keystone', 'Admin', 'tenant',
-                                           None)
-        self.create_role.assert_called_with('role1', 'keystone', 'tenant',
-                                            None)
+        create_user.assert_called_with('keystone', 'password',
+                                       domain=service_domain,
+                                       tenant='tenant')
+        self.grant_role.assert_called_with('keystone', service_role,
+                                           project_domain=service_domain,
+                                           tenant='tenant',
+                                           user_domain=service_domain)
+        self.create_role.assert_called_with('role1', user='keystone',
+                                            tenant='tenant',
+                                            domain=service_domain)
 
-        relation_data = {'admin_domain_id': None, 'auth_host': '10.0.0.3',
+        relation_data = {'admin_domain_id': None,
+                         'auth_host': '10.0.0.3',
                          'service_host': '10.0.0.3', 'admin_token': 'token',
                          'service_port': 81, 'auth_port': 80,
                          'service_username': 'keystone',
                          'service_password': 'password',
+                         'service_domain': service_domain,
                          'service_tenant': 'tenant',
                          'https_keystone': '__null__',
                          'ssl_cert': '__null__', 'ssl_key': '__null__',
                          'ca_cert': '__null__',
                          'auth_protocol': 'http', 'service_protocol': 'http',
-                         'service_tenant_id': 'tenant_id', 'api_version': 2}
+                         'service_tenant_id': 'tenant_id',
+                         'api_version': test_api_version}
 
         filtered = {}
         for k, v in relation_data.iteritems():
@@ -329,6 +343,12 @@ class TestKeystoneUtils(CharmTestCase):
                                                    **relation_data)
         self.relation_set.assert_called_with(relation_id=relation_id,
                                              **filtered)
+
+    def test_add_service_to_keystone_no_clustered_no_https_complete_values_v3(
+            self):
+        return self.\
+            test_add_service_to_keystone_no_clustered_no_https_complete_values(
+                test_api_version=3)
 
     @patch('charmhelpers.contrib.openstack.ip.config')
     @patch.object(utils, 'ensure_valid_service')
@@ -367,8 +387,9 @@ class TestKeystoneUtils(CharmTestCase):
                                               mock_user_exists):
         mock_user_exists.return_value = False
         utils.create_user_credentials('userA', 'passA', tenant='tenantA')
-        mock_create_user.assert_has_calls([call('userA', 'passA', 'tenantA',
-                                                None)])
+        mock_create_user.assert_has_calls([call('userA', 'passA',
+                                                domain=None,
+                                                tenant='tenantA')])
         mock_create_role.assert_has_calls([])
         mock_grant_role.assert_has_calls([])
 
@@ -381,12 +402,16 @@ class TestKeystoneUtils(CharmTestCase):
         mock_user_exists.return_value = False
         utils.create_user_credentials('userA', 'passA', tenant='tenantA',
                                       grants=['roleA'], new_roles=['roleB'])
-        mock_create_user.assert_has_calls([call('userA', 'passA', 'tenantA',
-                                                None)])
-        mock_create_role.assert_has_calls([call('roleB', 'userA', 'tenantA',
-                                                None)])
-        mock_grant_role.assert_has_calls([call('userA', 'roleA', 'tenantA',
-                                          None)])
+        mock_create_user.assert_has_calls([call('userA', 'passA',
+                                                tenant='tenantA',
+                                                domain=None)])
+        mock_create_role.assert_has_calls([call('roleB', user='userA',
+                                                tenant='tenantA',
+                                                domain=None)])
+        mock_grant_role.assert_has_calls([call('userA', 'roleA',
+                                               tenant='tenantA',
+                                               user_domain=None,
+                                               project_domain=None)])
 
     @patch.object(utils, 'update_user_password')
     @patch.object(utils, 'user_exists')
@@ -402,10 +427,13 @@ class TestKeystoneUtils(CharmTestCase):
         utils.create_user_credentials('userA', 'passA', tenant='tenantA',
                                       grants=['roleA'], new_roles=['roleB'])
         mock_create_user.assert_has_calls([])
-        mock_create_role.assert_has_calls([call('roleB', 'userA', 'tenantA',
-                                                None)])
-        mock_grant_role.assert_has_calls([call('userA', 'roleA', 'tenantA',
-                                               None)])
+        mock_create_role.assert_has_calls([call('roleB', user='userA',
+                                                tenant='tenantA',
+                                                domain=None)])
+        mock_grant_role.assert_has_calls([call('userA', 'roleA',
+                                               tenant='tenantA',
+                                               user_domain=None,
+                                               project_domain=None)])
         mock_update_user_password.assert_has_calls([call('userA', 'passA')])
 
     @patch.object(utils, 'get_manager')
@@ -1079,7 +1107,7 @@ class TestKeystoneUtils(CharmTestCase):
         create_user_credentials.assert_called_with('requester', 'password',
                                                    domain='Non-Default',
                                                    new_roles=[],
-                                                   grants=['Admin'],
+                                                   grants=['service'],
                                                    tenant='services')
         self.peer_store_and_set.assert_called_with(relation_id=relation_id,
                                                    **relation_data)
@@ -1130,7 +1158,7 @@ class TestKeystoneUtils(CharmTestCase):
         utils.add_credentials_to_keystone(
             relation_id=relation_id,
             remote_unit=remote_unit)
-        create_tenant.assert_called_with('myproject')
+        create_tenant.assert_called_with('myproject', None)
         create_user_credentials.assert_called_with('requester', 'password',
                                                    domain=None,
                                                    new_roles=['New', 'Member'],

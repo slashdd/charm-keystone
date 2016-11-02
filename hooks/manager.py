@@ -91,13 +91,6 @@ def get_keystone_manager(endpoint, token, api_version=None):
 
 class KeystoneManager(object):
 
-    def resolve_tenant_id(self, name):
-        """Find the tenant_id of a given tenant"""
-        tenants = [t._info for t in self.api.tenants.list()]
-        for t in tenants:
-            if name.lower() == t['name'].lower():
-                return t['id']
-
     def resolve_domain_id(self, name):
         pass
 
@@ -150,6 +143,13 @@ class KeystoneManager2(KeystoneManager):
     def tenants_list(self):
         return self.api.tenants.list()
 
+    def resolve_tenant_id(self, name, domain=None):
+        """Find the tenant_id of a given tenant"""
+        tenants = [t._info for t in self.api.tenants.list()]
+        for t in tenants:
+            if name.lower() == t['name'].lower():
+                return t['id']
+
     def create_tenant(self, tenant_name, description, domain='default'):
         self.api.tenants.create(tenant_name=tenant_name,
                                 description=description)
@@ -182,11 +182,14 @@ class KeystoneManager3(KeystoneManager):
         keystone_session_v3 = session.Session(auth=keystone_auth_v3)
         self.api = keystoneclient_v3.Client(session=keystone_session_v3)
 
-    def resolve_tenant_id(self, name):
+    def resolve_tenant_id(self, name, domain=None):
         """Find the tenant_id of a given tenant"""
+        if domain:
+            domain_id = self.resolve_domain_id(domain)
         tenants = [t._info for t in self.api.projects.list()]
         for t in tenants:
-            if name.lower() == t['name'].lower():
+            if name.lower() == t['name'].lower() and \
+               (domain is None or t['domain_id'] == domain_id):
                 return t['id']
 
     def resolve_domain_id(self, name):

@@ -92,6 +92,7 @@ from charmhelpers.core.hookenv import (
     charm_dir,
     config,
     is_relation_made,
+    leader_set,
     log,
     local_unit,
     relation_get,
@@ -204,6 +205,7 @@ SSL_SYNC_SEMAPHORE = threading.Semaphore()
 SSL_DIRS = [SSL_DIR, APACHE_SSL_DIR, CA_CERT_PATH]
 ADMIN_DOMAIN = 'admin_domain'
 DEFAULT_DOMAIN = 'default'
+SERVICE_DOMAIN = 'service_domain'
 POLICY_JSON = '/etc/keystone/policy.json'
 TOKEN_FLUSH_CRON_FILE = '/etc/cron.d/keystone-token-flush'
 WSGI_KEYSTONE_CONF = '/etc/apache2/sites-enabled/wsgi-keystone.conf'
@@ -737,14 +739,16 @@ def create_endpoint_template_v3(manager, region, service, publicurl, adminurl,
             )
 
 
-def create_tenant(name):
+def create_tenant(name, domain):
     """Creates a tenant if it does not already exist"""
     manager = get_manager()
-    tenant = manager.resolve_tenant_id(name)
+    tenant = manager.resolve_tenant_id(name, domain=domain)
     if not tenant:
         manager.create_tenant(tenant_name=name,
+                              domain=domain,
                               description='Created by Juju')
-        log("Created new tenant: %s" % name, level=DEBUG)
+        log("Created new tenant '%s' in domain '%s'" % (name, domain),
+            level=DEBUG)
         return
 
     log("Tenant '%s' already exists." % name, level=DEBUG)
@@ -789,14 +793,16 @@ def create_user(name, password, tenant=None, domain=None):
     """Creates a user if it doesn't already exist, as a member of tenant"""
     manager = get_manager()
     if user_exists(name, domain=domain):
-        log("A user named '%s' already exists" % name, level=DEBUG)
+        log("A user named '%s' already exists in domain '%s'" % (name, domain),
+            level=DEBUG)
         return
 
     tenant_id = None
     if tenant:
-        tenant_id = manager.resolve_tenant_id(tenant)
+        tenant_id = manager.resolve_tenant_id(tenant, domain=domain)
         if not tenant_id:
-            error_out('Could not resolve tenant_id for tenant %s' % tenant)
+            error_out("Could not resolve tenant_id for tenant '%s' in domain "
+                      "'%s'" % (tenant, domain))
 
     domain_id = None
     if domain:
@@ -810,8 +816,8 @@ def create_user(name, password, tenant=None, domain=None):
                         email='juju@localhost',
                         tenant_id=tenant_id,
                         domain_id=domain_id)
-    log("Created new user '%s' tenant: %s" % (name, tenant_id),
-        level=DEBUG)
+    log("Created new user '%s' tenant: '%s' domain: '%s'" % (name, tenant_id,
+        domain_id), level=DEBUG)
 
 
 def get_manager(api_version=None):
@@ -834,33 +840,41 @@ def create_role(name, user=None, tenant=None, domain=None):
         return
 
     # NOTE(adam_g): Keystone client requires id's for add_user_role, not names
-    user_id = manager.resolve_user_id(user)
+    user_id = manager.resolve_user_id(user, user_domain=domain)
     role_id = manager.resolve_role_id(name)
 
     if None in [user_id, role_id]:
-        error_out("Could not resolve [%s, %s]" %
-                  (user_id, role_id))
+        error_out("Could not resolve [%s, %s] user_domain='%s'" %
+                  (user_id, role_id, domain))
 
-    grant_role(user, name, tenant, domain)
+    # default to grant role to project
+    grant_role(user, name, tenant=tenant, user_domain=domain,
+               project_domain=domain)
 
 
-def grant_role(user, role, tenant=None, domain=None, user_domain=None):
+def grant_role(user, role, tenant=None, domain=None, user_domain=None,
+               project_domain=None):
     """Grant user and tenant a specific role"""
     manager = get_manager()
-    log("Granting user '%s' role '%s' on tenant '%s'" %
-        (user, role, tenant))
+    if domain:
+        log("Granting user '%s' role '%s' in domain '%s'" %
+            (user, role, domain))
+    else:
+        log("Granting user '%s' role '%s' on tenant '%s' in domain '%s'" %
+            (user, role, tenant, project_domain))
 
     user_id = manager.resolve_user_id(user, user_domain=user_domain)
     role_id = manager.resolve_role_id(role)
     if None in [user_id, role_id]:
-        error_out("Could not resolve [%s, %s]" %
-                  (user_id, role_id))
+        error_out("Could not resolve [%s, %s] user_domain='%s'" %
+                  (user_id, role_id, user_domain))
 
     tenant_id = None
     if tenant:
-        tenant_id = manager.resolve_tenant_id(tenant)
+        tenant_id = manager.resolve_tenant_id(tenant, domain=project_domain)
         if not tenant_id:
-            error_out('Could not resolve tenant_id for tenant %s' % tenant)
+            error_out("Could not resolve tenant_id for tenant '%s' in domain "
+                      "'%s'" % (tenant, domain))
 
     domain_id = None
     if domain:
@@ -875,11 +889,19 @@ def grant_role(user, role, tenant=None, domain=None, user_domain=None):
                               role=role_id,
                               tenant=tenant_id,
                               domain=domain_id)
-        log("Granted user '%s' role '%s' on tenant '%s'" %
-            (user, role, tenant), level=DEBUG)
+        if domain_id is None:
+            log("Granted user '%s' role '%s' on tenant '%s' in domain '%s'" %
+                (user, role, tenant, project_domain), level=DEBUG)
+        else:
+            log("Granted user '%s' role '%s' in domain '%s'" %
+                (user, role, domain), level=DEBUG)
     else:
-        log("User '%s' already has role '%s' on tenant '%s'" %
-            (user, role, tenant), level=DEBUG)
+        if domain_id is None:
+            log("User '%s' already has role '%s' on tenant '%s' in domain '%s'"
+                % (user, role, tenant, project_domain), level=DEBUG)
+        else:
+            log("User '%s' already has role '%s' in domain '%s'"
+                % (user, role, domain), level=DEBUG)
 
 
 def store_data(backing_file, data):
@@ -962,12 +984,20 @@ def ensure_initial_admin(config):
         changes?
         """
         if get_api_version() > 2:
+            manager = get_manager()
             default_domain_id = create_or_show_domain(DEFAULT_DOMAIN)
             store_default_domain_id(default_domain_id)
             admin_domain_id = create_or_show_domain(ADMIN_DOMAIN)
             store_admin_domain_id(admin_domain_id)
-        create_tenant("admin")
-        create_tenant(config("service-tenant"))
+            create_or_show_domain(SERVICE_DOMAIN)
+            create_tenant("admin", ADMIN_DOMAIN)
+            create_tenant(config("service-tenant"), SERVICE_DOMAIN)
+            leader_set({'service_tenant_id': manager.resolve_tenant_id(
+                config("service-tenant"),
+                domain=SERVICE_DOMAIN)})
+            create_role('service')
+        create_tenant("admin", DEFAULT_DOMAIN)
+        create_tenant(config("service-tenant"), DEFAULT_DOMAIN)
         # User is managed by ldap backend when using ldap identity
         if not (config('identity-backend') ==
                 'ldap' and config('ldap-readonly')):
@@ -976,10 +1006,20 @@ def ensure_initial_admin(config):
                 if get_api_version() > 2:
                     create_user_credentials(config('admin-user'), passwd,
                                             domain=ADMIN_DOMAIN)
-                    create_role(config('admin-role'), config('admin-user'),
-                                domain=ADMIN_DOMAIN)
+                    create_role('Member')
+                    # Grant 'Member' role to user ADMIN_DOMAIN/admin-user in
+                    # project ADMIN_DOMAIN/'admin'
+                    # ADMIN_DOMAIN
+                    grant_role(config('admin-user'), 'Member', tenant='admin',
+                               user_domain=ADMIN_DOMAIN,
+                               project_domain=ADMIN_DOMAIN)
+                    create_role(config('admin-role'))
+                    # Grant admin-role to user ADMIN_DOMAIN/admin-user in
+                    # project ADMIN_DOMAIN/admin
                     grant_role(config('admin-user'), config('admin-role'),
-                               tenant='admin', user_domain=ADMIN_DOMAIN)
+                               tenant='admin', user_domain=ADMIN_DOMAIN,
+                               project_domain=ADMIN_DOMAIN)
+                    # Grant domain level admin-role to ADMIN_DOMAIN/admin-user
                     grant_role(config('admin-user'), config('admin-role'),
                                domain=ADMIN_DOMAIN, user_domain=ADMIN_DOMAIN)
                 else:
@@ -1623,11 +1663,13 @@ def create_user_credentials(user, passwd, tenant=None, new_roles=None,
             level=DEBUG)
         update_user_password(user, passwd)
     else:
-        create_user(user, passwd, tenant, domain)
+        create_user(user, passwd, tenant=tenant, domain=domain)
 
     if grants:
         for role in grants:
-            grant_role(user, role, tenant, domain)
+            # grant role on project
+            grant_role(user, role, tenant=tenant, user_domain=domain,
+                       project_domain=domain)
     else:
         log("No role grants requested for user '%s'" % (user), level=DEBUG)
 
@@ -1636,7 +1678,7 @@ def create_user_credentials(user, passwd, tenant=None, new_roles=None,
         # Currently used by Swift and Ceilometer.
         for role in new_roles:
             log("Creating requested role '%s'" % role, level=DEBUG)
-            create_role(role, user, tenant, domain)
+            create_role(role, user=user, tenant=tenant, domain=domain)
 
     return passwd
 
@@ -1644,21 +1686,36 @@ def create_user_credentials(user, passwd, tenant=None, new_roles=None,
 def create_service_credentials(user, new_roles=None):
     """Create credentials for service with given username.
 
-    Services are given a user under config('service-tenant') and are given the
-    config('admin-role') role. Tenant is assumed to already exist,
+    For Keystone v2.0 API compability services are given a user under
+    config('service-tenant') in DEFAULT_DOMAIN and are given the
+    config('admin-role') role. Tenant is assumed to already exist.
+
+    For Keysteone v3 API compability services are given a user in project
+    config('service-tenant') in SERVICE_DOMAIN and are given the 'service'
+    role.
+
+    As of Mitaka Keystone v3 policy the 'service' role is sufficient for
+    services to validate tokens. Project is assumed to already exist.
     """
     tenant = config('service-tenant')
     if not tenant:
         raise Exception("No service tenant provided in config")
 
-    if get_api_version() == 2:
-        domain = None
-    else:
+    domain = None
+    if get_api_version() > 2:
         domain = DEFAULT_DOMAIN
-    return create_user_credentials(user, get_service_password(user),
-                                   tenant=tenant, new_roles=new_roles,
-                                   grants=[config('admin-role')],
-                                   domain=domain)
+    passwd = create_user_credentials(user, get_service_password(user),
+                                     tenant=tenant, new_roles=new_roles,
+                                     grants=[config('admin-role')],
+                                     domain=domain)
+    if get_api_version() > 2:
+        # v3 policy allows services to validate tokens when granted the
+        # 'service' role.
+        domain = SERVICE_DOMAIN
+        passwd = create_user_credentials(user, passwd,
+                                         tenant=tenant, new_roles=new_roles,
+                                         grants=['service'], domain=domain)
+    return passwd
 
 
 def add_service_to_keystone(relation_id=None, remote_unit=None):
@@ -1783,16 +1840,12 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
     roles = get_requested_roles(settings)
     service_password = create_service_credentials(service_username,
                                                   new_roles=roles)
-
-    # As of https://review.openstack.org/#change,4675, all nodes hosting
-    # an endpoint(s) needs a service username and password assigned to
-    # the service tenant and granted admin role.
-    # note: config('service-tenant') is created in utils.ensure_initial_admin()
-    # we return a token, information about our API endpoints, and the generated
-    # service credentials
+    service_domain = None
+    if get_api_version() > 2:
+        service_domain = SERVICE_DOMAIN
     service_tenant = config('service-tenant')
-    domain_name = 'Default' if manager.api_version == 3 else None
-    grant_role(service_username, 'Admin', service_tenant, domain_name)
+    service_tenant_id = manager.resolve_tenant_id(service_tenant,
+                                                  domain=service_domain)
 
     # NOTE(dosaboy): we use __null__ to represent settings that are to be
     # routed to relations via the cluster relation and set to None.
@@ -1804,8 +1857,9 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         "auth_port": config("admin-port"),
         "service_username": service_username,
         "service_password": service_password,
+        "service_domain": service_domain,
         "service_tenant": service_tenant,
-        "service_tenant_id": manager.resolve_tenant_id(service_tenant),
+        "service_tenant_id": service_tenant_id,
         "https_keystone": '__null__',
         "ssl_cert": '__null__',
         "ssl_key": '__null__',
@@ -1860,16 +1914,17 @@ def add_credentials_to_keystone(relation_id=None, remote_unit=None):
 
     if get_api_version() == 2:
         domain = None
+        grants = [config('admin-role')]
     else:
-        domain = settings.get('domain') or DEFAULT_DOMAIN
+        domain = settings.get('domain') or SERVICE_DOMAIN
+        grants = ['service']
 
     # Use passed project or the service project
     credentials_project = settings.get('project') or config('service-tenant')
-    create_tenant(credentials_project)
+    create_tenant(credentials_project, domain)
 
-    # Use passed grants or default to granting the Admin role
-    credentials_grants = (get_requested_grants(settings) or
-                          [config('admin-role')])
+    # Use passed grants or default grants
+    credentials_grants = (get_requested_grants(settings) or grants)
 
     # Create the user
     credentials_password = create_user_credentials(
@@ -1891,7 +1946,7 @@ def add_credentials_to_keystone(relation_id=None, remote_unit=None):
         "credentials_password": credentials_password,
         "credentials_project": credentials_project,
         "credentials_project_id":
-            manager.resolve_tenant_id(credentials_project),
+            manager.resolve_tenant_id(credentials_project, domain=domain),
         "auth_protocol": protocol,
         "credentials_protocol": protocol,
         "api_version": get_api_version(),

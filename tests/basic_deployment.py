@@ -574,10 +574,9 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         expected = {
             'DEFAULT': {
                 'debug': 'False',
-                'verbose': 'False',
                 'admin_token': ks_ci_rel['admin_token'],
                 'use_syslog': 'False',
-                'log_config': '/etc/keystone/logging.conf',
+                'log_config_append': '/etc/keystone/logging.conf',
                 'public_endpoint': u.valid_url,  # get specific
                 'admin_endpoint': u.valid_url,  # get specific
             },
@@ -590,15 +589,22 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             }
         }
 
-        if self._get_openstack_release() >= self.trusty_kilo:
-            # Kilo and later
+        if self._get_openstack_release() < self.trusty_mitaka:
+            expected['DEFAULT']['verbose'] = 'False'
+            expected['DEFAULT']['log_config'] = \
+                expected['DEFAULT']['log_config_append']
+            del expected['DEFAULT']['log_config_append']
+
+        if self._get_openstack_release() >= self.trusty_kilo and \
+           self._get_openstack_release() < self.trusty_mitaka:
+            # Kilo and Liberty
             expected['eventlet_server'] = {
                 'admin_bind_host': '0.0.0.0',
                 'public_bind_host': '0.0.0.0',
                 'admin_port': '35347',
                 'public_port': '4990',
             }
-        else:
+        elif self._get_openstack_release() <= self.trusty_juno:
             # Juno and earlier
             expected['DEFAULT'].update({
                 'admin_port': '35347',

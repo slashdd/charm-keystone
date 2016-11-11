@@ -353,6 +353,10 @@ valid_services = {
         "type": "sharev2",
         "desc": "Shared Filesystem service v2"
     },
+    "murano": {
+        "type": "application-catalog",
+        "desc": "Application Catalog for OpenStack"
+    },
 }
 
 # The interface is said to be satisfied if anyone of the interfaces in the

@@ -33,6 +33,7 @@ from charmhelpers.contrib.openstack.amulet.utils import (
     # ERROR
 )
 import keystoneclient
+from keystoneauth1 import exceptions as ksauth1_exceptions
 from charmhelpers.core.decorators import retry_on_exception
 
 # Use DEBUG to turn on debug logging
@@ -740,3 +741,50 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             action_id = u.run_action(unit, "resume")
             assert u.wait_on_action(action_id), "Resume action failed"
         self._assert_services(should_run=True)
+
+    def test_910_test_user_password_reset(self):
+        """Test that the admin v3 users password is set during
+        shared-db-relation-changed. Bug #1644606
+
+        NOTE: The amulet tests setup v2 and v3 credentials which means
+              that the troublesome update_user_password executes cleanly but
+              updates the v2 admin user in error. So, to catch this bug change
+              the admin password and ensure that it is changed back when
+              shared-db-relation-changed hook runs.
+        """
+        if self.is_liberty_or_newer():
+            timeout = int(os.environ.get('AMULET_SETUP_TIMEOUT', 900))
+            self.set_api_version(3)
+            self._auto_wait_for_status(
+                message="Unit is ready",
+                timeout=timeout,
+                include_only=['keystone'])
+            domain = self.keystone_v3.domains.find(name='admin_domain')
+            v3_admin_user = self.keystone_v3.users.list(domain=domain)[0]
+            u.log.debug(v3_admin_user)
+            self.keystone_v3.users.update(user=v3_admin_user,
+                                          password='wrongpass')
+            u.log.debug('Removing keystone percona-cluster relation')
+            self.d.unrelate('keystone:shared-db', 'percona-cluster:shared-db')
+            self.d.sentry.wait(timeout=timeout)
+            u.log.debug('Adding keystone percona-cluster relation')
+            self.d.sentry.wait(timeout=timeout)
+            self.d.relate('keystone:shared-db', 'percona-cluster:shared-db')
+            self.set_api_version(3)
+            self._auto_wait_for_status(
+                message="Unit is ready",
+                timeout=timeout,
+                include_only=['keystone'])
+            re_auth = u.authenticate_keystone_admin(
+                self.keystone_sentries[0],
+                user='admin',
+                password='openstack',
+                api_version=3,
+                keystone_ip=self.keystone_ip)
+            try:
+                re_auth.users.list()
+            except ksauth1_exceptions.http.Unauthorized:
+                amulet.raise_status(
+                    amulet.FAIL,
+                    msg="Admin user password not reset")
+            u.log.debug('OK')

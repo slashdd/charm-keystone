@@ -678,7 +678,7 @@ def ha_changed():
     CONFIGS.write_all()
 
     clustered = relation_get('clustered')
-    if clustered and is_elected_leader(CLUSTER_RES):
+    if clustered:
         log('Cluster configured, notifying other services and updating '
             'keystone endpoint configuration')
         update_all_identity_relation_units()

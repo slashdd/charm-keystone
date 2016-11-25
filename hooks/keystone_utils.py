@@ -359,6 +359,10 @@ valid_services = {
         "type": "application-catalog",
         "desc": "Application Catalog for OpenStack"
     },
+    "mistral": {
+        "type": "workflowv2",
+        "desc": "Workflow Service for OpenStack"
+    },
 }
 
 # The interface is said to be satisfied if anyone of the interfaces in the

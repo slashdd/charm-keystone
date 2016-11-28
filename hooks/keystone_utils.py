@@ -92,6 +92,7 @@ from charmhelpers.core.hookenv import (
     charm_dir,
     config,
     is_relation_made,
+    leader_get,
     leader_set,
     log,
     local_unit,
@@ -917,14 +918,6 @@ def store_admin_passwd(passwd):
     store_data(STORED_PASSWD, passwd)
 
 
-def store_admin_domain_id(domain_id):
-    store_data(STORED_ADMIN_DOMAIN_ID, domain_id)
-
-
-def store_default_domain_id(domain_id):
-    store_data(STORED_DEFAULT_DOMAIN_ID, domain_id)
-
-
 def get_admin_passwd():
     passwd = config("admin-password")
     if passwd and passwd.lower() != "none":
@@ -990,9 +983,9 @@ def ensure_initial_admin(config):
         if get_api_version() > 2:
             manager = get_manager()
             default_domain_id = create_or_show_domain(DEFAULT_DOMAIN)
-            store_default_domain_id(default_domain_id)
+            leader_set({'default_domain_id': default_domain_id})
             admin_domain_id = create_or_show_domain(ADMIN_DOMAIN)
-            store_admin_domain_id(admin_domain_id)
+            leader_set({'admin_domain_id': admin_domain_id})
             create_or_show_domain(SERVICE_DOMAIN)
             create_tenant("admin", ADMIN_DOMAIN)
             create_tenant(config("service-tenant"), SERVICE_DOMAIN)
@@ -1748,7 +1741,8 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
             relation_data["service_port"] = config('service-port')
             relation_data["region"] = config('region')
             relation_data["api_version"] = get_api_version()
-            relation_data["admin_domain_id"] = get_admin_domain_id()
+            relation_data["admin_domain_id"] = leader_get(
+                attribute='admin_domain_id')
             # Get and pass CA bundle settings
             relation_data.update(get_ssl_ca_settings())
 
@@ -1871,7 +1865,7 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         "auth_protocol": protocol,
         "service_protocol": protocol,
         "api_version": get_api_version(),
-        "admin_domain_id": get_admin_domain_id(),
+        "admin_domain_id": leader_get(attribute='admin_domain_id'),
     }
 
     # generate or get a new cert/key for service if set to manage certs.
@@ -2361,14 +2355,6 @@ def get_file_stored_domain_id(backing_file):
         with open(backing_file, 'r') as fd:
             domain_id = fd.readline().strip('\n')
     return domain_id
-
-
-def get_admin_domain_id():
-    return get_file_stored_domain_id(STORED_ADMIN_DOMAIN_ID)
-
-
-def get_default_domain_id():
-    return get_file_stored_domain_id(STORED_DEFAULT_DOMAIN_ID)
 
 
 def pause_unit_helper(configs):

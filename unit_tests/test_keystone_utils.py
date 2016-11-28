@@ -204,16 +204,16 @@ class TestKeystoneUtils(CharmTestCase):
         self.subprocess.check_output.assert_called_with(cmd)
         self.service_start.assert_called_with('keystone')
 
-    @patch.object(utils, 'get_admin_domain_id')
+    @patch.object(utils, 'leader_get')
     @patch.object(utils, 'get_api_version')
     @patch.object(utils, 'get_manager')
     @patch.object(utils, 'resolve_address')
     @patch.object(utils, 'b64encode')
     def test_add_service_to_keystone_clustered_https_none_values(
             self, b64encode, _resolve_address, _get_manager,
-            _get_api_version, _get_admin_domain_id):
+            _get_api_version, _leader_get):
         _get_api_version.return_value = 2
-        _get_admin_domain_id.return_value = None
+        _leader_get.return_value = None
         relation_id = 'identity-service:0'
         remote_unit = 'unit/0'
         _resolve_address.return_value = '10.10.10.10'
@@ -251,8 +251,8 @@ class TestKeystoneUtils(CharmTestCase):
         self.peer_store_and_set.assert_called_with(relation_id=relation_id,
                                                    **relation_data)
 
+    @patch.object(utils, 'leader_get')
     @patch.object(utils, 'get_api_version')
-    @patch.object(utils, 'get_admin_domain_id')
     @patch.object(utils, 'create_user')
     @patch.object(utils, 'resolve_address')
     @patch.object(utils, 'ensure_valid_service')
@@ -260,10 +260,10 @@ class TestKeystoneUtils(CharmTestCase):
     @patch.object(utils, 'get_manager')
     def test_add_service_to_keystone_no_clustered_no_https_complete_values(
             self, KeystoneManager, add_endpoint, ensure_valid_service,
-            _resolve_address, create_user, get_admin_domain_id,
-            get_api_version):
-        get_admin_domain_id.return_value = None
-        get_api_version.return_value = 2
+            _resolve_address, create_user, get_api_version, leader_get,
+            test_api_version=2):
+        get_api_version.return_value = test_api_version
+        leader_get.return_value = None
         relation_id = 'identity-service:0'
         remote_unit = 'unit/0'
         self.get_admin_token.return_value = 'token'
@@ -278,6 +278,12 @@ class TestKeystoneUtils(CharmTestCase):
         self.test_config.set('https-service-endpoints', 'False')
         self.get_local_endpoint.return_value = 'http://localhost:80/v2.0/'
         self.relation_ids.return_value = ['cluster/0']
+
+        service_domain = None
+        service_role = 'Admin'
+        if test_api_version > 2:
+            service_domain = 'default'
+            service_role = 'Admin'
 
         mock_keystone = MagicMock()
         mock_keystone.resolve_tenant_id.return_value = 'tenant_id'
@@ -299,11 +305,12 @@ class TestKeystoneUtils(CharmTestCase):
                                         internalurl='192.168.1.2')
         self.assertTrue(self.get_admin_token.called)
         self.get_service_password.assert_called_with('keystone')
-        create_user.assert_called_with('keystone', 'password', 'tenant', None)
-        self.grant_role.assert_called_with('keystone', 'Admin', 'tenant',
+        create_user.assert_called_with('keystone', 'password', 'tenant',
+                                       service_domain)
+        self.grant_role.assert_called_with('keystone', service_role, 'tenant',
                                            None)
         self.create_role.assert_called_with('role1', 'keystone', 'tenant',
-                                            None)
+                                            service_domain)
 
         relation_data = {'admin_domain_id': None, 'auth_host': '10.0.0.3',
                          'service_host': '10.0.0.3', 'admin_token': 'token',
@@ -315,7 +322,8 @@ class TestKeystoneUtils(CharmTestCase):
                          'ssl_cert': '__null__', 'ssl_key': '__null__',
                          'ca_cert': '__null__',
                          'auth_protocol': 'http', 'service_protocol': 'http',
-                         'service_tenant_id': 'tenant_id', 'api_version': 2}
+                         'service_tenant_id': 'tenant_id',
+                         'api_version': test_api_version}
 
         filtered = {}
         for k, v in relation_data.iteritems():
@@ -330,13 +338,20 @@ class TestKeystoneUtils(CharmTestCase):
         self.relation_set.assert_called_with(relation_id=relation_id,
                                              **filtered)
 
+    def test_add_service_to_keystone_no_clustered_no_https_complete_values_v3(
+            self):
+        return self.\
+            test_add_service_to_keystone_no_clustered_no_https_complete_values(
+                test_api_version=3)
+
+    @patch.object(utils, 'leader_get')
     @patch('charmhelpers.contrib.openstack.ip.config')
     @patch.object(utils, 'ensure_valid_service')
     @patch.object(utils, 'add_endpoint')
     @patch.object(utils, 'get_manager')
     def test_add_service_to_keystone_nosubset(
             self, KeystoneManager, add_endpoint, ensure_valid_service,
-            ip_config):
+            ip_config, leader_get):
         relation_id = 'identity-service:0'
         remote_unit = 'unit/0'
 
@@ -347,6 +362,7 @@ class TestKeystoneUtils(CharmTestCase):
                                           'ec2_internal_url': '192.168.1.2'}
         self.get_local_endpoint.return_value = 'http://localhost:80/v2.0/'
         KeystoneManager.resolve_tenant_id.return_value = 'tenant_id'
+        leader_get.return_value = None
 
         utils.add_service_to_keystone(
             relation_id=relation_id,
@@ -662,6 +678,8 @@ class TestKeystoneUtils(CharmTestCase):
         self.assertFalse(utils.ensure_ssl_cert_master())
         self.assertFalse(self.relation_set.called)
 
+    @patch.object(utils, 'leader_set')
+    @patch.object(utils, 'leader_get')
     @patch('charmhelpers.contrib.openstack.ip.unit_get')
     @patch('charmhelpers.contrib.openstack.ip.is_clustered')
     @patch('charmhelpers.contrib.openstack.ip.config')
@@ -676,10 +694,13 @@ class TestKeystoneUtils(CharmTestCase):
                                               _create_keystone_endpoint,
                                               _ip_config,
                                               _is_clustered,
-                                              _unit_get):
+                                              _unit_get,
+                                              _leader_get,
+                                              _leader_set):
         _is_clustered.return_value = False
         _ip_config.side_effect = self.test_config.get
         _unit_get.return_value = '10.0.0.1'
+        _leader_get.return_value = None
         self.test_config.set('os-public-hostname', 'keystone.example.com')
         utils.ensure_initial_admin(self.config)
         _create_keystone_endpoint.assert_called_with(
@@ -831,18 +852,6 @@ class TestKeystoneUtils(CharmTestCase):
             isfile_mock.return_value = True
             x = utils.get_file_stored_domain_id('/a/file')
             self.assertEquals(x, 'some_data')
-
-    @patch.object(utils, 'get_file_stored_domain_id')
-    def test_get_admin_domain_id(self, mock_get_file_stored_domain_id):
-        utils.get_admin_domain_id()
-        mock_get_file_stored_domain_id.assert_called_with(
-            '/var/lib/keystone/keystone.admin_domain_id')
-
-    @patch.object(utils, 'get_file_stored_domain_id')
-    def test_get_default_domain_id(self, mock_get_file_stored_domain_id):
-        utils.get_default_domain_id()
-        mock_get_file_stored_domain_id.assert_called_with(
-            '/var/lib/keystone/keystone.default_domain_id')
 
     def test_assess_status(self):
         with patch.object(utils, 'assess_status_func') as asf:

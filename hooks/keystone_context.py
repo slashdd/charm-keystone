@@ -35,6 +35,7 @@ from charmhelpers.contrib.hahelpers.cluster import (
 
 from charmhelpers.core.hookenv import (
     config,
+    leader_get,
     log,
     DEBUG,
     INFO,
@@ -207,18 +208,16 @@ class KeystoneContext(context.OSContextGenerator):
         from keystone_utils import (
             api_port, set_admin_token, endpoint_url, resolve_address,
             PUBLIC, ADMIN, PKI_CERTS_DIR, ensure_pki_cert_paths,
-            get_admin_domain_id, get_default_domain_id
         )
         ctxt = {}
         ctxt['token'] = set_admin_token(config('admin-token'))
         ctxt['api_version'] = int(config('preferred-api-version'))
         ctxt['admin_role'] = config('admin-role')
         if ctxt['api_version'] > 2:
-            ctxt['admin_domain_id'] = (
-                get_admin_domain_id() or 'admin_domain_id')
-            # default is the default for default_domain_id
-            ctxt['default_domain_id'] = (
-                get_default_domain_id() or 'default')
+            ctxt['admin_domain_id'] = \
+                leader_get(attribute='admin_domain_id')
+            ctxt['default_domain_id'] = \
+                leader_get(attribute='default_domain_id')
         ctxt['admin_port'] = determine_api_port(api_port('keystone-admin'),
                                                 singlenode_mode=True)
         ctxt['public_port'] = determine_api_port(api_port('keystone-public'),

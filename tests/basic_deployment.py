@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python
 #
 # Copyright 2016 Canonical Ltd
 #
@@ -19,6 +19,7 @@ Basic keystone amulet functional tests.
 """
 
 import amulet
+import json
 import os
 import yaml
 
@@ -46,6 +47,12 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         """Deploy the entire test environment."""
         super(KeystoneBasicDeployment, self).__init__(series, openstack,
                                                       source, stable)
+        if self.is_liberty_or_newer():
+            self.keystone_num_units = 3
+        else:
+            # issues with starting haproxy when clustered on trusty with
+            # icehouse and kilo. See LP #1648396
+            self.keystone_num_units = 1
         self.keystone_api_version = 2
         self.git = git
         self._add_services()
@@ -65,8 +72,9 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             services = ("apache2", "haproxy")
         else:
             services = ("keystone-all", "apache2", "haproxy")
-        u.get_unit_process_ids(
-            {self.keystone_sentry: services}, expect_success=should_run)
+        for unit in self.keystone_sentries:
+            u.get_unit_process_ids(
+                {unit: services}, expect_success=should_run)
 
     def _add_services(self):
         """Add services
@@ -75,7 +83,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
            and the rest of the service are from lp branches that are
            compatible with the local charm (e.g. stable or next).
            """
-        this_service = {'name': 'keystone'}
+        this_service = {'name': 'keystone', 'units': self.keystone_num_units}
         other_services = [
             {'name': 'percona-cluster', 'constraints': {'mem': '3072M'}},
             {'name': 'rabbitmq-server'},  # satisfy wrkload stat
@@ -151,32 +159,47 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         u.log.debug('Setting preferred-api-version={}'.format(api_version))
         self.d.configure('keystone', set_alternate)
         self.keystone_api_version = api_version
-        client = self.get_keystone_client(api_version=api_version)
-        # List an artefact that needs authorisation to check admin user
-        # has been setup. If that is still in progess
-        # keystoneclient.exceptions.Unauthorized will be thrown and caught by
-        # @retry_on_exception
+        for i in range(0, self.keystone_num_units):
+            rel = self.keystone_sentries[i].relation('identity-service',
+                                                     'cinder:identity-service')
+            u.log.debug('keystone unit {} relation data: {}'.format(i, rel))
+            if rel['api_version'] != str(api_version):
+                raise Exception("api_version not propagated through relation"
+                                " data yet ('{}' != '{}')."
+                                "".format(rel['api_version'], api_version))
+            client = self.get_keystone_client(api_version=api_version,
+                                              keystone_ip=rel[
+                                                  'private-address'])
+            # List an artefact that needs authorisation to check admin user
+            # has been setup on each Keystone unit. If that is still in progess
+            # keystoneclient.exceptions.Unauthorized will be thrown and caught
+            # by @retry_on_exception
+            if api_version == 2:
+                client.tenants.list()
+            else:
+                client.projects.list()
+        # Success if we get here, get and store client.
         if api_version == 2:
-            client.tenants.list()
             self.keystone_v2 = self.get_keystone_client(api_version=2)
         else:
-            client.projects.list()
             self.keystone_v3 = self.get_keystone_client(api_version=3)
 
-    def get_keystone_client(self, api_version=None):
+    def get_keystone_client(self, api_version=None, keystone_ip=None):
+        if keystone_ip is None:
+            keystone_ip = self.keystone_ip
         if api_version == 2:
-            return u.authenticate_keystone_admin(self.keystone_sentry,
+            return u.authenticate_keystone_admin(self.keystone_sentries[0],
                                                  user='admin',
                                                  password='openstack',
                                                  tenant='admin',
                                                  api_version=api_version,
-                                                 keystone_ip=self.keystone_ip)
+                                                 keystone_ip=keystone_ip)
         else:
-            return u.authenticate_keystone_admin(self.keystone_sentry,
+            return u.authenticate_keystone_admin(self.keystone_sentries[0],
                                                  user='admin',
                                                  password='openstack',
                                                  api_version=api_version,
-                                                 keystone_ip=self.keystone_ip)
+                                                 keystone_ip=keystone_ip)
 
     def create_users_v2(self):
         # Create a demo tenant/role/user
@@ -244,13 +267,15 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         """Perform final initialization before tests get run."""
         # Access the sentries for inspecting service units
         self.pxc_sentry = self.d.sentry['percona-cluster'][0]
-        self.keystone_sentry = self.d.sentry['keystone'][0]
+        self.keystone_sentries = []
+        for i in range(0, self.keystone_num_units):
+            self.keystone_sentries.append(self.d.sentry['keystone'][i])
         self.cinder_sentry = self.d.sentry['cinder'][0]
         u.log.debug('openstack release val: {}'.format(
             self._get_openstack_release()))
         u.log.debug('openstack release str: {}'.format(
             self._get_openstack_release_string()))
-        self.keystone_ip = self.keystone_sentry.relation(
+        self.keystone_ip = self.keystone_sentries[0].relation(
             'shared-db',
             'percona-cluster:shared-db')['private-address']
         self.set_api_version(2)
@@ -263,15 +288,15 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         """Verify the expected services are running on the corresponding
            service units."""
         services = {
-            self.keystone_sentry: ['keystone'],
             self.cinder_sentry: ['cinder-api',
                                  'cinder-scheduler',
                                  'cinder-volume']
         }
         if self.is_liberty_or_newer():
-            services[self.keystone_sentry] = ['apache2']
+            for i in range(0, self.keystone_num_units):
+                services.update({self.keystone_sentries[i]: ['apache2']})
         else:
-            services[self.keystone_sentry] = ['keystone']
+            services.update({self.keystone_sentries[0]: ['keystone']})
         ret = u.validate_services_by_name(services)
         if ret:
             amulet.raise_status(amulet.FAIL, msg=ret)
@@ -482,7 +507,6 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
     def test_200_keystone_mysql_shared_db_relation(self):
         """Verify the keystone shared-db relation data"""
         u.log.debug('Checking keystone to mysql db relation data...')
-        unit = self.keystone_sentry
         relation = ['shared-db', 'percona-cluster:shared-db']
         expected = {
             'username': 'keystone',
@@ -490,10 +514,11 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             'hostname': u.valid_ip,
             'database': 'keystone'
         }
-        ret = u.validate_relation_data(unit, relation, expected)
-        if ret:
-            message = u.relation_error('keystone shared-db', ret)
-            amulet.raise_status(amulet.FAIL, msg=message)
+        for unit in self.keystone_sentries:
+            ret = u.validate_relation_data(unit, relation, expected)
+            if ret:
+                message = u.relation_error('keystone shared-db', ret)
+                amulet.raise_status(amulet.FAIL, msg=message)
 
     def test_201_mysql_keystone_shared_db_relation(self):
         """Verify the mysql shared-db relation data"""
@@ -513,7 +538,6 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
     def test_202_keystone_cinder_identity_service_relation(self):
         """Verify the keystone identity-service relation data"""
         u.log.debug('Checking keystone to cinder id relation data...')
-        unit = self.keystone_sentry
         relation = ['identity-service', 'cinder:identity-service']
         expected = {
             'service_protocol': 'http',
@@ -529,10 +553,11 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             'service_tenant_id': u.not_null,
             'service_host': u.valid_ip
         }
-        ret = u.validate_relation_data(unit, relation, expected)
-        if ret:
-            message = u.relation_error('keystone identity-service', ret)
-            amulet.raise_status(amulet.FAIL, msg=message)
+        for unit in self.keystone_sentries:
+            ret = u.validate_relation_data(unit, relation, expected)
+            if ret:
+                message = u.relation_error('keystone identity-service', ret)
+                amulet.raise_status(amulet.FAIL, msg=message)
 
     def test_203_cinder_keystone_identity_service_relation(self):
         """Verify the cinder identity-service relation data"""
@@ -561,10 +586,10 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         """Verify the data in the keystone config file,
            comparing some of the variables vs relation data."""
         u.log.debug('Checking keystone config file...')
-        unit = self.keystone_sentry
         conf = '/etc/keystone/keystone.conf'
-        ks_ci_rel = unit.relation('identity-service',
-                                  'cinder:identity-service')
+        ks_ci_rel = self.keystone_sentries[0].relation(
+            'identity-service',
+            'cinder:identity-service')
         my_ks_rel = self.pxc_sentry.relation('shared-db',
                                              'keystone:shared-db')
         db_uri = "mysql://{}:{}@{}/{}".format('keystone',
@@ -606,16 +631,44 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
                 'bind_host': '0.0.0.0',
             })
 
-        for section, pairs in expected.iteritems():
-            ret = u.validate_config_data(unit, conf, section, pairs)
+        for unit in self.keystone_sentries:
+            for section, pairs in expected.iteritems():
+                ret = u.validate_config_data(unit, conf, section, pairs)
+                if ret:
+                    message = "keystone config error: {}".format(ret)
+                    amulet.raise_status(amulet.FAIL, msg=message)
+
+    def test_301_keystone_default_policy(self):
+        """Verify the data in the keystone policy.json file,
+           comparing some of the variables vs relation data."""
+        if not self.is_liberty_or_newer():
+            return
+        u.log.debug('Checking keystone v3 policy.json file')
+        self.set_api_version(3)
+        conf = '/etc/keystone/policy.json'
+        ks_ci_rel = self.keystone_sentries[0].relation(
+            'identity-service',
+            'cinder:identity-service')
+        expected = {
+            'admin_required': 'role:Admin',
+            'cloud_admin':
+                'rule:admin_required and '
+                'domain_id:{admin_domain_id}'.format(
+                    admin_domain_id=ks_ci_rel['admin_domain_id']),
+        }
+
+        for unit in self.keystone_sentries:
+            data = json.loads(unit.file_contents(conf))
+            ret = u._validate_dict_data(expected, data)
             if ret:
-                message = "keystone config error: {}".format(ret)
+                message = "keystone policy.json error: {}".format(ret)
                 amulet.raise_status(amulet.FAIL, msg=message)
+
+        u.log.debug('OK')
 
     def test_302_keystone_logging_config(self):
         """Verify the data in the keystone logging config file"""
         u.log.debug('Checking keystone config file...')
-        unit = self.keystone_sentry
         conf = '/etc/keystone/logging.conf'
         expected = {
             'logger_root': {
@@ -631,16 +684,17 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             }
         }
 
-        for section, pairs in expected.iteritems():
-            ret = u.validate_config_data(unit, conf, section, pairs)
-            if ret:
-                message = "keystone logging config error: {}".format(ret)
-                amulet.raise_status(amulet.FAIL, msg=message)
+        for unit in self.keystone_sentries:
+            for section, pairs in expected.iteritems():
+                ret = u.validate_config_data(unit, conf, section, pairs)
+                if ret:
+                    message = "keystone logging config error: {}".format(ret)
+                    amulet.raise_status(amulet.FAIL, msg=message)
 
     def test_900_keystone_restart_on_config_change(self):
         """Verify that the specified services are restarted when the config
            is changed."""
-        sentry = self.keystone_sentry
+        sentry = self.keystone_sentries[0]
         juju_service = 'keystone'
 
         # Expected default and alternate values
@@ -676,11 +730,13 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
     def test_901_pause_resume(self):
         """Test pause and resume actions."""
         self._assert_services(should_run=True)
-        action_id = u.run_action(self.keystone_sentry, "pause")
-        assert u.wait_on_action(action_id), "Pause action failed."
+        for unit in self.keystone_sentries:
+            action_id = u.run_action(unit, "pause")
+            assert u.wait_on_action(action_id), "Pause action failed."
 
         self._assert_services(should_run=False)
 
-        action_id = u.run_action(self.keystone_sentry, "resume")
-        assert u.wait_on_action(action_id), "Resume action failed"
+        for unit in self.keystone_sentries:
+            action_id = u.run_action(unit, "resume")
+            assert u.wait_on_action(action_id), "Resume action failed"
         self._assert_services(should_run=True)

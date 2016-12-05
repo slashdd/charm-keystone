@@ -604,7 +604,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
                 'admin_port': '35347',
                 'public_port': '4990',
             }
-        elif self._get_openstack_release() <= self.trusty_juno:
+        elif self._get_openstack_release() <= self.trusty_icehouse:
             # Juno and earlier
             expected['DEFAULT'].update({
                 'admin_port': '35347',

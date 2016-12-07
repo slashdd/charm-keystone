@@ -680,13 +680,23 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         u.log.debug('OK')
 
     def test_901_pause_resume(self):
-        """Test pause and resume actions."""
+        """Test pause and resume actions.
+
+           NOTE: Toggle setting when service is paused to check config-changed
+                 hook respects pause Bug #1648016
+        """
+        # Expected default and alternate values
+        set_default = {'use-syslog': 'False'}
+        set_alternate = {'use-syslog': 'True'}
         self._assert_services(should_run=True)
         action_id = u.run_action(self.keystone_sentry, "pause")
         assert u.wait_on_action(action_id), "Pause action failed."
 
         self._assert_services(should_run=False)
-
+        self.d.configure('keystone', set_alternate)
         action_id = u.run_action(self.keystone_sentry, "resume")
         assert u.wait_on_action(action_id), "Resume action failed"
         self._assert_services(should_run=True)
+        self.d.configure('keystone', set_default)
+        self._auto_wait_for_status(message="Unit is ready",
+                                   include_only=['keystone'])

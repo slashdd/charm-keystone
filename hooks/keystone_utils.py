@@ -61,6 +61,7 @@ from charmhelpers.contrib.openstack.utils import (
     get_os_codename_install_source,
     git_clone_and_install,
     git_default_repos,
+    git_determine_usr_bin,
     git_install_requested,
     git_pip_venv_dir,
     git_src_dir,
@@ -209,8 +210,8 @@ DEFAULT_DOMAIN = 'default'
 SERVICE_DOMAIN = 'service_domain'
 POLICY_JSON = '/etc/keystone/policy.json'
 TOKEN_FLUSH_CRON_FILE = '/etc/cron.d/keystone-token-flush'
-WSGI_KEYSTONE_CONF = '/etc/apache2/sites-enabled/wsgi-keystone.conf'
-PACKAGE_KEYSTONE_CONF = '/etc/apache2/sites-enabled/keystone.conf'
+WSGI_KEYSTONE_API_CONF = '/etc/apache2/sites-enabled/wsgi-openstack-api.conf'
+PACKAGE_KEYSTONE_API_CONF = '/etc/apache2/sites-enabled/keystone.conf'
 
 BASE_RESOURCE_MAP = OrderedDict([
     (KEYSTONE_CONF, {
@@ -404,6 +405,7 @@ def resource_map():
         resource_map.pop(APACHE_CONF)
     else:
         resource_map.pop(APACHE_24_CONF)
+
     if run_in_apache():
         for cfile in resource_map:
             svcs = resource_map[cfile]['services']
@@ -411,9 +413,16 @@ def resource_map():
                 svcs.remove('keystone')
                 if 'apache2' not in svcs:
                     svcs.append('apache2')
-        resource_map[WSGI_KEYSTONE_CONF] = {
-            'contexts': [keystone_context.WSGIWorkerConfigContext(),
-                         keystone_context.KeystoneContext()],
+        admin_script = os.path.join(git_determine_usr_bin(),
+                                    "keystone-wsgi-admin")
+        public_script = os.path.join(git_determine_usr_bin(),
+                                     "keystone-wsgi-public")
+        resource_map[WSGI_KEYSTONE_API_CONF] = {
+            'contexts': [
+                context.WSGIWorkerConfigContext(name="keystone",
+                                                admin_script=admin_script,
+                                                public_script=public_script),
+                keystone_context.KeystoneContext()],
             'services': ['apache2']
         }
     return resource_map
@@ -449,7 +458,18 @@ def restart_function_map():
 
 
 def run_in_apache():
+    """Return true if keystone API is run under apache2 with mod_wsgi in
+    this release.
+    """
     return os_release('keystone') >= 'liberty'
+
+
+def disable_package_apache_site():
+    """Ensure that the package-provided apache configuration is disabled to
+    prevent it from conflicting with the charm-provided version.
+    """
+    if os.path.exists(PACKAGE_KEYSTONE_API_CONF):
+        subprocess.check_call(['a2dissite', 'keystone'])
 
 
 def register_configs():
@@ -532,12 +552,7 @@ def do_openstack_upgrade(configs):
     configs.write_all()
 
     if run_in_apache():
-        # NOTE: ensure that packaging provided
-        #       apache configuration is disabled
-        #       as it will conflict with the charm
-        #       provided version
-        if os.path.exists(PACKAGE_KEYSTONE_CONF):
-            subprocess.check_call(['a2dissite', 'keystone'])
+        disable_package_apache_site()
 
     if is_elected_leader(CLUSTER_RES):
         if is_db_ready():

@@ -103,6 +103,8 @@ TO_PATCH = [
     'delete_service_entry',
     'os_release',
     'service_pause',
+    'disable_package_apache_site',
+    'run_in_apache',
 ]
 
 
@@ -118,6 +120,7 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(unison, 'ensure_user')
     def test_install_hook(self, ensure_user, git_requested, os_release):
         git_requested.return_value = False
+        self.run_in_apache.return_value = False
         repo = 'cloud:precise-grizzly'
         self.test_config.set('openstack-origin', repo)
         hooks.install()
@@ -130,6 +133,7 @@ class KeystoneRelationTests(CharmTestCase):
              'python-keystoneclient', 'python-mysqldb', 'python-psycopg2',
              'python-six', 'unison', 'uuid'], fatal=True)
         self.git_install.assert_called_with(None)
+        self.disable_package_apache_site.assert_not_called()
 
     @patch.object(utils, 'os_release')
     @patch.object(utils, 'git_install_requested')
@@ -137,6 +141,7 @@ class KeystoneRelationTests(CharmTestCase):
     def test_install_hook_apache2(self, ensure_user,
                                   git_requested, os_release):
         git_requested.return_value = False
+        self.run_in_apache.return_value = True
         repo = 'cloud:xenial-newton'
         self.test_config.set('openstack-origin', repo)
         self.os.path.exists.return_value = True
@@ -150,8 +155,7 @@ class KeystoneRelationTests(CharmTestCase):
              'python-keystoneclient', 'python-mysqldb', 'python-psycopg2',
              'python-six', 'unison', 'uuid'], fatal=True)
         self.git_install.assert_called_with(None)
-        self.os.path.exists.assert_called_with(utils.PACKAGE_KEYSTONE_CONF)
-        self.check_call.assert_called_with(['a2dissite', 'keystone'])
+        self.disable_package_apache_site.assert_called_with()
 
     @patch.object(utils, 'os_release')
     @patch.object(utils, 'git_install_requested')

@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import hashlib
-import math
 import os
 
 from base64 import b64decode
@@ -293,25 +292,5 @@ class TokenFlushContext(context.OSContextGenerator):
     def __call__(self):
         ctxt = {
             'token_flush': is_elected_leader(DC_RESOURCE_NAME)
-        }
-        return ctxt
-
-
-class WSGIWorkerConfigContext(context.WorkerConfigContext):
-
-    def __call__(self):
-        from keystone_utils import (
-            determine_usr_bin, determine_python_path,
-        )
-        multiplier = config('worker-multiplier') or 1
-        total_processes = self.num_cpus * multiplier
-        ctxt = {
-            "public_processes": int(math.ceil(0.75 * total_processes)),
-            "admin_processes": int(math.ceil(0.25 * total_processes)),
-            # Keystone install guide suggests 1 but offers no science
-            "public_threads": 1,
-            "admin_threads": 1,
-            "usr_bin": determine_usr_bin(),
-            "python_path": determine_python_path(),
         }
         return ctxt

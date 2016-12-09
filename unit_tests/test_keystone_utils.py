@@ -189,7 +189,7 @@ class TestKeystoneUtils(CharmTestCase):
         self.assertTrue(configs.write_all.called)
         self.assertTrue(migrate_database.called)
         os_path_exists.assert_called_with(
-            utils.PACKAGE_KEYSTONE_CONF
+            utils.PACKAGE_KEYSTONE_API_CONF
         )
         self.subprocess.check_call.assert_called_with(
             ['a2dissite', 'keystone']

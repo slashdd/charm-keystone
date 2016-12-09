@@ -192,23 +192,3 @@ class TestKeystoneContexts(CharmTestCase):
 
         mock_is_elected_leader.return_value = True
         self.assertEqual({'token_flush': True}, ctxt())
-
-    @patch('keystone_utils.determine_usr_bin')
-    @patch('keystone_utils.determine_python_path')
-    @patch('charmhelpers.contrib.openstack.context.psutil')
-    def test_wsgi_worker_config_context(self, mock_psutil, python_path,
-                                        usr_bin):
-        self.config.return_value = 2
-        usr_bin.return_value = '/usr/bin'
-        python_path.return_value = None
-        mock_psutil.cpu_count.return_value = 40
-        ctxt = context.WSGIWorkerConfigContext()
-        expect = {
-            "usr_bin": "/usr/bin",
-            "python_path": None,
-            "public_processes": 60,
-            "admin_processes": 20,
-            "public_threads": 1,
-            "admin_threads": 1,
-        }
-        self.assertEqual(expect, ctxt())

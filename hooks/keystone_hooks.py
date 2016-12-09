@@ -73,6 +73,7 @@ from keystone_utils import (
     add_service_to_keystone,
     add_credentials_to_keystone,
     determine_packages,
+    disable_package_apache_site,
     do_openstack_upgrade_reexec,
     ensure_initial_admin,
     get_admin_passwd,
@@ -109,9 +110,8 @@ from keystone_utils import (
     assess_status,
     run_in_apache,
     restart_function_map,
-    WSGI_KEYSTONE_CONF,
+    WSGI_KEYSTONE_API_CONF,
     restart_pid_check,
-    PACKAGE_KEYSTONE_CONF,
     get_api_version,
     ADMIN_DOMAIN,
     ADMIN_PROJECT,
@@ -164,13 +164,7 @@ def install():
     apt_update()
     apt_install(determine_packages(), fatal=True)
     if run_in_apache():
-        # NOTE: ensure that packaging provided
-        #       apache configuration is disabled
-        #       as it will conflict with the charm
-        #       provided version. when deployed from
-        #       source, init scripts aren't installed.
-        if os.path.exists(PACKAGE_KEYSTONE_CONF):
-            check_call(['a2dissite', 'keystone'])
+        disable_package_apache_site()
         if not git_install_requested():
             service_pause('keystone')
 
@@ -231,7 +225,7 @@ def config_changed_postupgrade():
         # when deployed from source, init scripts aren't installed
         if not git_install_requested():
             service_pause('keystone')
-        CONFIGS.write(WSGI_KEYSTONE_CONF)
+        CONFIGS.write(WSGI_KEYSTONE_API_CONF)
         if not is_unit_paused_set():
             restart_pid_check('apache2')
     configure_https()

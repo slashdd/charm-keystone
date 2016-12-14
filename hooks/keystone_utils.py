@@ -1062,11 +1062,11 @@ def create_keystone_endpoint(public_ip, service_port,
     )
 
 
-def update_user_password(username, password):
+def update_user_password(username, password, domain):
     manager = get_manager()
     log("Updating password for user '%s'" % username)
 
-    user_id = manager.resolve_user_id(username)
+    user_id = manager.resolve_user_id(username, user_domain=domain)
     if user_id is None:
         error_out("Could not resolve user id for '%s'" % username)
 
@@ -1658,7 +1658,7 @@ def create_user_credentials(user, passwd, tenant=None, new_roles=None,
     if user_exists(user, domain=domain):
         log("User '%s' already exists - updating password" % (user),
             level=DEBUG)
-        update_user_password(user, passwd)
+        update_user_password(user, passwd, domain)
     else:
         create_user(user, passwd, tenant=tenant, domain=domain)
 

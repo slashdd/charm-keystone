@@ -424,19 +424,28 @@ class TestKeystoneUtils(CharmTestCase):
                                                  mock_create_role,
                                                  mock_grant_role,
                                                  mock_user_exists,
-                                                 mock_update_user_password):
+                                                 mock_update_user_password,
+                                                 test_api_version=2):
+        domain = None
+        if test_api_version > 2:
+            domain = 'admin_domain'
         mock_user_exists.return_value = True
         utils.create_user_credentials('userA', 'passA', tenant='tenantA',
-                                      grants=['roleA'], new_roles=['roleB'])
+                                      grants=['roleA'], new_roles=['roleB'],
+                                      domain=domain)
         mock_create_user.assert_has_calls([])
         mock_create_role.assert_has_calls([call('roleB', user='userA',
                                                 tenant='tenantA',
-                                                domain=None)])
+                                                domain=domain)])
         mock_grant_role.assert_has_calls([call('userA', 'roleA',
                                                tenant='tenantA',
-                                               user_domain=None,
-                                               project_domain=None)])
-        mock_update_user_password.assert_has_calls([call('userA', 'passA')])
+                                               user_domain=domain,
+                                               project_domain=domain)])
+        mock_update_user_password.assert_has_calls([call('userA', 'passA',
+                                                         domain)])
+
+    def test_create_user_credentials_user_exists_v3(self):
+        self.test_create_user_credentials_user_exists(test_api_version=3)
 
     @patch.object(utils, 'get_manager')
     def test_create_user_case_sensitivity(self, KeystoneManager):

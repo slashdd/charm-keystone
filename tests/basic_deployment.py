@@ -804,12 +804,13 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             u.log.debug('Adding keystone percona-cluster relation')
             self.d.sentry.wait(timeout=timeout)
             self.d.relate('keystone:shared-db', 'percona-cluster:shared-db')
+            self.set_api_version(3)
             self._auto_wait_for_status(
                 message="Unit is ready",
                 timeout=timeout,
                 include_only=['keystone'])
             re_auth = u.authenticate_keystone_admin(
-                self.keystone_sentry,
+                self.keystone_sentries[0],
                 user='admin',
                 password='openstack',
                 api_version=3,

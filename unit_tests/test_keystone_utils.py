@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from mock import patch, call, MagicMock, Mock
+from mock import patch, call, MagicMock
 from test_utils import CharmTestCase
 import os
 from base64 import b64encode
@@ -56,7 +56,6 @@ TO_PATCH = [
     'local_unit',
     'related_units',
     'https',
-    'is_relation_made',
     'peer_store',
     'pip_install',
     # generic
@@ -378,6 +377,8 @@ class TestKeystoneUtils(CharmTestCase):
                                         adminurl='10.0.0.2',
                                         internalurl='192.168.1.2')
 
+    @patch.object(utils, 'set_service_password')
+    @patch.object(utils, 'get_service_password')
     @patch.object(utils, 'user_exists')
     @patch.object(utils, 'grant_role')
     @patch.object(utils, 'create_role')
@@ -385,23 +386,35 @@ class TestKeystoneUtils(CharmTestCase):
     def test_create_user_credentials_no_roles(self, mock_create_user,
                                               mock_create_role,
                                               mock_grant_role,
-                                              mock_user_exists):
+                                              mock_user_exists,
+                                              get_callback, set_callback):
         mock_user_exists.return_value = False
-        utils.create_user_credentials('userA', 'passA', tenant='tenantA')
+        get_callback.return_value = 'passA'
+        utils.create_user_credentials('userA',
+                                      get_callback,
+                                      set_callback,
+                                      tenant='tenantA')
         mock_create_user.assert_has_calls([call('userA', 'passA',
                                                 domain=None,
                                                 tenant='tenantA')])
         mock_create_role.assert_has_calls([])
         mock_grant_role.assert_has_calls([])
 
+    @patch.object(utils, 'set_service_password')
+    @patch.object(utils, 'get_service_password')
     @patch.object(utils, 'user_exists')
     @patch.object(utils, 'grant_role')
     @patch.object(utils, 'create_role')
     @patch.object(utils, 'create_user')
     def test_create_user_credentials(self, mock_create_user, mock_create_role,
-                                     mock_grant_role, mock_user_exists):
+                                     mock_grant_role, mock_user_exists,
+                                     get_callback, set_callback):
         mock_user_exists.return_value = False
-        utils.create_user_credentials('userA', 'passA', tenant='tenantA',
+        get_callback.return_value = 'passA'
+        utils.create_user_credentials('userA',
+                                      get_callback,
+                                      set_callback,
+                                      tenant='tenantA',
                                       grants=['roleA'], new_roles=['roleB'])
         mock_create_user.assert_has_calls([call('userA', 'passA',
                                                 tenant='tenantA',
@@ -414,6 +427,9 @@ class TestKeystoneUtils(CharmTestCase):
                                                user_domain=None,
                                                project_domain=None)])
 
+    @patch.object(utils, 'is_password_changed', lambda x, y: True)
+    @patch.object(utils, 'set_service_password')
+    @patch.object(utils, 'get_service_password')
     @patch.object(utils, 'update_user_password')
     @patch.object(utils, 'user_exists')
     @patch.object(utils, 'grant_role')
@@ -424,12 +440,17 @@ class TestKeystoneUtils(CharmTestCase):
                                                  mock_grant_role,
                                                  mock_user_exists,
                                                  mock_update_user_password,
+                                                 get_callback, set_callback,
                                                  test_api_version=2):
         domain = None
         if test_api_version > 2:
             domain = 'admin_domain'
         mock_user_exists.return_value = True
-        utils.create_user_credentials('userA', 'passA', tenant='tenantA',
+        get_callback.return_value = 'passA'
+        utils.create_user_credentials('userA',
+                                      get_callback,
+                                      set_callback,
+                                      tenant='tenantA',
                                       grants=['roleA'], new_roles=['roleB'],
                                       domain=domain)
         mock_create_user.assert_has_calls([])
@@ -483,15 +504,17 @@ class TestKeystoneUtils(CharmTestCase):
                                                      domain_id=None,
                                                      email='juju@localhost')
 
+    @patch.object(utils, 'set_service_password')
     @patch.object(utils, 'get_service_password')
     @patch.object(utils, 'create_user_credentials')
     def test_create_service_credentials(self, mock_create_user_credentials,
-                                        mock_get_service_password):
-        mock_get_service_password.return_value = 'passA'
+                                        get_callback, set_callback):
+        get_callback.return_value = 'passA'
         cfg = {'service-tenant': 'tenantA', 'admin-role': 'Admin',
                'preferred-api-version': 2}
         self.config.side_effect = lambda key: cfg.get(key, None)
-        calls = [call('serviceA', 'passA', domain=None, grants=['Admin'],
+        calls = [call('serviceA', get_callback, set_callback, domain=None,
+                      grants=['Admin'],
                       new_roles=None, tenant='tenantA')]
 
         utils.create_service_credentials('serviceA')
@@ -553,23 +576,19 @@ class TestKeystoneUtils(CharmTestCase):
         mock_relation_set.assert_called_once_with(relation_id=relation_id,
                                                   relation_settings=settings)
 
-    def test_get_admin_passwd_pwd_set(self):
+    @patch.object(utils, 'peer_retrieve')
+    @patch.object(utils, 'peer_store')
+    def test_get_admin_passwd_pwd_set(self, mock_peer_store,
+                                      mock_peer_retrieve):
+        mock_peer_retrieve.return_value = None
         self.test_config.set('admin-password', 'supersecret')
         self.assertEqual(utils.get_admin_passwd(), 'supersecret')
+        mock_peer_store.assert_called_once_with('admin_passwd', 'supersecret')
 
+    @patch.object(utils, 'peer_retrieve')
     @patch('os.path.isfile')
-    def test_get_admin_passwd_pwd_file_load(self, isfile):
-        self.test_config.set('admin-password', '')
-        isfile.return_value = True
-        with patch('__builtin__.open') as mock_open:
-            mock_open.return_value.__enter__ = lambda s: s
-            mock_open.return_value.__exit__ = Mock()
-            mock_open.return_value.readline.return_value = 'supersecretfilepwd'
-            self.assertEqual(utils.get_admin_passwd(), 'supersecretfilepwd')
-
-    @patch.object(utils, 'store_admin_passwd')
-    @patch('os.path.isfile')
-    def test_get_admin_passwd_genpass(self, isfile, store_admin_passwd):
+    def test_get_admin_passwd_genpass(self, isfile, peer_retrieve):
+        peer_retrieve.return_value = 'supersecretgen'
         self.test_config.set('admin-password', '')
         isfile.return_value = False
         self.subprocess.check_output.return_value = 'supersecretgen'
@@ -1015,6 +1034,8 @@ class TestKeystoneUtils(CharmTestCase):
         self.log.assert_called_with('identity-credentials peer has not yet '
                                     'set username')
 
+    @patch.object(utils, 'set_service_password')
+    @patch.object(utils, 'get_service_password')
     @patch.object(utils, 'create_user_credentials')
     @patch.object(utils, 'get_protocol')
     @patch.object(utils, 'resolve_address')
@@ -1024,7 +1045,9 @@ class TestKeystoneUtils(CharmTestCase):
                                                     get_api_version,
                                                     resolve_address,
                                                     get_protocol,
-                                                    create_user_credentials):
+                                                    create_user_credentials,
+                                                    get_callback,
+                                                    set_callback):
         """ Verify add_credentials with only username """
         manager = MagicMock()
         manager.resolve_tenant_id.return_value = 'abcdef0123456789'
@@ -1057,7 +1080,9 @@ class TestKeystoneUtils(CharmTestCase):
         utils.add_credentials_to_keystone(
             relation_id=relation_id,
             remote_unit=remote_unit)
-        create_user_credentials.assert_called_with('requester', 'password',
+        create_user_credentials.assert_called_with('requester',
+                                                   get_callback,
+                                                   set_callback,
                                                    domain=None,
                                                    new_roles=[],
                                                    grants=['Admin'],
@@ -1065,6 +1090,8 @@ class TestKeystoneUtils(CharmTestCase):
         self.peer_store_and_set.assert_called_with(relation_id=relation_id,
                                                    **relation_data)
 
+    @patch.object(utils, 'set_service_password')
+    @patch.object(utils, 'get_service_password')
     @patch.object(utils, 'create_user_credentials')
     @patch.object(utils, 'get_protocol')
     @patch.object(utils, 'resolve_address')
@@ -1074,7 +1101,8 @@ class TestKeystoneUtils(CharmTestCase):
                                           get_api_version,
                                           resolve_address,
                                           get_protocol,
-                                          create_user_credentials):
+                                          create_user_credentials,
+                                          get_callback, set_callback):
         """ Verify add_credentials with Keystone V3 """
         manager = MagicMock()
         manager.resolve_tenant_id.return_value = 'abcdef0123456789'
@@ -1107,7 +1135,9 @@ class TestKeystoneUtils(CharmTestCase):
         utils.add_credentials_to_keystone(
             relation_id=relation_id,
             remote_unit=remote_unit)
-        create_user_credentials.assert_called_with('requester', 'password',
+        create_user_credentials.assert_called_with('requester',
+                                                   get_callback,
+                                                   set_callback,
                                                    domain='Non-Default',
                                                    new_roles=[],
                                                    grants=['Admin'],
@@ -1115,6 +1145,8 @@ class TestKeystoneUtils(CharmTestCase):
         self.peer_store_and_set.assert_called_with(relation_id=relation_id,
                                                    **relation_data)
 
+    @patch.object(utils, 'set_service_password')
+    @patch.object(utils, 'get_service_password')
     @patch.object(utils, 'create_tenant')
     @patch.object(utils, 'create_user_credentials')
     @patch.object(utils, 'get_protocol')
@@ -1126,7 +1158,8 @@ class TestKeystoneUtils(CharmTestCase):
                                                    resolve_address,
                                                    get_protocol,
                                                    create_user_credentials,
-                                                   create_tenant):
+                                                   create_tenant,
+                                                   get_callback, set_callback):
         """ Verify add_credentials with all relation settings """
         manager = MagicMock()
         manager.resolve_tenant_id.return_value = 'abcdef0123456789'
@@ -1162,7 +1195,9 @@ class TestKeystoneUtils(CharmTestCase):
             relation_id=relation_id,
             remote_unit=remote_unit)
         create_tenant.assert_called_with('myproject', None)
-        create_user_credentials.assert_called_with('requester', 'password',
+        create_user_credentials.assert_called_with('requester',
+                                                   get_callback,
+                                                   set_callback,
                                                    domain=None,
                                                    new_roles=['New', 'Member'],
                                                    grants=['New', 'Member'],
@@ -1170,6 +1205,8 @@ class TestKeystoneUtils(CharmTestCase):
         self.peer_store_and_set.assert_called_with(relation_id=relation_id,
                                                    **relation_data)
 
+    @patch.object(utils, 'set_service_password')
+    @patch.object(utils, 'get_service_password')
     @patch.object(utils, 'get_ssl_ca_settings')
     @patch.object(utils, 'create_user_credentials')
     @patch.object(utils, 'get_protocol')
@@ -1181,7 +1218,8 @@ class TestKeystoneUtils(CharmTestCase):
                                           resolve_address,
                                           get_protocol,
                                           create_user_credentials,
-                                          get_ssl_ca_settings):
+                                          get_ssl_ca_settings,
+                                          get_callback, set_callback):
         """ Verify add_credentials with SSL """
         manager = MagicMock()
         manager.resolve_tenant_id.return_value = 'abcdef0123456789'
@@ -1218,7 +1256,9 @@ class TestKeystoneUtils(CharmTestCase):
         utils.add_credentials_to_keystone(
             relation_id=relation_id,
             remote_unit=remote_unit)
-        create_user_credentials.assert_called_with('requester', 'password',
+        create_user_credentials.assert_called_with('requester',
+                                                   get_callback,
+                                                   set_callback,
                                                    domain=None,
                                                    new_roles=[],
                                                    grants=['Admin'],

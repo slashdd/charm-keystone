@@ -91,7 +91,6 @@ from charmhelpers.core.decorators import (
 from charmhelpers.core.hookenv import (
     charm_dir,
     config,
-    is_relation_made,
     leader_get,
     leader_set,
     log,
@@ -914,39 +913,34 @@ def store_data(backing_file, data):
         fd.writelines("%s\n" % data)
 
 
-def store_admin_passwd(passwd):
-    store_data(STORED_PASSWD, passwd)
-
-
-def get_admin_passwd():
+def get_admin_passwd(user=None):
     passwd = config("admin-password")
     if passwd and passwd.lower() != "none":
-        return passwd
-
-    if is_elected_leader(CLUSTER_RES):
-        if os.path.isfile(STORED_PASSWD):
-            log("Loading stored passwd from %s" % STORED_PASSWD, level=INFO)
-            with open(STORED_PASSWD, 'r') as fd:
-                passwd = fd.readline().strip('\n')
-
-        if not passwd:
-            log("Generating new passwd for user: %s" %
-                config("admin-user"))
-            cmd = ['pwgen', '-c', '16', '1']
-            passwd = str(subprocess.check_output(cmd)).strip()
-            store_admin_passwd(passwd)
-
-        if is_relation_made("cluster"):
-            peer_store("admin_passwd", passwd)
+        # Previous charm versions did not always store on leader setting so do
+        # this now to avoid an initial update on install/upgrade
+        if (is_elected_leader(CLUSTER_RES) and
+                peer_retrieve('{}_passwd'.format(user)) is None):
+            set_admin_passwd(passwd, user=user)
 
         return passwd
 
-    if is_relation_made("cluster"):
-        passwd = peer_retrieve('admin_passwd')
-        if passwd:
-            store_admin_passwd(passwd)
+    _migrate_admin_password()
+    passwd = peer_retrieve('{}_passwd'.format(user))
+
+    if not passwd and is_elected_leader(CLUSTER_RES):
+        log("Generating new passwd for user: %s" %
+            config("admin-user"))
+        cmd = ['pwgen', '-c', '16', '1']
+        passwd = str(subprocess.check_output(cmd)).strip()
 
     return passwd
+
+
+def set_admin_passwd(passwd, user=None):
+    if user is None:
+        user = 'admin'
+
+    peer_store('{}_passwd'.format(user), passwd)
 
 
 def get_api_version():
@@ -998,31 +992,34 @@ def ensure_initial_admin(config):
         # User is managed by ldap backend when using ldap identity
         if not (config('identity-backend') ==
                 'ldap' and config('ldap-readonly')):
-            passwd = get_admin_passwd()
-            if passwd:
-                if get_api_version() > 2:
-                    create_user_credentials(config('admin-user'), passwd,
-                                            domain=ADMIN_DOMAIN)
+
+            admin_username = config('admin-user')
+            if get_api_version() > 2:
+                passwd = create_user_credentials(admin_username,
+                                                 get_admin_passwd,
+                                                 set_admin_passwd,
+                                                 domain=ADMIN_DOMAIN)
+                if passwd:
                     create_role('Member')
                     # Grant 'Member' role to user ADMIN_DOMAIN/admin-user in
                     # project ADMIN_DOMAIN/'admin'
                     # ADMIN_DOMAIN
-                    grant_role(config('admin-user'), 'Member', tenant='admin',
+                    grant_role(admin_username, 'Member', tenant='admin',
                                user_domain=ADMIN_DOMAIN,
                                project_domain=ADMIN_DOMAIN)
                     create_role(config('admin-role'))
                     # Grant admin-role to user ADMIN_DOMAIN/admin-user in
                     # project ADMIN_DOMAIN/admin
-                    grant_role(config('admin-user'), config('admin-role'),
+                    grant_role(admin_username, config('admin-role'),
                                tenant='admin', user_domain=ADMIN_DOMAIN,
                                project_domain=ADMIN_DOMAIN)
                     # Grant domain level admin-role to ADMIN_DOMAIN/admin-user
-                    grant_role(config('admin-user'), config('admin-role'),
+                    grant_role(admin_username, config('admin-role'),
                                domain=ADMIN_DOMAIN, user_domain=ADMIN_DOMAIN)
-                else:
-                    create_user_credentials(config('admin-user'), passwd,
-                                            tenant='admin',
-                                            new_roles=[config('admin-role')])
+            else:
+                create_user_credentials(admin_username, get_admin_passwd,
+                                        set_admin_passwd, tenant='admin',
+                                        new_roles=[config('admin-role')])
 
         create_service_entry("keystone", "identity",
                              "Keystone Identity Service")
@@ -1087,6 +1084,16 @@ def load_stored_passwords(path=SERVICE_PASSWD_PATH):
     return creds
 
 
+def _migrate_admin_password():
+    """Migrate on-disk admin passwords to peer storage"""
+    if os.path.exists(STORED_PASSWD):
+        log('Migrating on-disk stored passwords to peer storage')
+        with open(STORED_PASSWD) as fd:
+            peer_store("admin_passwd", fd.readline().strip('\n'))
+
+        os.unlink(STORED_PASSWD)
+
+
 def _migrate_service_passwords():
     """Migrate on-disk service passwords to peer storage"""
     if os.path.exists(SERVICE_PASSWD_PATH):
@@ -1103,9 +1110,19 @@ def get_service_password(service_username):
     passwd = peer_retrieve(peer_key)
     if passwd is None:
         passwd = pwgen(length=64)
-        peer_store(key=peer_key,
-                   value=passwd)
+
     return passwd
+
+
+def set_service_password(passwd, user):
+    peer_key = "{}_passwd".format(user)
+    peer_store(key=peer_key, value=passwd)
+
+
+def is_password_changed(username, passwd):
+    peer_key = "{}_passwd".format(username)
+    _passwd = peer_retrieve(peer_key)
+    return (_passwd is None or passwd != _passwd)
 
 
 def ensure_ssl_dirs():
@@ -1648,19 +1665,29 @@ def relation_list(rid):
         return result
 
 
-def create_user_credentials(user, passwd, tenant=None, new_roles=None,
+def create_user_credentials(user, passwd_get_callback, passwd_set_callback,
+                            tenant=None, new_roles=None,
                             grants=None, domain=None):
     """Create user credentials.
 
     Optionally adds role grants to user and/or creates new roles.
     """
+    passwd = passwd_get_callback(user)
+    if not passwd:
+        log("Unable to retrive password for user '{}'".format(user),
+            level=INFO)
+        return
+
     log("Creating service credentials for '%s'" % user, level=DEBUG)
     if user_exists(user, domain=domain):
-        log("User '%s' already exists - updating password" % (user),
-            level=DEBUG)
-        update_user_password(user, passwd, domain)
+        log("User '%s' already exists" % (user), level=DEBUG)
+        # NOTE(dosaboy): see LP #1648677
+        if is_password_changed(user, passwd):
+            update_user_password(user, passwd, domain)
     else:
         create_user(user, passwd, tenant=tenant, domain=domain)
+
+    passwd_set_callback(passwd, user=user)
 
     if grants:
         for role in grants:
@@ -1700,14 +1727,16 @@ def create_service_credentials(user, new_roles=None):
     domain = None
     if get_api_version() > 2:
         domain = DEFAULT_DOMAIN
-    passwd = create_user_credentials(user, get_service_password(user),
+    passwd = create_user_credentials(user, get_service_password,
+                                     set_service_password,
                                      tenant=tenant, new_roles=new_roles,
                                      grants=[config('admin-role')],
                                      domain=domain)
     if get_api_version() > 2:
         # Create account in SERVICE_DOMAIN as well using same password
         domain = SERVICE_DOMAIN
-        passwd = create_user_credentials(user, passwd,
+        passwd = create_user_credentials(user, get_service_password,
+                                         set_service_password,
                                          tenant=tenant, new_roles=new_roles,
                                          grants=[config('admin-role')],
                                          domain=domain)
@@ -1925,7 +1954,8 @@ def add_credentials_to_keystone(relation_id=None, remote_unit=None):
     # Create the user
     credentials_password = create_user_credentials(
         credentials_username,
-        get_service_password(credentials_username),
+        get_service_password,
+        set_service_password,
         tenant=credentials_project,
         new_roles=get_requested_roles(settings),
         grants=credentials_grants,

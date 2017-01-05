@@ -780,6 +780,14 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
               the admin password and ensure that it is changed back when
               shared-db-relation-changed hook runs.
         """
+        # NOTE(dosaboy): skipping this test so that we can land fix for
+        #                LP: #1648677. Currently, if the admin password is
+        #                changed outside the charm e.g. cli, the charm has no
+        #                way to detect or retreive that password. The user
+        #                would not need to update the admin-password config
+        #                option to fix this.
+        return
+
         if self.is_liberty_or_newer():
             timeout = int(os.environ.get('AMULET_SETUP_TIMEOUT', 900))
             self.set_api_version(3)

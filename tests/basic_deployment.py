@@ -34,7 +34,6 @@ from charmhelpers.contrib.openstack.amulet.utils import (
 )
 import keystoneclient
 from keystoneauth1 import exceptions as ksauth1_exceptions
-from charmhelpers.core.decorators import retry_on_exception
 
 # Use DEBUG to turn on debug logging
 u = OpenStackAmuletUtils(DEBUG)
@@ -144,9 +143,10 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             'root-password': 'ChangeMe123',
             'sst-password': 'ChangeMe123',
         }
-        cinder_config = {
-            'block-device': 'None',
-        }
+        cinder_config = {'block-device': 'vdb',
+                         'glance-api-version': '2',
+                         'overwrite': 'true',
+                         'ephemeral-unmount': '/mnt'}
         configs = {
             'keystone': keystone_config,
             'percona-cluster': pxc_config,
@@ -154,38 +154,22 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         }
         super(KeystoneBasicDeployment, self)._configure_services(configs)
 
-    @retry_on_exception(5, base_delay=10)
     def set_api_version(self, api_version):
-        set_alternate = {'preferred-api-version': api_version}
-
-        # Make config change, check for service restarts
         u.log.debug('Setting preferred-api-version={}'.format(api_version))
-        self.d.configure('keystone', set_alternate)
-        self.keystone_api_version = api_version
+        se_rels = []
         for i in range(0, self.keystone_num_units):
-            rel = self.keystone_sentries[i].relation('identity-service',
-                                                     'cinder:identity-service')
-            u.log.debug('keystone unit {} relation data: {}'.format(i, rel))
-            if rel['api_version'] != str(api_version):
-                raise Exception("api_version not propagated through relation"
-                                " data yet ('{}' != '{}')."
-                                "".format(rel['api_version'], api_version))
-            client = self.get_keystone_client(api_version=api_version,
-                                              keystone_ip=rel[
-                                                  'private-address'])
-            # List an artefact that needs authorisation to check admin user
-            # has been setup on each Keystone unit. If that is still in progess
-            # keystoneclient.exceptions.Unauthorized will be thrown and caught
-            # by @retry_on_exception
-            if api_version == 2:
-                client.tenants.list()
-            else:
-                client.projects.list()
+            se_rels.append(
+                (self.keystone_sentries[i], 'cinder:identity-service'),
+            )
+        # Make config change, wait for propagation
+        u.keystone_configure_api_version(se_rels, self, api_version)
+
         # Success if we get here, get and store client.
         if api_version == 2:
             self.keystone_v2 = self.get_keystone_client(api_version=2)
         else:
             self.keystone_v3 = self.get_keystone_client(api_version=3)
+        self.keystone_api_version = api_version
 
     def get_keystone_client(self, api_version=None, keystone_ip=None):
         if keystone_ip is None:
@@ -229,6 +213,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         # Create a demo tenant/role/user
         self.demo_project = 'demoProject'
         self.demo_user_v3 = 'demoUserV3'
+        self.demo_domain_admin = 'demoDomainAdminV3'
         self.demo_domain = 'demoDomain'
         try:
             domain = self.keystone_v3.domains.find(name=self.demo_domain)
@@ -266,6 +251,31 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
                 description='Demo',
                 enabled=True)
 
+        try:
+            self.keystone_v3.roles.find(name='Admin')
+        except keystoneclient.exceptions.NotFound:
+            self.keystone_v3.roles.create(name='Admin')
+
+        if not self.find_keystone_v3_user(self.keystone_v3,
+                                          self.demo_domain_admin,
+                                          self.demo_domain):
+            user = self.keystone_v3.users.create(
+                self.demo_domain_admin,
+                domain=domain.id,
+                project=self.demo_project,
+                password='password',
+                email='demoadminv3@demo.com',
+                description='Demo Admin',
+                enabled=True)
+
+            role = self.keystone_v3.roles.find(name='Admin')
+            u.log.debug("self.keystone_v3.roles.grant('{}', user='{}', "
+                        "domain='{}')".format(role.id, user.id, domain.id))
+            self.keystone_v3.roles.grant(
+                role.id,
+                user=user.id,
+                domain=domain.id)
+
     def _initialize_tests(self):
         """Perform final initialization before tests get run."""
         # Access the sentries for inspecting service units
@@ -291,15 +301,20 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         """Verify the expected services are running on the corresponding
            service units."""
         services = {
-            self.cinder_sentry: ['cinder-api',
-                                 'cinder-scheduler',
+            self.cinder_sentry: ['cinder-scheduler',
                                  'cinder-volume']
         }
+        if self._get_openstack_release() >= self.xenial_ocata:
+            services.update({self.cinder_sentry: ['apache2']})
+        else:
+            services.update({self.cinder_sentry: ['cinder-api']})
+
         if self.is_liberty_or_newer():
             for i in range(0, self.keystone_num_units):
                 services.update({self.keystone_sentries[i]: ['apache2']})
         else:
             services.update({self.keystone_sentries[0]: ['keystone']})
+
         ret = u.validate_services_by_name(services)
         if ret:
             amulet.raise_status(amulet.FAIL, msg=ret)
@@ -412,6 +427,14 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             u.log.info('Skipping test, {} < liberty'.format(os_release))
             return False
 
+    def is_mitaka_or_newer(self):
+        os_release = self._get_openstack_release_string()
+        if os_release >= 'mitaka':
+            return True
+        else:
+            u.log.info('Skipping test, {} < mitaka'.format(os_release))
+            return False
+
     def test_112_keystone_tenants(self):
         if self.is_liberty_or_newer():
             self.set_api_version(3)
@@ -465,6 +488,64 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
                     expect[key])
                 )
                 assert expect[key] == getattr(actual_domain, key)
+
+    def test_121_keystone_demo_domain_admin_access(self):
+        """Verify that end-user domain admin does not have elevated
+           privileges. Catch regressions like LP#1651989"""
+        if self.is_mitaka_or_newer():
+            u.log.debug('Checking keystone end-user domain admin access...')
+            self.set_api_version(3)
+            # Authenticate as end-user domain admin and verify that we have
+            # appropriate access.
+            client = u.authenticate_keystone(
+                self.keystone_sentries[0].info['public-address'],
+                username=self.demo_domain_admin,
+                password='password',
+                api_version=3,
+                user_domain_name=self.demo_domain,
+                domain_name=self.demo_domain,
+            )
+
+            try:
+                # Expect failure
+                client.domains.list()
+            except Exception as e:
+                message = ('Retrieve domain list as end-user domain admin '
+                           'NOT allowed...OK ({})'.format(e))
+                u.log.debug(message)
+                pass
+            else:
+                message = ('Retrieve domain list as end-user domain admin '
+                           'allowed')
+                amulet.raise_status(amulet.FAIL, msg=message)
+
+    def test_122_keystone_project_scoped_admin_access(self):
+        """Verify that user admin in domain admin_domain has access to
+           identity-calls guarded by rule:cloud_admin when using project
+           scoped token."""
+        if self.is_mitaka_or_newer():
+            u.log.debug('Checking keystone project scoped admin access...')
+            self.set_api_version(3)
+            # Authenticate as end-user domain admin and verify that we have
+            # appropriate access.
+            client = u.authenticate_keystone(
+                self.keystone_sentries[0].info['public-address'],
+                username='admin',
+                password='openstack',
+                api_version=3,
+                admin_port=True,
+                user_domain_name='admin_domain',
+                project_domain_name='admin_domain',
+                project_name='admin',
+            )
+
+            try:
+                client.domains.list()
+                u.log.debug('OK')
+            except Exception as e:
+                message = ('Retrieve domain list as admin with project scoped '
+                           'token FAILED. ({})'.format(e))
+                amulet.raise_status(amulet.FAIL, msg=message)
 
     def test_138_service_catalog(self):
         """Verify that the service catalog endpoint data is valid."""
@@ -678,7 +759,18 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         ks_ci_rel = self.keystone_sentries[0].relation(
             'identity-service',
             'cinder:identity-service')
-        if self._get_openstack_release() >= self.trusty_mitaka:
+        if self._get_openstack_release() >= self.xenial_ocata:
+            expected = {
+                'admin_required': 'role:Admin',
+                'cloud_admin':
+                    'rule:admin_required and '
+                    '(is_admin_project:True or '
+                    'domain_id:{admin_domain_id} or '
+                    'project_id:{service_tenant_id})'.format(
+                        admin_domain_id=ks_ci_rel['admin_domain_id'],
+                        service_tenant_id=ks_ci_rel['service_tenant_id']),
+            }
+        elif self._get_openstack_release() >= self.trusty_mitaka:
             expected = {
                 'admin_required': 'role:Admin',
                 'cloud_admin':

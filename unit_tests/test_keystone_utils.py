@@ -283,7 +283,6 @@ class TestKeystoneUtils(CharmTestCase):
         service_role = 'Admin'
         if test_api_version > 2:
             service_domain = 'service_domain'
-            service_role = 'service'
 
         mock_keystone = MagicMock()
         mock_keystone.resolve_tenant_id.return_value = 'tenant_id'
@@ -1111,7 +1110,7 @@ class TestKeystoneUtils(CharmTestCase):
         create_user_credentials.assert_called_with('requester', 'password',
                                                    domain='Non-Default',
                                                    new_roles=[],
-                                                   grants=['service'],
+                                                   grants=['Admin'],
                                                    tenant='services')
         self.peer_store_and_set.assert_called_with(relation_id=relation_id,
                                                    **relation_data)

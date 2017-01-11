@@ -1688,11 +1688,10 @@ def create_service_credentials(user, new_roles=None):
     config('admin-role') role. Tenant is assumed to already exist.
 
     For Keysteone v3 API compability services are given a user in project
-    config('service-tenant') in SERVICE_DOMAIN and are given the 'service'
-    role.
+    config('service-tenant') in SERVICE_DOMAIN and are given the
+    config('admin-role') role.
 
-    As of Mitaka Keystone v3 policy the 'service' role is sufficient for
-    services to validate tokens. Project is assumed to already exist.
+    Project is assumed to already exist.
     """
     tenant = config('service-tenant')
     if not tenant:
@@ -1706,12 +1705,12 @@ def create_service_credentials(user, new_roles=None):
                                      grants=[config('admin-role')],
                                      domain=domain)
     if get_api_version() > 2:
-        # v3 policy allows services to validate tokens when granted the
-        # 'service' role.
+        # Create account in SERVICE_DOMAIN as well using same password
         domain = SERVICE_DOMAIN
         passwd = create_user_credentials(user, passwd,
                                          tenant=tenant, new_roles=new_roles,
-                                         grants=['service'], domain=domain)
+                                         grants=[config('admin-role')],
+                                         domain=domain)
     return passwd
 
 
@@ -1912,17 +1911,16 @@ def add_credentials_to_keystone(relation_id=None, remote_unit=None):
 
     if get_api_version() == 2:
         domain = None
-        grants = [config('admin-role')]
     else:
         domain = settings.get('domain') or SERVICE_DOMAIN
-        grants = ['service']
 
     # Use passed project or the service project
     credentials_project = settings.get('project') or config('service-tenant')
     create_tenant(credentials_project, domain)
 
     # Use passed grants or default grants
-    credentials_grants = (get_requested_grants(settings) or grants)
+    credentials_grants = (get_requested_grants(settings) or
+                          [config('admin-role')])
 
     # Create the user
     credentials_password = create_user_credentials(

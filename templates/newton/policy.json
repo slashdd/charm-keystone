@@ -1,8 +1,8 @@
 {% if api_version == 3 -%}
 {
     "admin_required": "role:{{ admin_role }}",
-    "cloud_admin": "rule:admin_required and (token.is_admin_project:True or domain_id:{{ admin_domain_id }})",
-    "service_role": "role:service and project_id:{{ service_tenant_id }}",
+    "cloud_admin": "rule:admin_required and (token.is_admin_project:True or domain_id:{{ admin_domain_id }} or project_id:{{ service_tenant_id }})",
+    "service_role": "role:service",
     "service_or_admin": "rule:admin_required or rule:service_role",
     "owner" : "user_id:%(user_id)s or user_id:%(target.token.user_id)s",
     "admin_or_owner": "(rule:admin_required and domain_id:%(target.token.user.domain.id)s) or rule:owner",
@@ -38,7 +38,7 @@
     "admin_and_matching_target_project_domain_id": "rule:admin_required and domain_id:%(target.project.domain_id)s",
     "admin_and_matching_project_domain_id": "rule:admin_required and domain_id:%(project.domain_id)s",
     "identity:get_project": "rule:cloud_admin or rule:admin_and_matching_target_project_domain_id or project_id:%(target.project.id)s",
-    "identity:list_projects": "rule:cloud_admin or rule:admin_and_matching_domain_id or rule:service_role",
+    "identity:list_projects": "rule:cloud_admin or rule:admin_and_matching_domain_id",
     "identity:list_user_projects": "rule:owner or rule:admin_and_matching_domain_id",
     "identity:create_project": "rule:cloud_admin or rule:admin_and_matching_project_domain_id",
     "identity:update_project": "rule:cloud_admin or rule:admin_and_matching_target_project_domain_id",

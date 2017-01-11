@@ -662,16 +662,10 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
                 'cloud_admin':
                     'rule:admin_required and '
                     '(token.is_admin_project:True or '
-                    'domain_id:{admin_domain_id})'.format(
-                        admin_domain_id=ks_ci_rel['admin_domain_id']),
-                'service_role':
-                    'role:service '
-                    'and project_id:{service_tenant_id}'.format(
+                    'domain_id:{admin_domain_id} or '
+                    'project_id:{service_tenant_id})'.format(
+                        admin_domain_id=ks_ci_rel['admin_domain_id'],
                         service_tenant_id=ks_ci_rel['service_tenant_id']),
-                'identity:list_projects':
-                    'rule:cloud_admin or '
-                    'rule:admin_and_matching_domain_id or '
-                    'rule:service_role',
             }
         else:
             expected = {

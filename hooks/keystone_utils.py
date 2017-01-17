@@ -204,6 +204,7 @@ CA_CERT_PATH = '/usr/local/share/ca-certificates/keystone_juju_ca_cert.crt'
 SSL_SYNC_SEMAPHORE = threading.Semaphore()
 SSL_DIRS = [SSL_DIR, APACHE_SSL_DIR, CA_CERT_PATH]
 ADMIN_DOMAIN = 'admin_domain'
+ADMIN_PROJECT = 'admin'
 DEFAULT_DOMAIN = 'default'
 SERVICE_DOMAIN = 'service_domain'
 POLICY_JSON = '/etc/keystone/policy.json'

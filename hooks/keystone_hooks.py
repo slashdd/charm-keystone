@@ -112,6 +112,9 @@ from keystone_utils import (
     WSGI_KEYSTONE_CONF,
     restart_pid_check,
     PACKAGE_KEYSTONE_CONF,
+    get_api_version,
+    ADMIN_DOMAIN,
+    ADMIN_PROJECT,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -696,7 +699,12 @@ def admin_relation_changed(relation_id=None):
         'service_tenant_name': config('admin-role'),
         'service_region': config('region'),
         'service_protocol': 'https' if https() else 'http',
+        'api_version': get_api_version(),
     }
+    if relation_data['api_version'] > 2:
+        relation_data['service_user_domain_name'] = ADMIN_DOMAIN
+        relation_data['service_project_domain_name'] = ADMIN_DOMAIN
+        relation_data['service_project_name'] = ADMIN_PROJECT
     relation_data['service_password'] = get_admin_passwd()
     relation_set(relation_id=relation_id, **relation_data)
 

@@ -1690,7 +1690,7 @@ def create_user_credentials(user, passwd_get_callback, passwd_set_callback,
     """
     passwd = passwd_get_callback(user)
     if not passwd:
-        log("Unable to retrive password for user '{}'".format(user),
+        log("Unable to retrieve password for user '{}'".format(user),
             level=INFO)
         return
 

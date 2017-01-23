@@ -790,13 +790,18 @@ def create_or_show_domain(name):
 
 def user_exists(name, domain=None):
     manager = get_manager()
+    domain_id = None
     if domain:
         domain_id = manager.resolve_domain_id(domain)
         if not domain_id:
             error_out('Could not resolve domain_id for {} when checking if '
                       ' user {} exists'.format(domain, name))
     if manager.resolve_user_id(name, user_domain=domain):
-        for user in manager.api.users.list():
+        if manager.api_version == 2:
+            users = manager.api.users.list()
+        else:
+            users = manager.api.users.list(domain=domain_id)
+        for user in users:
             if user.name.lower() == name.lower():
                 # In v3 Domains are seperate user namespaces so need to check
                 # that the domain matched if provided

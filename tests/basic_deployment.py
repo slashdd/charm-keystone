@@ -43,6 +43,8 @@ u = OpenStackAmuletUtils(DEBUG)
 class KeystoneBasicDeployment(OpenStackAmuletDeployment):
     """Amulet tests on a basic keystone deployment."""
 
+    DEFAULT_DOMAIN = 'default'
+
     def __init__(self, series=None, openstack=None,
                  source=None, git=False, stable=False):
         """Deploy the entire test environment."""
@@ -252,9 +254,9 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         except keystoneclient.exceptions.NotFound:
             self.keystone_v3.roles.create(name=self.demo_role)
 
-        try:
-            self.keystone_v3.users.find(name=self.demo_user_v3)
-        except keystoneclient.exceptions.NotFound:
+        if not self.find_keystone_v3_user(self.keystone_v3,
+                                          self.demo_user_v3,
+                                          self.demo_domain):
             self.keystone_v3.users.create(
                 self.demo_user_v3,
                 domain=domain.id,
@@ -375,11 +377,28 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             else:
                 user_info['default_project_id'] = u.not_null
             expected.append(user_info)
-        actual = client.users.list()
+        if self.keystone_api_version == 2:
+            actual = client.users.list()
+        else:
+            # Ensure list is scoped to the default domain
+            # when checking v3 users (v2->v3 upgrade check)
+            actual = client.users.list(
+                domain=client.domains.find(name=self.DEFAULT_DOMAIN).id
+            )
         ret = u.validate_user_data(expected, actual,
                                    api_version=self.keystone_api_version)
         if ret:
             amulet.raise_status(amulet.FAIL, msg=ret)
+
+    def find_keystone_v3_user(self, client, username, domain):
+        """Find a user within a specified keystone v3 domain"""
+        domain_users = client.users.list(
+            domain=client.domains.find(name=domain).id
+        )
+        for user in domain_users:
+            if username.lower() == user.name.lower():
+                return user
+        return None
 
     def test_106_keystone_users(self):
         self.set_api_version(2)
@@ -412,7 +431,10 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         if self.is_liberty_or_newer():
             self.set_api_version(3)
             self.create_users_v3()
-            actual_user = self.keystone_v3.users.find(name=self.demo_user_v3)
+            actual_user = self.find_keystone_v3_user(self.keystone_v3,
+                                                     self.demo_user_v3,
+                                                     self.demo_domain)
+            assert actual_user is not None
             expect = {
                 'default_project_id': self.demo_project,
                 'email': 'demov3@demo.com',

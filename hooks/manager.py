@@ -198,9 +198,10 @@ class KeystoneManager3(KeystoneManager):
 
     def resolve_user_id(self, name, user_domain=None):
         """Find the user_id of a given user"""
+        domain_id = None
         if user_domain:
             domain_id = self.resolve_domain_id(user_domain)
-        for user in self.api.users.list():
+        for user in self.api.users.list(domain=domain_id):
             if name.lower() == user.name.lower():
                 if user_domain:
                     if domain_id == user.domain_id:

@@ -63,9 +63,11 @@ TO_PATCH = [
     'peer_echo',
     'network_get_primary_address',
     'open_port',
+    'is_leader',
     # charmhelpers.core.host
     'apt_install',
     'apt_update',
+    'service_restart',
     # charmhelpers.contrib.openstack.utils
     'configure_installation_source',
     'git_install_requested',
@@ -89,6 +91,9 @@ TO_PATCH = [
     'update_nrpe_config',
     'ensure_ssl_dirs',
     'is_db_ready',
+    'keystone_service',
+    'create_or_show_domain',
+    'get_api_version',
     # other
     'check_call',
     'execd_preinstall',
@@ -105,6 +110,8 @@ TO_PATCH = [
     'service_pause',
     'disable_package_apache_site',
     'run_in_apache',
+    # unitdata
+    'unitdata',
 ]
 
 
@@ -341,6 +348,7 @@ class KeystoneRelationTests(CharmTestCase):
                           configs.write.call_args_list)
         self.assertTrue(leader_init.called)
 
+    @patch.object(hooks, 'update_all_domain_backends')
     @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(hooks, 'run_in_apache')
     @patch.object(hooks, 'is_db_initialised')
@@ -380,7 +388,8 @@ class KeystoneRelationTests(CharmTestCase):
                                               mock_log, git_requested,
                                               mock_is_db_initialised,
                                               mock_run_in_apache,
-                                              update):
+                                              update,
+                                              mock_update_domains):
         mock_run_in_apache.return_value = False
         git_requested.return_value = False
         mock_is_ssl_cert_master.return_value = True
@@ -404,7 +413,9 @@ class KeystoneRelationTests(CharmTestCase):
         self.open_port.assert_called_with(5000)
 
         self.assertTrue(update.called)
+        self.assertTrue(mock_update_domains.called)
 
+    @patch.object(hooks, 'update_all_domain_backends')
     @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(hooks, 'run_in_apache')
     @patch.object(hooks, 'git_install_requested')
@@ -436,7 +447,8 @@ class KeystoneRelationTests(CharmTestCase):
                                                   ensure_ssl_dirs,
                                                   mock_ensure_ssl_cert_master,
                                                   mock_log, git_requested,
-                                                  mock_run_in_apache, update):
+                                                  mock_run_in_apache, update,
+                                                  mock_update_domains):
         mock_run_in_apache.return_value = False
         git_requested.return_value = False
         mock_is_ssl_cert_master.return_value = True
@@ -455,7 +467,9 @@ class KeystoneRelationTests(CharmTestCase):
 
         self.assertFalse(self.migrate_database.called)
         self.assertTrue(update.called)
+        self.assertTrue(mock_update_domains.called)
 
+    @patch.object(hooks, 'update_all_domain_backends')
     @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(hooks, 'run_in_apache')
     @patch.object(hooks, 'is_db_initialised')
@@ -494,7 +508,8 @@ class KeystoneRelationTests(CharmTestCase):
                                                    mock_log, git_requested,
                                                    mock_is_db_initialised,
                                                    mock_run_in_apache,
-                                                   update):
+                                                   update,
+                                                   mock_update_domains):
         mock_run_in_apache.return_value = False
         git_requested.return_value = False
         mock_is_ssl_cert_master.return_value = True
@@ -519,7 +534,9 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertTrue(configs.write_all.called)
 
         self.assertTrue(update.called)
+        self.assertTrue(mock_update_domains.called)
 
+    @patch.object(hooks, 'update_all_domain_backends')
     @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(hooks, 'run_in_apache')
     @patch.object(hooks, 'initialise_pki')
@@ -553,7 +570,8 @@ class KeystoneRelationTests(CharmTestCase):
                                         git_requested,
                                         mock_initialise_pki,
                                         mock_run_in_apache,
-                                        update):
+                                        update,
+                                        mock_update_domains):
         mock_run_in_apache.return_value = False
         git_requested.return_value = True
         mock_ensure_ssl_cert_master.return_value = False
@@ -583,6 +601,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertFalse(self.openstack_upgrade_available.called)
         self.assertFalse(self.do_openstack_upgrade_reexec.called)
         self.assertTrue(update.called)
+        self.assertTrue(mock_update_domains.called)
 
     @patch.object(hooks, 'run_in_apache')
     @patch.object(hooks, 'initialise_pki')
@@ -1162,3 +1181,88 @@ class KeystoneRelationTests(CharmTestCase):
             peer_interface='cluster', ensure_local_user=True)
         self.assertTrue(self.log.called)
         self.assertFalse(update.called)
+
+    def test_domain_backend_changed_v2(self):
+        self.get_api_version.return_value = 2
+        hooks.domain_backend_changed()
+        self.assertTrue(self.get_api_version.called)
+        self.assertFalse(self.relation_get.called)
+
+    def test_domain_backend_changed_incomplete(self):
+        self.get_api_version.return_value = 3
+        self.relation_get.return_value = None
+        hooks.domain_backend_changed()
+        self.assertTrue(self.get_api_version.called)
+        self.relation_get.assert_called_with(
+            attribute='domain-name',
+            unit=None,
+            rid=None
+        )
+        self.assertFalse(self.is_leader.called)
+
+    @patch.object(hooks, 'is_unit_paused_set')
+    @patch.object(hooks, 'is_db_initialised')
+    def test_domain_backend_changed_complete(self,
+                                             is_db_initialised,
+                                             is_unit_paused_set):
+        self.get_api_version.return_value = 3
+        self.relation_get.side_effect = ['mydomain', 'nonce2']
+        self.is_leader.return_value = True
+        self.is_db_ready.return_value = True
+        is_db_initialised.return_value = True
+        mock_kv = MagicMock()
+        mock_kv.get.return_value = None
+        self.unitdata.kv.return_value = mock_kv
+        is_unit_paused_set.return_value = False
+        self.keystone_service.return_value = 'apache2'
+
+        hooks.domain_backend_changed()
+
+        self.assertTrue(self.get_api_version.called)
+        self.relation_get.assert_has_calls([
+            call(attribute='domain-name',
+                 unit=None,
+                 rid=None),
+            call(attribute='restart-nonce',
+                 unit=None,
+                 rid=None),
+        ])
+        self.create_or_show_domain.assert_called_with('mydomain')
+        self.service_restart.assert_called_with('apache2')
+        mock_kv.set.assert_called_with('domain-restart-nonce-mydomain',
+                                       'nonce2')
+        self.assertTrue(mock_kv.flush.called)
+
+    @patch.object(hooks, 'is_unit_paused_set')
+    @patch.object(hooks, 'is_db_initialised')
+    def test_domain_backend_changed_complete_follower(self,
+                                                      is_db_initialised,
+                                                      is_unit_paused_set):
+        self.get_api_version.return_value = 3
+        self.relation_get.side_effect = ['mydomain', 'nonce2']
+        self.is_leader.return_value = False
+        self.is_db_ready.return_value = True
+        is_db_initialised.return_value = True
+        mock_kv = MagicMock()
+        mock_kv.get.return_value = None
+        self.unitdata.kv.return_value = mock_kv
+        is_unit_paused_set.return_value = False
+        self.keystone_service.return_value = 'apache2'
+
+        hooks.domain_backend_changed()
+
+        self.assertTrue(self.get_api_version.called)
+        self.relation_get.assert_has_calls([
+            call(attribute='domain-name',
+                 unit=None,
+                 rid=None),
+            call(attribute='restart-nonce',
+                 unit=None,
+                 rid=None),
+        ])
+        # Only lead unit will create the domain
+        self.assertFalse(self.create_or_show_domain.called)
+        self.service_restart.assert_called_with('apache2')
+        mock_kv.set.assert_called_with('domain-restart-nonce-mydomain',
+                                       'nonce2')
+        self.assertTrue(mock_kv.flush.called)

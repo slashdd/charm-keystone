@@ -22,6 +22,7 @@ import sys
 from subprocess import check_call
 
 from charmhelpers.contrib import unison
+from charmhelpers.core import unitdata
 
 from charmhelpers.core.hookenv import (
     Hooks,
@@ -42,11 +43,13 @@ from charmhelpers.core.hookenv import (
     status_set,
     network_get_primary_address,
     open_port,
+    is_leader,
 )
 
 from charmhelpers.core.host import (
     mkdir,
     service_pause,
+    service_restart,
 )
 
 from charmhelpers.core.strutils import (
@@ -115,6 +118,8 @@ from keystone_utils import (
     get_api_version,
     ADMIN_DOMAIN,
     ADMIN_PROJECT,
+    create_or_show_domain,
+    keystone_service,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -237,6 +242,7 @@ def config_changed_postupgrade():
     initialise_pki()
 
     update_all_identity_relation_units()
+    update_all_domain_backends()
 
     # Ensure sync request is sent out (needed for any/all ssl change)
     send_ssl_sync_request()
@@ -344,6 +350,13 @@ def update_all_identity_relation_units_force_sync():
     update_all_identity_relation_units()
 
 
+def update_all_domain_backends():
+    """Re-trigger hooks for all domain-backend relations/units"""
+    for rid in relation_ids('domain-backend'):
+        for unit in related_units(rid):
+            domain_backend_changed(relation_id=rid, unit=unit)
+
+
 def leader_init_db_if_ready(use_current_context=False):
     """ Initialise the keystone db if it is ready and mark it as initialised.
 
@@ -370,6 +383,7 @@ def leader_init_db_if_ready(use_current_context=False):
     # Ensure any existing service entries are updated in the
     # new database backend. Also avoid duplicate db ready check.
     update_all_identity_relation_units(check_db_ready=False)
+    update_all_domain_backends()
 
 
 @hooks.hook('shared-db-relation-changed')
@@ -701,6 +715,39 @@ def admin_relation_changed(relation_id=None):
         relation_data['service_project_name'] = ADMIN_PROJECT
     relation_data['service_password'] = get_admin_passwd()
     relation_set(relation_id=relation_id, **relation_data)
+
+
+@hooks.hook('domain-backend-relation-changed')
+def domain_backend_changed(relation_id=None, unit=None):
+    if get_api_version() < 3:
+        log('Domain specific backend identity configuration only supported '
+            'with Keystone v3 API, skipping domain creation and '
+            'restart.')
+        return
+
+    domain_name = relation_get(attribute='domain-name',
+                               unit=unit,
+                               rid=relation_id)
+    if domain_name:
+        # NOTE(jamespage): Only create domain data from lead
+        #                  unit when clustered and database
+        #                  is configured and created.
+        if is_leader() and is_db_ready() and is_db_initialised():
+            create_or_show_domain(domain_name)
+        # NOTE(jamespage): Deployment may have multiple domains,
+        #                  with different identity backends so
+        #                  ensure that a domain specific nonce
+        #                  is checked for restarts of keystone
+        restart_nonce = relation_get(attribute='restart-nonce',
+                                     unit=unit,
+                                     rid=relation_id)
+        domain_nonce_key = 'domain-restart-nonce-{}'.format(domain_name)
+        db = unitdata.kv()
+        if restart_nonce != db.get(domain_nonce_key):
+            if not is_unit_paused_set():
+                service_restart(keystone_service())
+            db.set(domain_nonce_key, restart_nonce)
+            db.flush()
 
 
 @synchronize_ca_if_changed(fatal=True)

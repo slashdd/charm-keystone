@@ -37,6 +37,9 @@ requires:
   ha:
     interface: hacluster
     scope: container
+  domain-backend:
+    interface: keystone-domain-backend
+    scope: container
 peers:
   cluster:
     interface: keystone-ha

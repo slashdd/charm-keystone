@@ -365,6 +365,10 @@ valid_services = {
         "type": "workflowv2",
         "desc": "Workflow Service for OpenStack"
     },
+    "zaqar": {
+        "type": "messaging",
+        "desc": "Messaging Service for OpenStack"
+    }
 }
 
 # The interface is said to be satisfied if anyone of the interfaces in the

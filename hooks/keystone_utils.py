@@ -368,7 +368,11 @@ valid_services = {
     "zaqar": {
         "type": "messaging",
         "desc": "Messaging Service for OpenStack"
-    }
+    },
+    "placement": {
+        "type": "placement",
+        "desc": "Nova Placement Service"
+    },
 }
 
 # The interface is said to be satisfied if anyone of the interfaces in the

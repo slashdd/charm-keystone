@@ -94,19 +94,57 @@ If 'dns-ha' is set and none of the os-{admin,internal,public}-hostname(s) are se
 SSL/HTTPS
 ---------
 
-This charm also supports SSL and HTTPS endpoints. In order to ensure SSL
-certificates are only created once and distributed to all units, one unit gets
-elected as an ssl-cert-master. One side-effect of this is that as units are
-scaled-out the currently elected leader needs to be running in order for nodes
-to sync certificates. This 'feature' is to work around the lack of native
-leadership election via Juju itself, a feature that is due for release some
-time soon but until then we have to rely on this. Also, if a keystone unit does
-go down, it must be removed from Juju i.e.
+Support for SSL and https endpoint is provided via a set of configuration
+options on the charm. There are two types supported;
 
-    juju destroy-unit keystone/<unit-num>
+use-https - if enabled this option tells Keystone to configure the identity
+endpoint as https. Under this model the keystone charm will either use the CA
+as provided by the user (see ssl_* options below) or will generate its own and
+sync across peers. The cert will be distributed to all service endpoints which
+will be configured to use https.
 
-Otherwise it will be assumed that this unit may come back at some point and
-therefore must be know to be in-sync with the rest before continuing.
+https-service-endpoints - if enabled this option tells Keystone to configure
+ALL endpoints as https. Under this model the keystone charm will either use the
+CA as provided by the user (see ssl_* options below) or will generate its own
+and sync across peers. The cert will be distributed to all service endpoints
+which will be configured to use https as well as configuring themselves to be
+used as https.
+
+When configuring the charms to use SSL there are two means of configuring a CA.
+The user can provide their own using the options ssl_ca, ssl_cert, ssl_key
+which are available on all endpoint charms or, if not provided, the keystone
+charm will automatically generate a CA and certs to distribute to endpoints.
+
+When the charm configures itself as a CA (generally only recommended for test
+purposes) it will elect an "ssl-cert-master" whose duty is to generate the CA
+and certs and ensure they are distributed across all peers. This leader is
+distinct from the charm leader as elected by Juju so that if the Juju leader
+switches we still have the ability to know which unit held the last-known-good
+copy of CA/cert data. If the Juju leader switches the charm should eventually
+work it out and migrate the ssl-cert-master to the new leader unit.
+
+One side-effect of this is that if the unit currently elected as
+ssl-cert-master goes down, the remaining peer units or indeed any new units
+will not be able to sync the ssl data of the master or re-elect a new master.
+This does currently require manual intervention to resolve. If no action is
+taken, it will be assumed that this unit may come back at some point and
+therefore must be known to be in-sync with the rest before continuing.
+
+It is possible to check which unit is the ssl-cert-master with:
+
+~$ juju run --unit keystone/0 "relation-ids cluster"
+cluster:6
+~$ juju run --unit keystone/0 "relation-get -r cluster:6 ssl-cert-master keystone/0"
+keystone/0
+
+If the master unit goes down and you want to manually migrate it to another
+unit (that you are 100% sure holds an authoritative copy of the ssl certs)
+you can do:
+
+~$ juju run --unit keystone/0 "relation-set -r cluster:6 ssl-cert-master=keystone/1"
+
+Where keystone/1 is known to hold a good copy of the CA/cert info and is
+preferrably also the cluster leader.
 
 Network Space support
 ---------------------

@@ -225,20 +225,22 @@ options:
     type: string
     default:
     description: |
-      SSL certificate to install and use for API ports.  Setting this value
-      and ssl_key will enable reverse proxying, point Keystone's entry in the
-      Keystone catalog to use https, and override any certficiate and key
-      issued by Keystone (if it is configured to do so).
+      base64-encoded SSL certificate to install and use for API ports. Setting
+      this value and ssl_key will enable reverse proxying, point Keystone's
+      entry in the Keystone catalog to use https, and override any certficiate
+      and key issued by Keystone (if it is configured to do so).
   ssl_key:
     type: string
     default:
-    description: SSL key to use with certificate specified as ssl_cert.
+    description: base64-encoded SSL key to use with certificate specified as
+      ssl_cert.
   ssl_ca:
     type: string
     default:
     description: |
-      SSL CA to use with the certificate and key provided - this is only
-      required if you are providing a privately signed ssl_cert and ssl_key.
+      base64-encoded SSL CA to use with the certificate and key provided -
+      this is only required if you are providing a privately signed ssl_cert
+      and ssl_key.
   # Network configuration options
   # by default all access is over 'private-address'
   os-admin-network:

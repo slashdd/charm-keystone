@@ -75,9 +75,11 @@ TO_PATCH = [
     'resolve_address',
     # charmhelpers.contrib.openstack.ha.utils
     'update_dns_ha_resource_params',
+    'expect_ha',
     # charmhelpers.contrib.hahelpers.cluster_utils
     'is_elected_leader',
     'get_hacluster_config',
+    'is_clustered',
     # keystone_utils
     'restart_map',
     'register_configs',
@@ -647,6 +649,7 @@ class KeystoneRelationTests(CharmTestCase):
     def test_identity_changed_leader(self, mock_send_notifications,
                                      mock_hashlib, mock_ensure_ssl_cert_master,
                                      mock_log, mock_is_db_initialised):
+        self.expect_ha.return_value = False
         mock_is_db_initialised.return_value = True
         self.is_db_ready.return_value = True
         self.is_service_present.return_value = True
@@ -671,6 +674,7 @@ class KeystoneRelationTests(CharmTestCase):
                                                 mock_ensure_ssl_cert_master,
                                                 mock_log,
                                                 mock_is_db_initialised):
+        self.expect_ha.return_value = False
         mock_is_db_initialised.return_value = True
         self.is_db_ready.return_value = True
         self.is_service_present.return_value = False

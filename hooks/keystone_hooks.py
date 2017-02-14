@@ -127,10 +127,12 @@ from charmhelpers.contrib.hahelpers.cluster import (
     get_hacluster_config,
     peer_units,
     https,
+    is_clustered,
 )
 
 from charmhelpers.contrib.openstack.ha.utils import (
     update_dns_ha_resource_params,
+    expect_ha,
 )
 
 from charmhelpers.payload.execd import execd_preinstall
@@ -430,6 +432,10 @@ def identity_changed(relation_id=None, remote_unit=None):
                 "updates", level=INFO)
             return
 
+        if expect_ha() and not is_clustered():
+            log("Expected to be HA but no hacluster relation yet", level=INFO)
+            return
+
         add_service_to_keystone(relation_id, remote_unit)
         if is_service_present('neutron', 'network'):
             delete_service_entry('quantum', 'network')
@@ -473,6 +479,9 @@ def identity_credentials_changed(relation_id=None, remote_unit=None):
     :param remote_unit: Related unit on the relation
     """
     if is_elected_leader(CLUSTER_RES):
+        if expect_ha() and not is_clustered():
+            log("Expected to be HA but no hacluster relation yet", level=INFO)
+            return
         if not is_db_ready():
             log("identity-credentials-relation-changed hook fired before db "
                 "ready - deferring until db ready", level=WARNING)
@@ -700,6 +709,9 @@ def ha_changed():
 @hooks.hook('identity-admin-relation-changed')
 def admin_relation_changed(relation_id=None):
     # TODO: fixup
+    if expect_ha() and not is_clustered():
+        log("Expected to be HA but no hacluster relation yet", level=INFO)
+        return
     relation_data = {
         'service_hostname': resolve_address(ADMIN),
         'service_port': config('service-port'),

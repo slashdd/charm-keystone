@@ -76,7 +76,7 @@ from keystone_utils import (
     add_service_to_keystone,
     add_credentials_to_keystone,
     determine_packages,
-    disable_package_apache_site,
+    disable_unused_apache_sites,
     do_openstack_upgrade_reexec,
     ensure_initial_admin,
     get_admin_passwd,
@@ -169,7 +169,7 @@ def install():
     apt_update()
     apt_install(determine_packages(), fatal=True)
     if run_in_apache():
-        disable_package_apache_site()
+        disable_unused_apache_sites()
         if not git_install_requested():
             service_pause('keystone')
 
@@ -230,6 +230,7 @@ def config_changed_postupgrade():
         # when deployed from source, init scripts aren't installed
         if not git_install_requested():
             service_pause('keystone')
+        disable_unused_apache_sites()
         CONFIGS.write(WSGI_KEYSTONE_API_CONF)
         if not is_unit_paused_set():
             restart_pid_check('apache2')
@@ -780,6 +781,9 @@ def upgrade_charm():
                                 ensure_local_user=True)
 
     ensure_ssl_dirs()
+
+    if run_in_apache():
+        disable_unused_apache_sites()
 
     CONFIGS.write_all()
 

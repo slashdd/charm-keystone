@@ -16,6 +16,7 @@ from mock import patch, call, MagicMock
 from test_utils import CharmTestCase
 import os
 from base64 import b64encode
+import subprocess
 
 os.environ['JUJU_UNIT_NAME'] = 'keystone'
 with patch('charmhelpers.core.hookenv.config') as config:
@@ -148,13 +149,14 @@ class TestKeystoneUtils(CharmTestCase):
             ex.remove(p)
         self.assertEquals(set(ex), set(result))
 
+    @patch.object(utils, 'disable_unused_apache_sites')
     @patch('os.path.exists')
     @patch.object(utils, 'run_in_apache')
     @patch.object(utils, 'determine_packages')
     @patch.object(utils, 'migrate_database')
     def test_openstack_upgrade_leader(
             self, migrate_database, determine_packages,
-            run_in_apache, os_path_exists):
+            run_in_apache, os_path_exists, disable_unused_apache_sites):
         configs = MagicMock()
         self.test_config.set('openstack-origin', 'cloud:xenial-newton')
         determine_packages.return_value = []
@@ -188,12 +190,7 @@ class TestKeystoneUtils(CharmTestCase):
         self.assertTrue(configs.set_release.called)
         self.assertTrue(configs.write_all.called)
         self.assertTrue(migrate_database.called)
-        os_path_exists.assert_called_with(
-            utils.PACKAGE_KEYSTONE_API_CONF
-        )
-        self.subprocess.check_call.assert_called_with(
-            ['a2dissite', 'keystone']
-        )
+        disable_unused_apache_sites.assert_called_with()
 
     def test_migrate_database(self):
         utils.migrate_database()
@@ -1265,3 +1262,28 @@ class TestKeystoneUtils(CharmTestCase):
                                                    tenant='services')
         self.peer_store_and_set.assert_called_with(relation_id=relation_id,
                                                    **relation_data)
+
+    @patch.object(utils.os, 'remove')
+    @patch.object(utils.os.path, 'exists')
+    def test_disable_unused_apache_sites(self, os_path_exists, os_remove):
+        utils.UNUSED_APACHE_SITE_FILES = ['/path/sitename.conf']
+
+        # Files do not exist
+        os_path_exists.return_value = False
+        utils.disable_unused_apache_sites()
+        self.subprocess.check_call.assert_not_called()
+
+        # Files exist
+        os_path_exists.return_value = True
+        utils.disable_unused_apache_sites()
+        self.subprocess.check_call.assert_called_with(
+            ['a2dissite', 'sitename']
+        )
+
+        # Force remove
+        os_path_exists.return_value = True
+        self.subprocess.CalledProcessError = subprocess.CalledProcessError
+        self.subprocess.check_call.side_effect = subprocess.CalledProcessError(
+            1, 'a2dissite')
+        utils.disable_unused_apache_sites()
+        os_remove.assert_called_with(utils.UNUSED_APACHE_SITE_FILES[0])

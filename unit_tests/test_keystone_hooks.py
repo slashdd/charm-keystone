@@ -108,7 +108,7 @@ TO_PATCH = [
     'delete_service_entry',
     'os_release',
     'service_pause',
-    'disable_package_apache_site',
+    'disable_unused_apache_sites',
     'run_in_apache',
     # unitdata
     'unitdata',
@@ -140,7 +140,7 @@ class KeystoneRelationTests(CharmTestCase):
              'python-keystoneclient', 'python-mysqldb', 'python-psycopg2',
              'python-six', 'unison', 'uuid'], fatal=True)
         self.git_install.assert_called_with(None)
-        self.disable_package_apache_site.assert_not_called()
+        self.disable_unused_apache_sites.assert_not_called()
 
     @patch.object(utils, 'os_release')
     @patch.object(utils, 'git_install_requested')
@@ -162,7 +162,7 @@ class KeystoneRelationTests(CharmTestCase):
              'python-keystoneclient', 'python-mysqldb', 'python-psycopg2',
              'python-six', 'unison', 'uuid'], fatal=True)
         self.git_install.assert_called_with(None)
-        self.disable_package_apache_site.assert_called_with()
+        self.disable_unused_apache_sites.assert_called_with()
 
     @patch.object(utils, 'os_release')
     @patch.object(utils, 'git_install_requested')

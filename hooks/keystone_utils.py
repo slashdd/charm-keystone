@@ -211,7 +211,8 @@ SERVICE_DOMAIN = 'service_domain'
 POLICY_JSON = '/etc/keystone/policy.json'
 TOKEN_FLUSH_CRON_FILE = '/etc/cron.d/keystone-token-flush'
 WSGI_KEYSTONE_API_CONF = '/etc/apache2/sites-enabled/wsgi-openstack-api.conf'
-PACKAGE_KEYSTONE_API_CONF = '/etc/apache2/sites-enabled/keystone.conf'
+UNUSED_APACHE_SITE_FILES = ['/etc/apache2/sites-enabled/keystone.conf',
+                            '/etc/apache2/sites-enabled/wsgi-keystone.conf']
 
 BASE_RESOURCE_MAP = OrderedDict([
     (KEYSTONE_CONF, {
@@ -472,12 +473,19 @@ def run_in_apache():
     return os_release('keystone') >= 'liberty'
 
 
-def disable_package_apache_site():
-    """Ensure that the package-provided apache configuration is disabled to
-    prevent it from conflicting with the charm-provided version.
+def disable_unused_apache_sites():
+    """Ensure that unused apache configurations are disabled to prevent them
+    from conflicting with the charm-provided version.
     """
-    if os.path.exists(PACKAGE_KEYSTONE_API_CONF):
-        subprocess.check_call(['a2dissite', 'keystone'])
+    for apache_site_file in UNUSED_APACHE_SITE_FILES:
+        apache_site = apache_site_file.split('/')[-1].split('.')[0]
+        if os.path.exists(apache_site_file):
+            try:
+                # Try it cleanly
+                subprocess.check_call(['a2dissite', apache_site])
+            except subprocess.CalledProcessError:
+                # Remove the file
+                os.remove(apache_site_file)
 
 
 def register_configs():
@@ -560,7 +568,7 @@ def do_openstack_upgrade(configs):
     configs.write_all()
 
     if run_in_apache():
-        disable_package_apache_site()
+        disable_unused_apache_sites()
 
     if is_elected_leader(CLUSTER_RES):
         if is_db_ready():

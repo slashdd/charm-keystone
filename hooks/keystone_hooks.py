@@ -47,6 +47,8 @@ from charmhelpers.core.hookenv import (
 from charmhelpers.core.host import (
     mkdir,
     service_pause,
+    service_stop,
+    service_start,
     service_restart,
 )
 
@@ -168,6 +170,10 @@ def install():
     status_set('maintenance', 'Installing apt packages')
     apt_update()
     apt_install(determine_packages(), fatal=True)
+    # unconfigured keystone service will prevent start of haproxy in some
+    # circumstances. make sure haproxy runs. LP #1648396
+    service_stop('keystone')
+    service_start('haproxy')
     if run_in_apache():
         disable_unused_apache_sites()
         if not git_install_requested():

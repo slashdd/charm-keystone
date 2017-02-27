@@ -49,12 +49,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         """Deploy the entire test environment."""
         super(KeystoneBasicDeployment, self).__init__(series, openstack,
                                                       source, stable)
-        if self.is_liberty_or_newer():
-            self.keystone_num_units = 3
-        else:
-            # issues with starting haproxy when clustered on trusty with
-            # icehouse and kilo. See LP #1648396
-            self.keystone_num_units = 1
+        self.keystone_num_units = 3
         self.keystone_api_version = 2
         self.git = git
         self._add_services()

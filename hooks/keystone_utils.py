@@ -270,6 +270,14 @@ valid_services = {
         "type": "volumev2",
         "desc": "Cinder Volume Service v2"
     },
+    "contrail-api": {
+        "type": "ApiServer",
+        "desc": "Contrail API Service"
+    },
+    "contrail-analytics": {
+        "type": "OpServer",
+        "desc": "Contrail Analytics Service"
+    },
     "ec2": {
         "type": "ec2",
         "desc": "EC2 Compatibility Layer"

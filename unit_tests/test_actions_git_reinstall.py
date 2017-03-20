@@ -29,6 +29,7 @@ with patch('hooks.charmhelpers.contrib.hardening.harden.harden') as mock_dec:
                             lambda *args, **kwargs: f(*args, **kwargs))
     with patch('hooks.keystone_utils.register_configs') as register_configs:
         with patch('hooks.keystone_utils.os_release') as os_release:
+            os_release.return_value = 'juno'
             import git_reinstall
 
 from test_utils import (

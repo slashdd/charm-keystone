@@ -73,6 +73,7 @@ from charmhelpers.contrib.openstack.utils import (
     is_unit_paused_set,
     make_assess_status_func,
     os_application_version_set,
+    CompareOpenStackReleases,
 )
 
 from charmhelpers.contrib.python.packages import (
@@ -124,6 +125,7 @@ from charmhelpers.core.host import (
     pwgen,
     lsb_release,
     write_file,
+    CompareHostReleases,
 )
 
 from charmhelpers.contrib.peerstorage import (
@@ -416,7 +418,7 @@ def resource_map():
     """
     resource_map = deepcopy(BASE_RESOURCE_MAP)
 
-    if os_release('keystone') < 'liberty':
+    if CompareOpenStackReleases(os_release('keystone')) < 'liberty':
         resource_map.pop(POLICY_JSON)
     if os.path.exists('/etc/apache2/conf-available'):
         resource_map.pop(APACHE_CONF)
@@ -478,7 +480,7 @@ def run_in_apache():
     """Return true if keystone API is run under apache2 with mod_wsgi in
     this release.
     """
-    return os_release('keystone') >= 'liberty'
+    return CompareOpenStackReleases(os_release('keystone')) >= 'liberty'
 
 
 def disable_unused_apache_sites():
@@ -2102,13 +2104,14 @@ def get_requested_grants(settings):
 def setup_ipv6():
     """Check ipv6-mode validity and setup dependencies"""
     ubuntu_rel = lsb_release()['DISTRIB_CODENAME'].lower()
-    if ubuntu_rel < "trusty":
+    if CompareHostReleases(ubuntu_rel) < "trusty":
         raise Exception("IPv6 is not supported in the charms for Ubuntu "
                         "versions less than Trusty 14.04")
 
     # Need haproxy >= 1.5.3 for ipv6 so for Trusty if we are <= Kilo we need to
     # use trusty-backports otherwise we can use the UCA.
-    if ubuntu_rel == 'trusty' and os_release('keystone') < 'liberty':
+    if (ubuntu_rel == 'trusty' and
+            CompareOpenStackReleases(os_release('keystone')) < 'liberty'):
         add_source('deb http://archive.ubuntu.com/ubuntu trusty-backports '
                    'main')
         apt_update()
@@ -2324,7 +2327,7 @@ def git_post_install(projects_yaml):
     bin_dir = os.path.join(git_pip_venv_dir(projects_yaml), 'bin')
     # The charm runs the keystone API under apache2 for openstack liberty
     # onward.  Prior to liberty upstart is used.
-    if os_release('keystone') < 'liberty':
+    if CompareOpenStackReleases(os_release('keystone')) < 'liberty':
         keystone_context = {
             'service_description': 'Keystone API server',
             'service_name': 'Keystone',

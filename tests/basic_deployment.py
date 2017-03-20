@@ -420,16 +420,20 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         self.validate_keystone_users(self.keystone_v2)
 
     def is_liberty_or_newer(self):
-        os_release = self._get_openstack_release_string()
-        if os_release >= 'liberty':
+        # os_release = self._get_openstack_release_string()
+        os_release = self._get_openstack_release()
+        # if os_release >= 'liberty':
+        if os_release >= self.trusty_liberty:
             return True
         else:
             u.log.info('Skipping test, {} < liberty'.format(os_release))
             return False
 
     def is_mitaka_or_newer(self):
-        os_release = self._get_openstack_release_string()
-        if os_release >= 'mitaka':
+        # os_release = self._get_openstack_release_string()
+        os_release = self._get_openstack_release()
+        # if os_release >= 'mitaka':
+        if os_release >= self.xenial_mitaka:
             return True
         else:
             u.log.info('Skipping test, {} < mitaka'.format(os_release))

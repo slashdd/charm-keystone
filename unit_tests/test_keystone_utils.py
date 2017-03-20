@@ -135,6 +135,7 @@ class TestKeystoneUtils(CharmTestCase):
 
     @patch('charmhelpers.contrib.openstack.utils.config')
     def test_determine_packages(self, _config):
+        self.os_release.return_value = 'havana'
         _config.return_value = None
         result = utils.determine_packages()
         ex = utils.BASE_PACKAGES + ['keystone', 'python-keystoneclient']
@@ -142,6 +143,7 @@ class TestKeystoneUtils(CharmTestCase):
 
     @patch('charmhelpers.contrib.openstack.utils.config')
     def test_determine_packages_git(self, _config):
+        self.os_release.return_value = 'havana'
         _config.return_value = openstack_origin_git
         result = utils.determine_packages()
         ex = utils.BASE_PACKAGES + utils.BASE_GIT_PACKAGES
@@ -193,6 +195,7 @@ class TestKeystoneUtils(CharmTestCase):
         disable_unused_apache_sites.assert_called_with()
 
     def test_migrate_database(self):
+        self.os_release.return_value = 'havana'
         utils.migrate_database()
 
         self.service_stop.assert_called_with('keystone')
@@ -820,6 +823,7 @@ class TestKeystoneUtils(CharmTestCase):
     @patch('subprocess.check_call')
     def test_git_post_install(self, check_call, rmtree, copytree, symlink,
                               exists, join):
+        self.os_release.return_value = 'havana'
         projects_yaml = openstack_origin_git
         join.return_value = 'joined-string'
         self.git_pip_venv_dir.return_value = '/mnt/openstack-git/venv'

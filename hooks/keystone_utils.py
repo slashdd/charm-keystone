@@ -1890,7 +1890,7 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
 
         # If an admin username prefix is provided, ensure all services use it.
         prefix = config('service-admin-prefix')
-        if prefix:
+        if service_username and prefix:
             service_username = "%s%s" % (prefix, service_username)
 
     if 'None' in settings.itervalues():

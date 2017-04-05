@@ -208,6 +208,9 @@ def config_changed():
             status_set('maintenance', 'Running openstack upgrade')
             do_openstack_upgrade_reexec(configs=CONFIGS)
 
+    for r_id in relation_ids('cluster'):
+        cluster_joined(rid=r_id, ssl_sync_request=False)
+
     config_changed_postupgrade()
 
 
@@ -544,7 +547,7 @@ def send_ssl_sync_request():
 
 
 @hooks.hook('cluster-relation-joined')
-def cluster_joined():
+def cluster_joined(rid=None, ssl_sync_request=True):
     unison.ssh_authorized_peers(user=SSH_USER,
                                 group='juju_keystone',
                                 peer_interface='cluster',
@@ -563,8 +566,10 @@ def cluster_joined():
         private_addr = get_ipv6_addr(exc_list=[config('vip')])[0]
         settings['private-address'] = private_addr
 
-    relation_set(relation_settings=settings)
-    send_ssl_sync_request()
+    relation_set(relation_id=rid, relation_settings=settings)
+
+    if ssl_sync_request:
+        send_ssl_sync_request()
 
 
 @hooks.hook('cluster-relation-changed',

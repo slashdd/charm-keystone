@@ -11,3 +11,4 @@ trusty/**
 xenial/
 func-results.json
 .local
+__pycache__

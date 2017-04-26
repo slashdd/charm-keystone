@@ -39,9 +39,7 @@ from charmhelpers.core.hookenv import (
     relation_ids,
     relation_set,
     related_units,
-    unit_get,
     status_set,
-    network_get_primary_address,
     open_port,
     is_leader,
 )
@@ -150,6 +148,7 @@ from charmhelpers.contrib.network.ip import (
     get_address_in_network,
     get_ipv6_addr,
     is_ipv6,
+    get_relation_ip,
 )
 from charmhelpers.contrib.openstack.context import ADDRESS_TYPES
 
@@ -293,13 +292,14 @@ def db_joined():
         sync_db_with_multi_ipv6_addresses(config('database'),
                                           config('database-user'))
     else:
-        host = None
-        try:
-            # NOTE: try to use network spaces
-            host = network_get_primary_address('shared-db')
-        except NotImplementedError:
-            # NOTE: fallback to private-address
-            host = unit_get('private-address')
+        # Avoid churn check for access-network early
+        access_network = None
+        for unit in related_units():
+            access_network = relation_get(unit=unit,
+                                          attribute='access-network')
+            if access_network:
+                break
+        host = get_relation_ip('shared-db', cidr_network=access_network)
 
         relation_set(database=config('database'),
                      username=config('database-user'),

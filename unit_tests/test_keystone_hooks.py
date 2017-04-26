@@ -13,7 +13,6 @@
 # limitations under the License.
 
 import os
-import json
 import uuid
 import yaml
 import sys
@@ -59,9 +58,8 @@ TO_PATCH = [
     'relation_set',
     'relation_get',
     'related_units',
-    'unit_get',
     'peer_echo',
-    'network_get_primary_address',
+    'get_relation_ip',
     'open_port',
     'is_leader',
     # charmhelpers.core.host
@@ -226,40 +224,14 @@ class KeystoneRelationTests(CharmTestCase):
         mock_hooks_config.side_effect = cfg
         mock_config.side_effect = cfg
 
-        self.network_get_primary_address.side_effect = NotImplementedError
+        self.get_relation_ip.return_value = '192.168.20.1'
         self.is_relation_made.return_value = False
-        self.unit_get.return_value = 'keystone.foohost.com'
-        hooks.db_joined()
-        self.relation_set.assert_called_with(database='keystone',
-                                             username='keystone',
-                                             hostname='keystone.foohost.com')
-        self.unit_get.assert_called_with('private-address')
-
-        self.network_get_primary_address.side_effect = None
-        self.network_get_primary_address.return_value = '192.168.20.1'
-        self.is_relation_made.return_value = False
-        self.unit_get.return_value = 'keystone.foohost.com'
         hooks.db_joined()
         self.relation_set.assert_called_with(database='keystone',
                                              username='keystone',
                                              hostname='192.168.20.1')
 
-        self.network_get_primary_address.side_effect = NotImplementedError
-        cfg_dict['prefer-ipv6'] = True
-        mock_hooks_config.side_effect = mock_cls_config()
-        mock_relation_ids.return_value = ['shared-db']
-        mock_get_ipv6_addr.return_value = ['keystone.foohost.com']
-        self.is_relation_made.return_value = False
-        hooks.db_joined()
-
-        hosts = json.dumps(['keystone.foohost.com'])
-        mock_relation_set.assert_called_with(relation_id='shared-db',
-                                             database='keystone',
-                                             username='keystone',
-                                             hostname=hosts)
-
     def test_postgresql_db_joined(self):
-        self.unit_get.return_value = 'keystone.foohost.com'
         self.is_relation_made.return_value = False
         hooks.pgsql_db_joined()
         self.relation_set.assert_called_with(database='keystone'),

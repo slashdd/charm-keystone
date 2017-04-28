@@ -126,6 +126,7 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(utils, 'git_install_requested')
     @patch.object(unison, 'ensure_user')
     def test_install_hook(self, ensure_user, git_requested, os_release):
+        os_release.return_value = 'havana'
         git_requested.return_value = False
         self.run_in_apache.return_value = False
         repo = 'cloud:precise-grizzly'
@@ -147,6 +148,7 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(unison, 'ensure_user')
     def test_install_hook_apache2(self, ensure_user,
                                   git_requested, os_release):
+        os_release.return_value = 'havana'
         git_requested.return_value = False
         self.run_in_apache.return_value = True
         repo = 'cloud:xenial-newton'
@@ -168,6 +170,7 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(utils, 'git_install_requested')
     @patch.object(unison, 'ensure_user')
     def test_install_hook_git(self, ensure_user, git_requested, os_release):
+        os_release.return_value = 'havana'
         git_requested.return_value = True
         repo = 'cloud:trusty-juno'
         openstack_origin_git = {
@@ -304,6 +307,7 @@ class KeystoneRelationTests(CharmTestCase):
     def test_db_changed(self, configs,
                         mock_ensure_ssl_cert_master,
                         leader_init):
+        self.os_release.return_value = 'havana'
         mock_ensure_ssl_cert_master.return_value = False
         self._shared_db_test(configs, 'keystone/3')
         self.assertEquals([call('/etc/keystone/keystone.conf')],
@@ -316,6 +320,7 @@ class KeystoneRelationTests(CharmTestCase):
     def test_postgresql_db_changed(self, configs,
                                    mock_ensure_ssl_cert_master,
                                    leader_init):
+        self.os_release.return_value = 'havana'
         mock_ensure_ssl_cert_master.return_value = False
         self._postgresql_db_test(configs)
         self.assertEquals([call('/etc/keystone/keystone.conf')],
@@ -1009,6 +1014,7 @@ class KeystoneRelationTests(CharmTestCase):
                                   git_requested,
                                   os_release,
                                   update):
+        os_release.return_value = 'havana'
         mock_is_db_initialised.return_value = True
         mock_is_db_ready.return_value = True
         mock_is_elected_leader.return_value = False
@@ -1172,6 +1178,7 @@ class KeystoneRelationTests(CharmTestCase):
                                       mock_relation_ids,
                                       mock_log, git_requested,
                                       os_release, update):
+        os_release.return_value = 'havana'
         mock_relation_ids.return_value = []
         mock_ensure_ssl_cert_master.return_value = False
         # Ensure always returns diff

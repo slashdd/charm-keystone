@@ -68,6 +68,7 @@ from charmhelpers.contrib.openstack.utils import (
     os_release,
     pausable_restart_on_change as restart_on_change,
     is_unit_paused_set,
+    CompareOpenStackReleases,
 )
 
 from keystone_utils import (
@@ -401,7 +402,8 @@ def db_changed():
     else:
         CONFIGS.write(KEYSTONE_CONF)
         leader_init_db_if_ready(use_current_context=True)
-        if os_release('keystone-common') >= 'liberty':
+        if CompareOpenStackReleases(
+                os_release('keystone-common')) >= 'liberty':
             CONFIGS.write(POLICY_JSON)
 
 
@@ -414,7 +416,8 @@ def pgsql_db_changed():
     else:
         CONFIGS.write(KEYSTONE_CONF)
         leader_init_db_if_ready(use_current_context=True)
-        if os_release('keystone-common') >= 'liberty':
+        if CompareOpenStackReleases(
+                os_release('keystone-common')) >= 'liberty':
             CONFIGS.write(POLICY_JSON)
 
 

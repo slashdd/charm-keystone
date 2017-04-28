@@ -348,7 +348,7 @@ class KeystoneRelationTests(CharmTestCase):
                                               identity_changed,
                                               configs, get_homedir,
                                               ensure_user,
-                                              cluster_joined,
+                                              mock_cluster_joined,
                                               admin_relation_changed,
                                               mock_peer_units,
                                               mock_send_ssl_sync_request,
@@ -364,6 +364,13 @@ class KeystoneRelationTests(CharmTestCase):
                                               mock_run_in_apache,
                                               update,
                                               mock_update_domains):
+        def fake_relation_ids(relation):
+            rids = {'cluster': ['cluster:1'],
+                    'identity-service': ['identity-service:0']}
+            return rids.get(relation, [])
+
+        self.relation_ids.side_effect = fake_relation_ids
+
         mock_run_in_apache.return_value = False
         git_requested.return_value = False
         mock_is_ssl_cert_master.return_value = True
@@ -374,7 +381,6 @@ class KeystoneRelationTests(CharmTestCase):
         # avoid having to mock syncer
         mock_ensure_ssl_cert_master.return_value = False
         mock_peer_units.return_value = []
-        self.relation_ids.return_value = ['identity-service:0']
         self.related_units.return_value = ['unit/0']
 
         hooks.config_changed()
@@ -386,6 +392,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertTrue(configs.write_all.called)
         self.open_port.assert_called_with(5000)
 
+        self.assertTrue(mock_cluster_joined.called)
         self.assertTrue(update.called)
         self.assertTrue(mock_update_domains.called)
 
@@ -411,7 +418,8 @@ class KeystoneRelationTests(CharmTestCase):
     def test_config_changed_no_upgrade_not_leader(self, configure_https,
                                                   identity_changed,
                                                   configs, get_homedir,
-                                                  ensure_user, cluster_joined,
+                                                  ensure_user,
+                                                  mock_cluster_joined,
                                                   mock_is_ssl_cert_master,
                                                   mock_peer_units,
                                                   mock_ensure_ssl_dir,
@@ -423,6 +431,13 @@ class KeystoneRelationTests(CharmTestCase):
                                                   mock_log, git_requested,
                                                   mock_run_in_apache, update,
                                                   mock_update_domains):
+
+        def fake_relation_ids(relation):
+            rids = {}
+            return rids.get(relation, [])
+
+        self.relation_ids.side_effect = fake_relation_ids
+
         mock_run_in_apache.return_value = False
         git_requested.return_value = False
         mock_is_ssl_cert_master.return_value = True
@@ -435,6 +450,7 @@ class KeystoneRelationTests(CharmTestCase):
         ensure_user.assert_called_with(user=self.ssh_user, group='keystone')
         get_homedir.assert_called_with(self.ssh_user)
 
+        self.assertFalse(mock_cluster_joined.called)
         self.save_script_rc.assert_called_with()
         configure_https.assert_called_with()
         self.assertTrue(configs.write_all.called)
@@ -484,6 +500,12 @@ class KeystoneRelationTests(CharmTestCase):
                                                    mock_run_in_apache,
                                                    update,
                                                    mock_update_domains):
+        def fake_relation_ids(relation):
+            rids = {'identity-service': ['identity-service:0']}
+            return rids.get(relation, [])
+
+        self.relation_ids.side_effect = fake_relation_ids
+
         mock_run_in_apache.return_value = False
         git_requested.return_value = False
         mock_is_ssl_cert_master.return_value = True
@@ -494,7 +516,6 @@ class KeystoneRelationTests(CharmTestCase):
         # avoid having to mock syncer
         mock_ensure_ssl_cert_master.return_value = False
         mock_peer_units.return_value = []
-        self.relation_ids.return_value = ['identity-service:0']
         self.related_units.return_value = ['unit/0']
 
         hooks.config_changed()
@@ -671,17 +692,27 @@ class KeystoneRelationTests(CharmTestCase):
         self.log.assert_called_with(
             'Deferring identity_changed() to service leader.')
 
+    @patch.object(hooks, 'send_ssl_sync_request')
     @patch.object(hooks, 'local_unit')
     @patch.object(hooks, 'peer_units')
     @patch.object(unison, 'ssh_authorized_peers')
     def test_cluster_joined(self, ssh_authorized_peers, mock_peer_units,
-                            mock_local_unit):
+                            mock_local_unit, mock_send_ssl_sync_request):
         mock_local_unit.return_value = 'unit/0'
         mock_peer_units.return_value = ['unit/0']
         hooks.cluster_joined()
         ssh_authorized_peers.assert_called_with(
             user=self.ssh_user, group='juju_keystone',
             peer_interface='cluster', ensure_local_user=True)
+        self.assertTrue(mock_send_ssl_sync_request.called)
+
+        mock_send_ssl_sync_request.reset_mock()
+        hooks.cluster_joined(rid='foo:1', ssl_sync_request=True)
+        self.assertTrue(mock_send_ssl_sync_request.called)
+
+        mock_send_ssl_sync_request.reset_mock()
+        hooks.cluster_joined(rid='foo:1', ssl_sync_request=False)
+        self.assertFalse(mock_send_ssl_sync_request.called)
 
     @patch.object(hooks, 'initialise_pki')
     @patch.object(hooks, 'update_all_identity_relation_units')

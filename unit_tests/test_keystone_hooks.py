@@ -102,7 +102,6 @@ TO_PATCH = [
     # ip
     'get_iface_for_address',
     'get_netmask_for_address',
-    'get_address_in_network',
     'git_install',
     'is_service_present',
     'delete_service_entry',

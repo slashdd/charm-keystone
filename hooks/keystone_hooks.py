@@ -146,8 +146,6 @@ from charmhelpers.contrib.openstack.ip import (
 from charmhelpers.contrib.network.ip import (
     get_iface_for_address,
     get_netmask_for_address,
-    get_address_in_network,
-    get_ipv6_addr,
     is_ipv6,
     get_relation_ip,
 )
@@ -559,15 +557,13 @@ def cluster_joined(rid=None, ssl_sync_request=True):
     settings = {}
 
     for addr_type in ADDRESS_TYPES:
-        address = get_address_in_network(
-            config('os-{}-network'.format(addr_type))
-        )
+        address = get_relation_ip(
+            addr_type,
+            cidr_network=config('os-{}-network'.format(addr_type)))
         if address:
             settings['{}-address'.format(addr_type)] = address
 
-    if config('prefer-ipv6'):
-        private_addr = get_ipv6_addr(exc_list=[config('vip')])[0]
-        settings['private-address'] = private_addr
+    settings['private-address'] = get_relation_ip('cluster')
 
     relation_set(relation_id=rid, relation_settings=settings)
 

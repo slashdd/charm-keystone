@@ -373,6 +373,7 @@ class KeystoneRelationTests(CharmTestCase):
                     'identity-service': ['identity-service:0']}
             return rids.get(relation, [])
 
+        self.os_release.return_value = 'mitaka'
         self.relation_ids.side_effect = fake_relation_ids
 
         mock_run_in_apache.return_value = False
@@ -440,6 +441,7 @@ class KeystoneRelationTests(CharmTestCase):
             rids = {}
             return rids.get(relation, [])
 
+        self.os_release.return_value = 'mitaka'
         self.relation_ids.side_effect = fake_relation_ids
 
         mock_run_in_apache.return_value = False
@@ -508,6 +510,7 @@ class KeystoneRelationTests(CharmTestCase):
             rids = {'identity-service': ['identity-service:0']}
             return rids.get(relation, [])
 
+        self.os_release.return_value = 'mitaka'
         self.relation_ids.side_effect = fake_relation_ids
 
         mock_run_in_apache.return_value = False

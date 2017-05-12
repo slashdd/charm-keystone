@@ -264,6 +264,9 @@ def initialise_pki():
     NOTE: keystone.conf [signing] section must be up-to-date prior to
           executing this.
     """
+    if CompareOpenStackReleases(os_release('keystone-common')) >= 'pike':
+        # pike dropped support for PKI token; skip function
+        return
     ensure_pki_cert_paths()
     if not peer_units() or is_ssl_cert_master():
         log("Ensuring PKI token certs created", level=DEBUG)

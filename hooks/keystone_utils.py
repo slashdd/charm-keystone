@@ -352,6 +352,10 @@ valid_services = {
         "type": "alarming",
         "desc": "Aodh Alarming Service",
     },
+    "gnocchi": {
+        "type": "metric",
+        "desc": "Gnocchi Metric Service",
+    },
     "barbican": {
         "type": "key-manager",
         "desc": "Barbican secrets management service"

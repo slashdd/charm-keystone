@@ -45,13 +45,15 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
     DEFAULT_DOMAIN = 'default'
 
     def __init__(self, series=None, openstack=None,
-                 source=None, git=False, stable=False):
+                 source=None, git=False, stable=False, snap_source=None):
         """Deploy the entire test environment."""
         super(KeystoneBasicDeployment, self).__init__(series, openstack,
                                                       source, stable)
         self.keystone_num_units = 3
         self.keystone_api_version = 2
         self.git = git
+
+        self._setup_test_object(snap_source)
         self._add_services()
         self._add_relations()
         self._configure_services()
@@ -64,14 +66,49 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         self.d.sentry.wait()
         self._initialize_tests()
 
-    def _assert_services(self, should_run):
-        if self.is_liberty_or_newer():
-            services = ("apache2", "haproxy")
+    def _setup_test_object(self, snap_source):
+        self.snap_source = snap_source
+        if self.snap_source:
+            self.config_base = '/var/snap/keystone/common'
+            self.keystone_conf = ('{}/etc/keystone/keystone.conf.d/'
+                                  'keystone.conf'.format(self.config_base))
+            self.process_services = ["haproxy", "nginx", "uwsgi"]
+            self.init_services = ["snap.keystone.nginx",
+                                  "snap.keystone.uwsgi"]
+            self.no_origin = ['keystone']
+            self.keystone_config = {'openstack-origin': self.snap_source}
+            self.pymysql = '+pymysql'
+            self.policy_json = ('{}/etc/keystone/keystone.conf.d/policy.json'
+                                ''.format(self.config_base))
+            self.logging_config = ('{}/etc/keystone/logging.conf'
+                                   ''.format(self.config_base))
+            self.log_file = '{}/log/keystone.log'.format(self.config_base)
+            self.services_to_configs = {'uwsgi': self.keystone_conf}
         else:
-            services = ("keystone-all", "apache2", "haproxy")
+            self.config_base = ''
+            self.keystone_conf = '/etc/keystone/keystone.conf'
+            self.no_origin = []
+            self.keystone_config = {}
+            self.pymysql = ''
+            self.policy_json = ('{}/etc/keystone/policy.json'
+                                ''.format(self.config_base))
+            self.logging_config = ('{}/etc/keystone/logging.conf'
+                                   ''.format(self.config_base))
+            self.log_file = '/var/log/keystone/keystone.log'
+
+            if self.is_liberty_or_newer():
+                self.process_services = ["apache2", "haproxy"]
+                self.init_services = ['apache2']
+                self.services_to_configs = {'apache2': self.keystone_conf}
+            else:
+                self.process_services = ["keystone-all", "apache2", "haproxy"]
+                self.init_services = ['keystone']
+                self.services_to_configs = {'keystone-all': self.keystone_conf}
+
+    def _assert_services(self, should_run):
         for unit in self.keystone_sentries:
             u.get_unit_process_ids(
-                {unit: services}, expect_success=should_run)
+                {unit: self.process_services}, expect_success=should_run)
 
     def _add_services(self):
         """Add services
@@ -86,8 +123,8 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             {'name': 'rabbitmq-server'},  # satisfy wrkload stat
             {'name': 'cinder'},
         ]
-        super(KeystoneBasicDeployment, self)._add_services(this_service,
-                                                           other_services)
+        super(KeystoneBasicDeployment, self)._add_services(
+            this_service, other_services, no_origin=self.no_origin)
 
     def _add_relations(self):
         """Add all of the relations for the services."""
@@ -99,11 +136,11 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
 
     def _configure_services(self):
         """Configure all of the services."""
-        keystone_config = {
+        self.keystone_config.update({
             'admin-password': 'openstack',
             'admin-token': 'ubuntutesting',
             'preferred-api-version': self.keystone_api_version,
-        }
+        })
 
         if self.git:
             amulet_http_proxy = os.environ.get('AMULET_HTTP_PROXY')
@@ -129,7 +166,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
                 'http_proxy': amulet_http_proxy,
                 'https_proxy': amulet_http_proxy,
             }
-            keystone_config['openstack-origin-git'] = \
+            self.keystone_config['openstack-origin-git'] = \
                 yaml.dump(openstack_origin_git)
 
         pxc_config = {
@@ -143,7 +180,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
                          'overwrite': 'true',
                          'ephemeral-unmount': '/mnt'}
         configs = {
-            'keystone': keystone_config,
+            'keystone': self.keystone_config,
             'percona-cluster': pxc_config,
             'cinder': cinder_config,
         }
@@ -326,11 +363,8 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         else:
             services.update({self.cinder_sentry: ['cinder-api']})
 
-        if self.is_liberty_or_newer():
-            for i in range(0, self.keystone_num_units):
-                services.update({self.keystone_sentries[i]: ['apache2']})
-        else:
-            services.update({self.keystone_sentries[0]: ['keystone']})
+        for i in range(0, self.keystone_num_units):
+            services.update({self.keystone_sentries[i]: self.init_services})
 
         ret = u.validate_services_by_name(services)
         if ret:
@@ -703,22 +737,22 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         """Verify the data in the keystone config file,
            comparing some of the variables vs relation data."""
         u.log.debug('Checking keystone config file...')
-        conf = '/etc/keystone/keystone.conf'
         ks_ci_rel = self.keystone_sentries[0].relation(
             'identity-service',
             'cinder:identity-service')
         my_ks_rel = self.pxc_sentry.relation('shared-db',
                                              'keystone:shared-db')
-        db_uri = "mysql://{}:{}@{}/{}".format('keystone',
-                                              my_ks_rel['password'],
-                                              my_ks_rel['db_host'],
-                                              'keystone')
+        db_uri = "mysql{}://{}:{}@{}/{}".format(self.pymysql,
+                                                'keystone',
+                                                my_ks_rel['password'],
+                                                my_ks_rel['db_host'],
+                                                'keystone')
         expected = {
             'DEFAULT': {
                 'debug': 'False',
                 'admin_token': ks_ci_rel['admin_token'],
                 'use_syslog': 'False',
-                'log_config_append': '/etc/keystone/logging.conf',
+                'log_config_append': (self.logging_config),
                 'public_endpoint': u.valid_url,  # get specific
                 'admin_endpoint': u.valid_url,  # get specific
             },
@@ -756,7 +790,8 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
 
         for unit in self.keystone_sentries:
             for section, pairs in expected.iteritems():
-                ret = u.validate_config_data(unit, conf, section, pairs)
+                ret = u.validate_config_data(unit, self.keystone_conf, section,
+                                             pairs)
                 if ret:
                     message = "keystone config error: {}".format(ret)
                     amulet.raise_status(amulet.FAIL, msg=message)
@@ -768,7 +803,6 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             return
         u.log.debug('Checking keystone v3 policy.json file')
         self.set_api_version(3)
-        conf = '/etc/keystone/policy.json'
         ks_ci_rel = self.keystone_sentries[0].relation(
             'identity-service',
             'cinder:identity-service')
@@ -804,7 +838,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             }
 
         for unit in self.keystone_sentries:
-            data = json.loads(unit.file_contents(conf))
+            data = json.loads(unit.file_contents(self.policy_json))
             ret = u._validate_dict_data(expected, data)
             if ret:
                 message = "keystone policy.json error: {}".format(ret)
@@ -815,7 +849,6 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
     def test_302_keystone_logging_config(self):
         """Verify the data in the keystone logging config file"""
         u.log.debug('Checking keystone config file...')
-        conf = '/etc/keystone/logging.conf'
         expected = {
             'logger_root': {
                 'level': 'WARNING',
@@ -826,13 +859,14 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             },
             'handler_file': {
                 'level': 'DEBUG',
-                'args': "('/var/log/keystone/keystone.log', 'a')"
+                'args': "('{}', 'a')".format(self.log_file)
             }
         }
 
         for unit in self.keystone_sentries:
             for section, pairs in expected.iteritems():
-                ret = u.validate_config_data(unit, conf, section, pairs)
+                ret = u.validate_config_data(unit, self.logging_config,
+                                             section, pairs)
                 if ret:
                     message = "keystone logging config error: {}".format(ret)
                     amulet.raise_status(amulet.FAIL, msg=message)
@@ -847,19 +881,13 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         set_default = {'use-syslog': 'False'}
         set_alternate = {'use-syslog': 'True'}
 
-        # Services which are expected to restart upon config change,
-        # and corresponding config files affected by the change
-        if self.is_liberty_or_newer():
-            services = {'apache2': '/etc/keystone/keystone.conf'}
-        else:
-            services = {'keystone-all': '/etc/keystone/keystone.conf'}
         # Make config change, check for service restarts
         u.log.debug('Making config change on {}...'.format(juju_service))
         mtime = u.get_sentry_time(sentry)
         self.d.configure(juju_service, set_alternate)
 
         sleep_time = 30
-        for s, conf_file in services.iteritems():
+        for s, conf_file in self.services_to_configs.iteritems():
             u.log.debug("Checking that service restarted: {}".format(s))
             if not u.validate_service_config_changed(sentry, mtime, s,
                                                      conf_file,

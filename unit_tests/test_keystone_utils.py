@@ -19,7 +19,10 @@ from base64 import b64encode
 import subprocess
 
 os.environ['JUJU_UNIT_NAME'] = 'keystone'
-with patch('charmhelpers.core.hookenv.config') as config:
+with patch('charmhelpers.core.hookenv.config') as config, \
+        patch('charmhelpers.contrib.openstack.'
+              'utils.snap_install_requested') as snap_install_requested:
+    snap_install_requested.return_value = False
     import keystone_utils as utils
 
 TO_PATCH = [
@@ -49,6 +52,7 @@ TO_PATCH = [
     'service_restart',
     'service_stop',
     'service_start',
+    'snap_install_requested',
     'relation_get',
     'relation_set',
     'relation_ids',
@@ -86,6 +90,7 @@ class TestKeystoneUtils(CharmTestCase):
     def setUp(self):
         super(TestKeystoneUtils, self).setUp(utils, TO_PATCH)
         self.config.side_effect = self.test_config.get
+        self.snap_install_requested.return_value = False
 
         self.ctxt = MagicMock()
         self.rsc_map = {
@@ -138,6 +143,7 @@ class TestKeystoneUtils(CharmTestCase):
     @patch('charmhelpers.contrib.openstack.utils.config')
     def test_determine_packages(self, _config):
         self.os_release.return_value = 'havana'
+        self.snap_install_requested.return_value = False
         _config.return_value = None
         result = utils.determine_packages()
         ex = utils.BASE_PACKAGES + ['keystone', 'python-keystoneclient']

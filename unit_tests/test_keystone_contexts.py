@@ -14,8 +14,12 @@
 
 import os
 
-import keystone_context as context
 from mock import patch, MagicMock
+with patch('charmhelpers.contrib.openstack.'
+           'utils.snap_install_requested') as snap_install_requested:
+    snap_install_requested.return_value = False
+    import keystone_utils  # noqa
+    import keystone_context as context
 
 from test_utils import (
     CharmTestCase
@@ -166,7 +170,9 @@ class TestKeystoneContexts(CharmTestCase):
         ctxt = context.KeystoneLoggingContext()
 
         mock_config.return_value = None
-        self.assertEqual({'log_level': None}, ctxt())
+        self.assertEqual({'log_level': None,
+                          'log_file': '/var/log/keystone/keystone.log'},
+                         ctxt())
 
     @patch.object(context, 'is_elected_leader')
     def test_token_flush_context(self, mock_is_elected_leader):

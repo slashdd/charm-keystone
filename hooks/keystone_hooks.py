@@ -71,6 +71,9 @@ from charmhelpers.contrib.openstack.utils import (
     pausable_restart_on_change as restart_on_change,
     is_unit_paused_set,
     CompareOpenStackReleases,
+    snap_install_requested,
+    install_os_snaps,
+    get_snaps_install_info_from_origin,
 )
 
 from keystone_utils import (
@@ -84,12 +87,14 @@ from keystone_utils import (
     git_install,
     migrate_database,
     save_script_rc,
+    post_snap_install,
     synchronize_ca_if_changed,
     register_configs,
     restart_map,
     services,
     CLUSTER_RES,
     KEYSTONE_CONF,
+    KEYSTONE_USER,
     POLICY_JSON,
     TOKEN_FLUSH_CRON_FILE,
     SSH_USER,
@@ -170,20 +175,32 @@ def install():
     status_set('maintenance', 'Installing apt packages')
     apt_update()
     apt_install(determine_packages(), fatal=True)
-    # unconfigured keystone service will prevent start of haproxy in some
-    # circumstances. make sure haproxy runs. LP #1648396
-    service_stop('keystone')
-    service_start('haproxy')
-    if run_in_apache():
-        disable_unused_apache_sites()
-        if not git_install_requested():
-            service_pause('keystone')
+
+    if snap_install_requested():
+        status_set('maintenance', 'Installing keystone snap')
+        # NOTE(thedac) Setting devmode until LP#1719636 is fixed
+        install_os_snaps(
+            get_snaps_install_info_from_origin(
+                ['keystone'],
+                config('openstack-origin'),
+                mode='devmode'))
+        post_snap_install()
+        service_stop('snap.keystone.*')
+    else:
+        # unconfigured keystone service will prevent start of haproxy in some
+        # circumstances. make sure haproxy runs. LP #1648396
+        service_stop('keystone')
+        service_start('haproxy')
+        if run_in_apache():
+            disable_unused_apache_sites()
+            if not git_install_requested():
+                service_pause('keystone')
 
     status_set('maintenance', 'Git install')
     git_install(config('openstack-origin-git'))
 
-    unison.ensure_user(user=SSH_USER, group='juju_keystone')
-    unison.ensure_user(user=SSH_USER, group='keystone')
+    unison.ensure_user(user=SSH_USER, group=SSH_USER)
+    unison.ensure_user(user=SSH_USER, group=KEYSTONE_USER)
 
 
 @hooks.hook('config-changed')
@@ -197,11 +214,11 @@ def config_changed():
         sync_db_with_multi_ipv6_addresses(config('database'),
                                           config('database-user'))
 
-    unison.ensure_user(user=SSH_USER, group='juju_keystone')
-    unison.ensure_user(user=SSH_USER, group='keystone')
+    unison.ensure_user(user=SSH_USER, group=SSH_USER)
+    unison.ensure_user(user=SSH_USER, group=KEYSTONE_USER)
     homedir = unison.get_homedir(SSH_USER)
     if not os.path.isdir(homedir):
-        mkdir(homedir, SSH_USER, 'juju_keystone', 0o775)
+        mkdir(homedir, SSH_USER, SSH_USER, 0o775)
 
     if git_install_requested():
         if config_value_changed('openstack-origin-git'):
@@ -226,7 +243,8 @@ def config_changed_postupgrade():
     # Ensure ssl dir exists and is unison-accessible
     ensure_ssl_dir()
 
-    check_call(['chmod', '-R', 'g+wrx', '/var/lib/keystone/'])
+    if not snap_install_requested():
+        check_call(['chmod', '-R', 'g+wrx', '/var/lib/keystone/'])
 
     ensure_ssl_dirs()
 
@@ -239,15 +257,22 @@ def config_changed_postupgrade():
         # when deployed from source, init scripts aren't installed
         if not git_install_requested():
             service_pause('keystone')
+
         disable_unused_apache_sites()
-        CONFIGS.write(WSGI_KEYSTONE_API_CONF)
+        if WSGI_KEYSTONE_API_CONF in CONFIGS.templates:
+            CONFIGS.write(WSGI_KEYSTONE_API_CONF)
         if not is_unit_paused_set():
             restart_pid_check('apache2')
+
     configure_https()
     open_port(config('service-port'))
 
     update_nrpe_config()
+
     CONFIGS.write_all()
+
+    if snap_install_requested() and not is_unit_paused_set():
+        service_restart('snap.keystone.*')
 
     initialise_pki()
 
@@ -276,16 +301,25 @@ def initialise_pki():
     ensure_pki_cert_paths()
     if not peer_units() or is_ssl_cert_master():
         log("Ensuring PKI token certs created", level=DEBUG)
-        cmd = ['keystone-manage', 'pki_setup', '--keystone-user', 'keystone',
-               '--keystone-group', 'keystone']
+        if snap_install_requested():
+            cmd = ['/snap/bin/keystone-manage', 'pki_setup',
+                   '--keystone-user', KEYSTONE_USER,
+                   '--keystone-group', KEYSTONE_USER]
+            _log_dir = '/var/snap/keystone/common/log'
+        else:
+            cmd = ['keystone-manage', 'pki_setup',
+                   '--keystone-user', KEYSTONE_USER,
+                   '--keystone-group', KEYSTONE_USER]
+            _log_dir = '/var/log/keystone'
         check_call(cmd)
 
         # Ensure logfile has keystone perms since we may have just created it
         # with root.
-        ensure_permissions('/var/log/keystone', user='keystone',
-                           group='keystone', perms=0o744)
-        ensure_permissions('/var/log/keystone/keystone.log', user='keystone',
-                           group='keystone', perms=0o644)
+        ensure_permissions(_log_dir, user=KEYSTONE_USER,
+                           group=KEYSTONE_USER, perms=0o744)
+        ensure_permissions('{}/keystone.log'.format(_log_dir),
+                           user=KEYSTONE_USER, group=KEYSTONE_USER,
+                           perms=0o644)
 
     ensure_pki_dir_permissions()
 
@@ -559,7 +593,7 @@ def send_ssl_sync_request():
 @hooks.hook('cluster-relation-joined')
 def cluster_joined(rid=None, ssl_sync_request=True):
     unison.ssh_authorized_peers(user=SSH_USER,
-                                group='juju_keystone',
+                                group=SSH_USER,
                                 peer_interface='cluster',
                                 ensure_local_user=True)
 
@@ -585,7 +619,7 @@ def cluster_joined(rid=None, ssl_sync_request=True):
 @update_certs_if_available
 def cluster_changed():
     unison.ssh_authorized_peers(user=SSH_USER,
-                                group='juju_keystone',
+                                group=SSH_USER,
                                 peer_interface='cluster',
                                 ensure_local_user=True)
     # NOTE(jamespage) re-echo passwords for peer storage
@@ -775,7 +809,10 @@ def domain_backend_changed(relation_id=None, unit=None):
         db = unitdata.kv()
         if restart_nonce != db.get(domain_nonce_key):
             if not is_unit_paused_set():
-                service_restart(keystone_service())
+                if snap_install_requested():
+                    service_restart('snap.keystone.*')
+                else:
+                    service_restart(keystone_service())
             db.set(domain_nonce_key, restart_nonce)
             db.flush()
 
@@ -789,6 +826,10 @@ def configure_https():
     # need to write all to ensure changes to the entire request pipeline
     # propagate (c-api, haprxy, apache)
     CONFIGS.write_all()
+    # NOTE (thedac): When using snaps, nginx is installed, skip any apache2
+    # config.
+    if snap_install_requested():
+        return
     if 'https' in CONFIGS.complete_contexts():
         cmd = ['a2ensite', 'openstack_https_frontend']
         check_call(cmd)
@@ -805,7 +846,7 @@ def upgrade_charm():
     status_set('maintenance', 'Installing apt packages')
     apt_install(filter_installed_packages(determine_packages()))
     unison.ssh_authorized_peers(user=SSH_USER,
-                                group='juju_keystone',
+                                group=SSH_USER,
                                 peer_interface='cluster',
                                 ensure_local_user=True)
 
@@ -842,7 +883,12 @@ def update_nrpe_config():
     current_unit = nrpe.get_nagios_unit_name()
     nrpe_setup = nrpe.NRPE(hostname=hostname)
     nrpe.copy_nrpe_checks()
-    nrpe.add_init_service_checks(nrpe_setup, services(), current_unit)
+    _services = []
+    for service in services():
+        if service.startswith('snap.'):
+            service = service.split('.')[1]
+        _services.append(service)
+    nrpe.add_init_service_checks(nrpe_setup, _services, current_unit)
     nrpe.add_haproxy_checks(nrpe_setup, current_unit)
     nrpe_setup.write()
 

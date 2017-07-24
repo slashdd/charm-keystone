@@ -30,6 +30,7 @@ from charmhelpers.contrib.hahelpers.cluster import (
     determine_apache_port,
     determine_api_port,
     is_elected_leader,
+    https,
 )
 
 from charmhelpers.core.hookenv import (
@@ -56,11 +57,90 @@ def is_cert_provided_in_config():
     return bool(ca and cert and key)
 
 
-class ApacheSSLContext(context.ApacheSSLContext):
+class SSLContext(context.ApacheSSLContext):
+
+    def configure_cert(self, cn):
+        from keystone_utils import (
+            SSH_USER,
+            get_ca,
+            ensure_permissions,
+            is_ssl_cert_master,
+            KEYSTONE_USER,
+        )
+
+        # Ensure ssl dir exists whether master or not
+        perms = 0o775
+        mkdir(path=self.ssl_dir, owner=SSH_USER, group=KEYSTONE_USER,
+              perms=perms)
+        # Ensure accessible by keystone ssh user and group (for sync)
+        ensure_permissions(self.ssl_dir, user=SSH_USER, group=KEYSTONE_USER,
+                           perms=perms)
+
+        if not is_cert_provided_in_config() and not is_ssl_cert_master():
+            log("Not ssl-cert-master - skipping apache cert config until "
+                "master is elected", level=INFO)
+            return
+
+        log("Creating apache ssl certs in %s" % (self.ssl_dir), level=INFO)
+
+        cert = config('ssl_cert')
+        key = config('ssl_key')
+
+        if not (cert and key):
+            ca = get_ca(user=SSH_USER)
+            cert, key = ca.get_cert_and_key(common_name=cn)
+        else:
+            cert = b64decode(cert)
+            key = b64decode(key)
+
+        write_file(path=os.path.join(self.ssl_dir, 'cert_{}'.format(cn)),
+                   content=cert, owner=SSH_USER, group=KEYSTONE_USER,
+                   perms=0o644)
+        write_file(path=os.path.join(self.ssl_dir, 'key_{}'.format(cn)),
+                   content=key, owner=SSH_USER, group=KEYSTONE_USER,
+                   perms=0o644)
+
+    def configure_ca(self):
+        from keystone_utils import (
+            SSH_USER,
+            get_ca,
+            ensure_permissions,
+            is_ssl_cert_master,
+            KEYSTONE_USER,
+        )
+
+        if not is_cert_provided_in_config() and not is_ssl_cert_master():
+            log("Not ssl-cert-master - skipping apache ca config until "
+                "master is elected", level=INFO)
+            return
+
+        ca_cert = config('ssl_ca')
+        if ca_cert is None:
+            ca = get_ca(user=SSH_USER)
+            ca_cert = ca.get_ca_bundle()
+        else:
+            ca_cert = b64decode(ca_cert)
+
+        # Ensure accessible by keystone ssh user and group (unison)
+        install_ca_cert(ca_cert)
+        ensure_permissions(CA_CERT_PATH, user=SSH_USER, group=KEYSTONE_USER,
+                           perms=0o0644)
+
+    def canonical_names(self):
+        addresses = self.get_network_addresses()
+        addrs = []
+        for address, endpoint in addresses:
+            addrs.append(endpoint)
+
+        return list(set(addrs))
+
+
+class ApacheSSLContext(SSLContext):
 
     interfaces = ['https']
     external_ports = []
     service_namespace = 'keystone'
+    ssl_dir = os.path.join('/etc/apache2/ssl/', service_namespace)
 
     def __call__(self):
         # late import to work around circular dependency
@@ -69,9 +149,7 @@ class ApacheSSLContext(context.ApacheSSLContext):
             update_hash_from_path,
         )
 
-        ssl_paths = [CA_CERT_PATH,
-                     os.path.join('/etc/apache2/ssl/',
-                                  self.service_namespace)]
+        ssl_paths = [CA_CERT_PATH, self.ssl_dir]
 
         self.external_ports = determine_ports()
         before = hashlib.sha256()
@@ -90,76 +168,75 @@ class ApacheSSLContext(context.ApacheSSLContext):
 
         return ret
 
-    def configure_cert(self, cn):
+
+class NginxSSLContext(SSLContext):
+
+    interfaces = ['https']
+    external_ports = []
+    service_namespace = 'keystone'
+    ssl_dir = ('/var/snap/{}/common/lib/juju_ssl/{}/'
+               ''.format(service_namespace, service_namespace))
+
+    def __call__(self):
+        # late import to work around circular dependency
         from keystone_utils import (
-            SSH_USER,
-            get_ca,
-            ensure_permissions,
-            is_ssl_cert_master,
+            determine_ports,
+            update_hash_from_path,
+            APACHE_SSL_DIR
         )
 
-        # Ensure ssl dir exists whether master or not
-        ssl_dir = os.path.join('/etc/apache2/ssl/', self.service_namespace)
-        perms = 0o755
-        mkdir(path=ssl_dir, owner=SSH_USER, group='keystone', perms=perms)
-        # Ensure accessible by keystone ssh user and group (for sync)
-        ensure_permissions(ssl_dir, user=SSH_USER, group='keystone',
-                           perms=perms)
+        ssl_paths = [CA_CERT_PATH, APACHE_SSL_DIR]
 
-        if not is_cert_provided_in_config() and not is_ssl_cert_master():
-            log("Not ssl-cert-master - skipping apache cert config until "
-                "master is elected", level=INFO)
-            return
+        self.external_ports = determine_ports()
+        before = hashlib.sha256()
+        for path in ssl_paths:
+            update_hash_from_path(before, path)
 
-        log("Creating apache ssl certs in %s" % (ssl_dir), level=INFO)
+        ret = super(NginxSSLContext, self).__call__()
+        if not ret:
+            log("SSL not used", level='DEBUG')
+            return {}
 
-        cert = config('ssl_cert')
-        key = config('ssl_key')
+        after = hashlib.sha256()
+        for path in ssl_paths:
+            update_hash_from_path(after, path)
 
-        if not (cert and key):
-            ca = get_ca(user=SSH_USER)
-            cert, key = ca.get_cert_and_key(common_name=cn)
-        else:
-            cert = b64decode(cert)
-            key = b64decode(key)
+        # Ensure that Nginx is restarted if these change
+        if before.hexdigest() != after.hexdigest():
+            service_restart('snap.keystone.nginx')
 
-        write_file(path=os.path.join(ssl_dir, 'cert_{}'.format(cn)),
-                   content=cert, owner=SSH_USER, group='keystone', perms=0o644)
-        write_file(path=os.path.join(ssl_dir, 'key_{}'.format(cn)),
-                   content=key, owner=SSH_USER, group='keystone', perms=0o644)
+        # Transform for use by Nginx
+        """
+        {'endpoints': [(u'10.5.0.30', u'10.5.0.30', 4990, 4980),
+                       (u'10.5.0.30', u'10.5.0.30', 35347, 35337)],
+         'ext_ports': [4990, 35347],
+         'namespace': 'keystone'}
+        """
 
-    def configure_ca(self):
-        from keystone_utils import (
-            SSH_USER,
-            get_ca,
-            ensure_permissions,
-            is_ssl_cert_master,
-        )
+        nginx_ret = {}
+        nginx_ret['ssl'] = https()
+        nginx_ret['namespace'] = self.service_namespace
+        endpoints = {}
+        for ep in ret['endpoints']:
+            int_address, address, ext, internal = ep
+            if ext <= 5000:
+                endpoints['public'] = {
+                    'socket': 'public',
+                    'address': address,
+                    'ext': ext}
+            elif ext >= 35337:
+                endpoints['admin'] = {
+                    'socket': 'admin',
+                    'address': address,
+                    'ext': ext}
+            else:
+                log("Unrecognized internal port", level='ERROR')
+        nginx_ret['endpoints'] = endpoints
 
-        if not is_cert_provided_in_config() and not is_ssl_cert_master():
-            log("Not ssl-cert-master - skipping apache ca config until "
-                "master is elected", level=INFO)
-            return
+        return nginx_ret
 
-        ca_cert = config('ssl_ca')
-        if ca_cert is None:
-            ca = get_ca(user=SSH_USER)
-            ca_cert = ca.get_ca_bundle()
-        else:
-            ca_cert = b64decode(ca_cert)
-
-        # Ensure accessible by keystone ssh user and group (unison)
-        install_ca_cert(ca_cert)
-        ensure_permissions(CA_CERT_PATH, user=SSH_USER, group='keystone',
-                           perms=0o0644)
-
-    def canonical_names(self):
-        addresses = self.get_network_addresses()
-        addrs = []
-        for address, endpoint in addresses:
-            addrs.append(endpoint)
-
-        return list(set(addrs))
+    def enable_modules(self):
+        return
 
 
 class HAProxyContext(context.HAProxyContext):
@@ -207,6 +284,7 @@ class KeystoneContext(context.OSContextGenerator):
         from keystone_utils import (
             api_port, set_admin_token, endpoint_url, resolve_address,
             PUBLIC, ADMIN, PKI_CERTS_DIR, ensure_pki_cert_paths, ADMIN_DOMAIN,
+            snap_install_requested,
         )
         ctxt = {}
         ctxt['token'] = set_admin_token(config('admin-token'))
@@ -265,12 +343,27 @@ class KeystoneContext(context.OSContextGenerator):
             resolve_address(ADMIN),
             api_port('keystone-admin')).replace('v2.0', '')
 
+        if snap_install_requested():
+            ctxt['domain_config_dir'] = (
+                '/var/snap/keystone/common/etc/keystone/domains')
+            ctxt['log_config'] = (
+                '/var/snap/keystone/common/etc/keystone/logging.conf')
+            ctxt['paste_config_file'] = (
+                '/var/snap/keystone/common/etc/keystone/keystone-paste.ini')
+        else:
+            ctxt['domain_config_dir'] = '/etc/keystone/domains'
+            ctxt['log_config'] = ('/etc/keystone/logging.conf')
+            ctxt['paste_config_file'] = '/etc/keystone/keystone-paste.ini'
+
         return ctxt
 
 
 class KeystoneLoggingContext(context.OSContextGenerator):
 
     def __call__(self):
+        from keystone_utils import (
+            snap_install_requested,
+        )
         ctxt = {}
         debug = config('debug')
         if debug:
@@ -283,6 +376,11 @@ class KeystoneLoggingContext(context.OSContextGenerator):
             log("log-level must be one of the following states "
                 "(WARNING, INFO, DEBUG, ERROR) keeping the current state.")
             ctxt['log_level'] = None
+        if snap_install_requested():
+            ctxt['log_file'] = (
+                '/var/snap/keystone/common/log/keystone.log')
+        else:
+            ctxt['log_file'] = '/var/log/keystone/keystone.log'
 
         return ctxt
 

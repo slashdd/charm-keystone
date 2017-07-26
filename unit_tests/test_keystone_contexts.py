@@ -58,6 +58,10 @@ class TestKeystoneContexts(CharmTestCase):
         self.assertTrue(mock_ensure_permissions.called)
         self.assertFalse(mock_get_ca.called)
 
+    @patch('charmhelpers.contrib.hahelpers.cluster.relation_ids')
+    @patch('charmhelpers.contrib.openstack.ip.unit_get')
+    @patch('charmhelpers.contrib.openstack.ip.service_name')
+    @patch('charmhelpers.contrib.openstack.ip.config')
     @patch('keystone_utils.determine_ports')
     @patch('keystone_utils.is_ssl_cert_master')
     @patch('charmhelpers.contrib.openstack.context.config')
@@ -73,14 +77,21 @@ class TestKeystoneContexts(CharmTestCase):
                                                 mock_is_clustered,
                                                 mock_config,
                                                 mock_is_ssl_cert_master,
-                                                mock_determine_ports):
+                                                mock_determine_ports,
+                                                mock_ip_config,
+                                                mock_service_name,
+                                                mock_ip_unit_get,
+                                                mock_rel_ids,
+                                                ):
         mock_is_ssl_cert_master.return_value = True
         mock_https.return_value = True
         mock_unit_get.return_value = '1.2.3.4'
+        mock_ip_unit_get.return_value = '1.2.3.4'
         mock_determine_api_port.return_value = '12'
         mock_determine_apache_port.return_value = '34'
         mock_is_clustered.return_value = False
         mock_config.return_value = None
+        mock_ip_config.return_value = None
         mock_determine_ports.return_value = ['12']
 
         ctxt = context.ApacheSSLContext()
@@ -149,33 +160,6 @@ class TestKeystoneContexts(CharmTestCase):
              }}
              }
         )
-
-    @patch('charmhelpers.contrib.openstack.context.log')
-    @patch('charmhelpers.contrib.openstack.context.config')
-    @patch('charmhelpers.contrib.openstack.context.unit_get')
-    @patch('charmhelpers.contrib.openstack.context.is_clustered')
-    @patch('charmhelpers.contrib.network.ip.get_address_in_network')
-    def test_canonical_names_without_network_splits(self,
-                                                    mock_get_address,
-                                                    mock_is_clustered,
-                                                    mock_unit_get,
-                                                    mock_config,
-                                                    mock_log):
-        NET_CONFIG = {'vip': '10.0.3.1 10.0.3.2',
-                      'os-internal-network': None,
-                      'os-admin-network': None,
-                      'os-public-network': None}
-
-        mock_unit_get.return_value = '10.0.3.10'
-        mock_is_clustered.return_value = True
-        config = {}
-        config.update(NET_CONFIG)
-        mock_config.side_effect = lambda key: config[key]
-        apache = context.ApacheSSLContext()
-        apache.canonical_names()
-        msg = "Multiple networks configured but net_type" \
-              " is None (os-public-network)."
-        mock_log.assert_called_with(msg, level="WARNING")
 
     @patch.object(context, 'config')
     def test_keystone_logger_context(self, mock_config):

@@ -34,7 +34,7 @@ from base64 import b64encode
 from collections import OrderedDict
 from copy import deepcopy
 
-from charmhelpers.contrib.hahelpers.cluster import(
+from charmhelpers.contrib.hahelpers.cluster import (
     is_elected_leader,
     determine_api_port,
     https,
@@ -105,6 +105,8 @@ from charmhelpers.core.hookenv import (
     DEBUG,
     INFO,
     WARNING,
+    ERROR,
+    is_leader,
 )
 
 from charmhelpers.fetch import (
@@ -1344,19 +1346,46 @@ def get_ssl_sync_request_units():
 
 def is_ssl_cert_master(votes=None):
     """Return True if this unit is ssl cert master."""
-    master = None
-    for rid in relation_ids('cluster'):
-        master = relation_get(attribute='ssl-cert-master', rid=rid,
-                              unit=local_unit())
 
-    if master == local_unit():
-        votes = votes or get_ssl_cert_master_votes()
-        if not peer_units() or (len(votes) == 1 and master in votes):
-            return True
+    votes = votes or get_ssl_cert_master_votes()
+    set_votes = set(votes)
+    # Discard unknown votes
+    if 'unknown' in set_votes:
+        set_votes.remove('unknown')
 
+    # This is the elected ssl-cert-master leader
+    if len(set_votes) == 1 and set_votes == set([local_unit()]):
+        log("This unit is the elected ssl-cert-master "
+            "{}".format(votes), level=DEBUG)
+        return True
+
+    # Contested election
+    if len(set_votes) > 1:
         log("Did not get consensus from peers on who is ssl-cert-master "
-            "(%s)" % (votes), level=INFO)
+            "{}".format(votes), level=DEBUG)
+        return False
 
+    # Neither the elected ssl-cert-master leader nor the juju leader
+    if not is_leader():
+        return False
+    # Only the juju elected leader continues
+
+    # Singleton
+    if not peer_units():
+        log("This unit is a singleton and thefore ssl-cert-master",
+            level=DEBUG)
+        return True
+
+    # Early in the process and juju leader
+    if not votes:
+        log("This unit is the juju leader and there are no votes yet, "
+            "becoming the ssl-cert-master",
+            level=DEBUG)
+        return True
+
+    # Should never reach here
+    log("Could not determine the ssl-cert-master. Missing edge case.",
+        level=ERROR)
     return False
 
 

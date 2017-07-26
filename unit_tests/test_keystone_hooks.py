@@ -813,7 +813,7 @@ class KeystoneRelationTests(CharmTestCase):
 
     def test_ha_joined_duplicate_vip_key(self):
         self.get_hacluster_config.return_value = {
-            'vip': '10.10.10.10 10.10.10.11',
+            'vip': '10.10.10.10 10.10.10.10',
             'ha-bindiface': 'em0',
             'ha-mcastport': '8080'
         }
@@ -829,6 +829,33 @@ class KeystoneRelationTests(CharmTestCase):
                           'res_ks_haproxy': 'lsb:haproxy'},
             'resource_params': {
                 'res_ks_em1_vip': 'params ip="10.10.10.10"'
+                                  ' cidr_netmask="255.255.255.0" nic="em1"',
+                'res_ks_haproxy': 'op monitor interval="5s"'},
+            'clones': {'cl_ks_haproxy': 'res_ks_haproxy'}
+        }
+        self.relation_set.assert_called_with(**args)
+
+    def test_ha_joined_dual_stack_vips(self):
+        self.get_hacluster_config.return_value = {
+            'vip': '10.10.10.10 2001:db8::abc',
+            'ha-bindiface': 'em0',
+            'ha-mcastport': '8080'
+        }
+        self.get_iface_for_address.return_value = 'em1'
+        self.get_netmask_for_address.return_value = '255.255.255.0'
+        hooks.ha_joined()
+        args = {
+            'relation_id': None,
+            'corosync_bindiface': 'em0',
+            'corosync_mcastport': '8080',
+            'init_services': {'res_ks_haproxy': 'haproxy'},
+            'resources': {'res_ks_em1_vip': 'ocf:heartbeat:IPaddr2',
+                          'res_ks_em1_vip_ipv6addr': 'ocf:heartbeat:IPv6addr',
+                          'res_ks_haproxy': 'lsb:haproxy'},
+            'resource_params': {
+                'res_ks_em1_vip': 'params ip="10.10.10.10"'
+                                  ' cidr_netmask="255.255.255.0" nic="em1"',
+                'res_ks_em1_vip_ipv6addr': 'params ipv6addr="2001:db8::abc"'
                                   ' cidr_netmask="255.255.255.0" nic="em1"',
                 'res_ks_haproxy': 'op monitor interval="5s"'},
             'clones': {'cl_ks_haproxy': 'res_ks_haproxy'}
@@ -937,7 +964,8 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertTrue(configs.write_all.called)
         self.assertFalse(mock_synchronize_ca.called)
 
-    @patch.object(hooks, 'update_all_identity_relation_units')
+    @patch.object(hooks, 'is_ssl_cert_master')
+    @patch.object(hooks, 'update_all_identity_relation_units_force_sync')
     @patch.object(hooks, 'is_db_initialised')
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
@@ -948,7 +976,7 @@ class KeystoneRelationTests(CharmTestCase):
                                                   mock_ensure_ssl_cert_master,
                                                   mock_log,
                                                   mock_is_db_initialised,
-                                                  update):
+                                                  update, cert_master):
         mock_is_db_initialised.return_value = True
         self.is_db_ready.return_value = True
         mock_ensure_ssl_cert_master.return_value = False
@@ -956,6 +984,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.is_elected_leader.return_value = True
         self.relation_ids.return_value = ['identity-service:0']
         self.related_units.return_value = ['unit/0']
+        cert_master.return_value = True
 
         hooks.ha_changed()
         self.assertTrue(configs.write_all.called)

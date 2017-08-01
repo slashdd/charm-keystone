@@ -356,6 +356,10 @@ valid_services = {
         "type": "metric",
         "desc": "Gnocchi Metric Service",
     },
+    "panko": {
+        "type": "event",
+        "desc": "Panko Event Service",
+    },
     "barbican": {
         "type": "key-manager",
         "desc": "Barbican secrets management service"

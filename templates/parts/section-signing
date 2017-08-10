@@ -1,3 +1,4 @@
+{% if enable_signing -%}
 [signing]
 {% if certfile -%}
 certfile = {{ certfile }}
@@ -10,4 +11,5 @@ ca_certs = {{ ca_certs }}
 {% endif -%}
 {% if ca_key -%}
 ca_key = {{ ca_key }}
-{% endif -%} 
+{% endif -%}
+{% endif -%}

@@ -247,13 +247,19 @@ class KeystoneContext(context.OSContextGenerator):
             log("Enabling PKI", level=DEBUG)
             ctxt['token_provider'] = 'pki'
 
-        ensure_pki_cert_paths()
-        certs = os.path.join(PKI_CERTS_DIR, 'certs')
-        privates = os.path.join(PKI_CERTS_DIR, 'privates')
-        ctxt.update({'certfile': os.path.join(certs, 'signing_cert.pem'),
-                     'keyfile': os.path.join(privates, 'signing_key.pem'),
-                     'ca_certs': os.path.join(certs, 'ca.pem'),
-                     'ca_key': os.path.join(certs, 'ca_key.pem')})
+            # NOTE(jamespage): Only check PKI configuration if the PKI
+            #                  token format is in use, which has been
+            #                  removed as of OpenStack Ocata.
+            ensure_pki_cert_paths()
+            certs = os.path.join(PKI_CERTS_DIR, 'certs')
+            privates = os.path.join(PKI_CERTS_DIR, 'privates')
+            ctxt['enable_signing'] = True
+            ctxt.update({'certfile': os.path.join(certs, 'signing_cert.pem'),
+                         'keyfile': os.path.join(privates, 'signing_key.pem'),
+                         'ca_certs': os.path.join(certs, 'ca.pem'),
+                         'ca_key': os.path.join(certs, 'ca_key.pem')})
+        else:
+            ctxt['enable_signing'] = False
 
         # Base endpoint URL's which are used in keystone responses
         # to unauthenticated requests to redirect clients to the

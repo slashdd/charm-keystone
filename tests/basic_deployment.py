@@ -154,7 +154,32 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         }
         super(KeystoneBasicDeployment, self)._configure_services(configs)
 
+    def api_change_required(self, api_version):
+        if api_version == 2:
+            try:
+                self.keystone_v2.service_catalog.get_urls()
+                u.log.debug('Already at required api version {}'
+                            ''.format(api_version))
+                return False
+            except (AttributeError, ksauth1_exceptions.http.Unauthorized):
+                u.log.debug('Change to api version {} required'
+                            ''.format(api_version))
+                return True
+        else:
+            try:
+                self.keystone_v3.service_catalog.get_urls()
+                u.log.debug('Already at required api version {}'
+                            ''.format(api_version))
+                return False
+            except (AttributeError, ksauth1_exceptions.http.Unauthorized):
+                u.log.debug('Change to api version {} required'
+                            ''.format(api_version))
+                return True
+
     def set_api_version(self, api_version):
+        # Avoid costly settings if we are already at the correct api_version
+        if not self.api_change_required(api_version):
+            return True
         u.log.debug('Setting preferred-api-version={}'.format(api_version))
         se_rels = []
         for i in range(0, self.keystone_num_units):
@@ -204,10 +229,10 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
                                           tenant_id=tenant.id,
                                           email='demo@demo.com')
 
-            # Authenticate keystone demo
-            self.keystone_demo = u.authenticate_keystone_user(
-                self.keystone_v2, user=self.demo_user,
-                password='password', tenant=self.demo_tenant)
+        # Authenticate keystone demo
+        self.keystone_demo = u.authenticate_keystone_user(
+            self.keystone_v2, user=self.demo_user,
+            password='password', tenant=self.demo_tenant)
 
     def create_users_v3(self):
         # Create a demo tenant/role/user
@@ -292,9 +317,6 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             'shared-db',
             'percona-cluster:shared-db')['private-address']
         self.set_api_version(2)
-        # Authenticate keystone admin
-        self.keystone_v2 = self.get_keystone_client(api_version=2)
-        self.keystone_v3 = self.get_keystone_client(api_version=3)
         self.create_users_v2()
 
     def test_100_services(self):
@@ -439,23 +461,15 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             u.log.info('Skipping test, {} < mitaka'.format(os_release))
             return False
 
-    def test_112_keystone_tenants(self):
-        if self.is_liberty_or_newer():
+    def test_112_keystone_list_resources(self):
+        if self.is_mitaka_or_newer():
             self.set_api_version(3)
             self.validate_keystone_tenants(self.keystone_v3)
-
-    def test_114_keystone_tenants(self):
-        if self.is_liberty_or_newer():
-            self.set_api_version(3)
             self.validate_keystone_roles(self.keystone_v3)
-
-    def test_116_keystone_users(self):
-        if self.is_liberty_or_newer():
-            self.set_api_version(3)
             self.validate_keystone_users(self.keystone_v3)
 
-    def test_118_keystone_users(self):
-        if self.is_liberty_or_newer():
+    def test_118_keystone_create_users(self):
+        if self.is_mitaka_or_newer():
             self.set_api_version(3)
             self.create_users_v3()
             actual_user = self.find_keystone_v3_user(self.keystone_v3,
@@ -476,7 +490,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
                 assert expect[key] == getattr(actual_user, key)
 
     def test_120_keystone_domains(self):
-        if self.is_liberty_or_newer():
+        if self.is_mitaka_or_newer():
             self.set_api_version(3)
             self.create_users_v3()
             actual_domain = self.keystone_v3.domains.find(
@@ -906,7 +920,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         #                option to fix this.
         return
 
-        if self.is_liberty_or_newer():
+        if self.is_mitaka_or_newer():
             timeout = int(os.environ.get('AMULET_SETUP_TIMEOUT', 900))
             self.set_api_version(3)
             self._auto_wait_for_status(

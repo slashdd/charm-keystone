@@ -67,6 +67,7 @@ TO_PATCH = [
     'time',
     'pwgen',
     'os_application_version_set',
+    'is_leader',
 ]
 
 openstack_origin_git = \

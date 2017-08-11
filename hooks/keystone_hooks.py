@@ -667,10 +667,12 @@ def ha_joined(relation_id=None):
             if iface is not None:
                 vip_key = 'res_ks_{}_vip'.format(iface)
                 if vip_key in vip_group:
-                    log("Resource '%s' (vip='%s') already exists in "
-                        "vip group - skipping" % (vip_key, vip),
-                        WARNING)
-                    continue
+                    if vip not in resource_params[vip_key]:
+                        vip_key = '{}_{}'.format(vip_key, vip_params)
+                    else:
+                        log("Resource '%s' (vip='%s') already exists in "
+                            "vip group - skipping" % (vip_key, vip), WARNING)
+                        continue
 
                 vip_group.append(vip_key)
                 resources[vip_key] = res_ks_vip
@@ -711,7 +713,10 @@ def ha_changed():
     if clustered:
         log('Cluster configured, notifying other services and updating '
             'keystone endpoint configuration')
-        update_all_identity_relation_units()
+        if is_ssl_cert_master():
+            update_all_identity_relation_units_force_sync()
+        else:
+            update_all_identity_relation_units()
 
 
 @hooks.hook('identity-admin-relation-changed')

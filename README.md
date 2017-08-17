@@ -110,10 +110,17 @@ and sync across peers. The cert will be distributed to all service endpoints
 which will be configured to use https as well as configuring themselves to be
 used as https.
 
-When configuring the charms to use SSL there are two means of configuring a CA.
-The user can provide their own using the options ssl_ca, ssl_cert, ssl_key
-which are available on all endpoint charms or, if not provided, the keystone
-charm will automatically generate a CA and certs to distribute to endpoints.
+When configuring the charms to use SSL there are three charm config options as
+ssl_ca, ssl_cert and ssl_key.
+
+- The user can provide their own CA, SSL cert and key using the options ssl_ca,
+  ssl_cert, ssl_key.
+
+- The user can provide SSL cert and key using ssl_cert and ssl_key when the cert
+  is signed by a trusted CA.
+
+- If not provided, the keystone charm will automatically generate a CA and certs
+  to distribute to endpoints.
 
 When the charm configures itself as a CA (generally only recommended for test
 purposes) it will elect an "ssl-cert-master" whose duty is to generate the CA

@@ -51,10 +51,9 @@ CA_CERT_PATH = '/usr/local/share/ca-certificates/keystone_juju_ca_cert.crt'
 
 
 def is_cert_provided_in_config():
-    ca = config('ssl_ca')
     cert = config('ssl_cert')
     key = config('ssl_key')
-    return bool(ca and cert and key)
+    return bool(cert and key)
 
 
 class SSLContext(context.ApacheSSLContext):
@@ -114,17 +113,25 @@ class SSLContext(context.ApacheSSLContext):
                 "master is elected", level=INFO)
             return
 
+        cert = config('ssl_cert')
+        key = config('ssl_key')
+
         ca_cert = config('ssl_ca')
-        if ca_cert is None:
+        if ca_cert:
+            ca_cert = b64decode(ca_cert)
+        elif not (cert and key):
+            # NOTE(hopem): if a cert and key are provided as config we don't
+            # mandate that a CA is also provided since it isn't necessarily
+            # needed. As a result we only generate a custom CA if we are also
+            # generating cert and key.
             ca = get_ca(user=SSH_USER)
             ca_cert = ca.get_ca_bundle()
-        else:
-            ca_cert = b64decode(ca_cert)
 
-        # Ensure accessible by keystone ssh user and group (unison)
-        install_ca_cert(ca_cert)
-        ensure_permissions(CA_CERT_PATH, user=SSH_USER, group=KEYSTONE_USER,
-                           perms=0o0644)
+        if ca_cert:
+            # Ensure accessible by keystone ssh user and group (unison)
+            install_ca_cert(ca_cert)
+            ensure_permissions(CA_CERT_PATH, user=SSH_USER,
+                               group=KEYSTONE_USER, perms=0o0644)
 
     def canonical_names(self):
         addresses = self.get_network_addresses()

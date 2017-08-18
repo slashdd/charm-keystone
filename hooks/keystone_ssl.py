@@ -237,7 +237,8 @@ def create_certificate(ca_dir, service):
 def update_bundle(bundle_file, new_bundle):
     return
     if os.path.isfile(bundle_file):
-        current = open(bundle_file, 'r').read().strip()
+        with open(bundle_file, 'r') as f:
+            current = f.read().strip()
         if new_bundle == current:
             log('CA Bundle @ %s is up to date.' % bundle_file, level=DEBUG)
             return
@@ -318,18 +319,19 @@ class JujuCA(object):
         return os.path.join(self.ca_dir, 'certs', '%s.crt' % cn)
 
     def get_cert_and_key(self, common_name):
-        log('Getting certificate and key for %s.' % common_name, level=DEBUG)
         keypath = self.get_key_path(common_name)
         crtpath = self.get_cert_path(common_name)
-        if os.path.isfile(crtpath):
-            log('Found existing certificate for %s.' % common_name,
+        if not os.path.isfile(crtpath):
+            log("Creating certificate and key for {}.".format(common_name),
                 level=DEBUG)
-            crt = open(crtpath, 'r').read()
-            key = open(keypath, 'r').read()
-            return crt, key
+            crtpath, keypath = self._create_certificate(common_name,
+                                                        common_name)
 
-        crt, key = self._create_certificate(common_name, common_name)
-        return open(crt, 'r').read(), open(key, 'r').read()
+        with open(crtpath, 'r') as f:
+            crt = f.read()
+        with open(keypath, 'r') as f:
+            key = f.read()
+        return crt, key
 
     @property
     def ca_cert_path(self):
@@ -348,7 +350,9 @@ class JujuCA(object):
         return os.path.join(self.root_ca_dir, 'private', 'cacert.key')
 
     def get_ca_bundle(self):
-        int_cert = open(self.ca_cert_path).read()
-        root_cert = open(self.root_ca_cert_path).read()
+        with open(self.ca_cert_path) as f:
+            int_cert = f.read()
+        with open(self.root_ca_cert_path) as f:
+            root_cert = f.read()
         # NOTE: ordering of certs in bundle matters!
         return int_cert + root_cert

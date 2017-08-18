@@ -42,7 +42,8 @@ def load_config():
                       'of %s. ' % file)
         raise Exception
 
-    return yaml.safe_load(open(config).read())['options']
+    with open(config) as f:
+        return yaml.safe_load(f)['options']
 
 
 def get_default_config():

@@ -580,8 +580,7 @@ def cluster_joined(rid=None, ssl_sync_request=True):
         send_ssl_sync_request()
 
 
-@hooks.hook('cluster-relation-changed',
-            'cluster-relation-departed')
+@hooks.hook('cluster-relation-changed')
 @restart_on_change(restart_map(), stopstart=True)
 @update_certs_if_available
 def cluster_changed():

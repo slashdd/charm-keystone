@@ -68,6 +68,7 @@ TO_PATCH = [
     'pwgen',
     'os_application_version_set',
     'is_leader',
+    'reset_os_release',
 ]
 
 openstack_origin_git = \
@@ -194,6 +195,7 @@ class TestKeystoneUtils(CharmTestCase):
         self.assertTrue(configs.write_all.called)
         self.assertTrue(migrate_database.called)
         disable_unused_apache_sites.assert_called_with()
+        self.reset_os_release.assert_called()
 
     def test_migrate_database(self):
         self.os_release.return_value = 'havana'

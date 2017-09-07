@@ -74,6 +74,7 @@ from charmhelpers.contrib.openstack.utils import (
     make_assess_status_func,
     os_application_version_set,
     CompareOpenStackReleases,
+    reset_os_release,
 )
 
 from charmhelpers.contrib.python.packages import (
@@ -585,6 +586,7 @@ def do_openstack_upgrade(configs):
         '--option', 'Dpkg::Options::=--force-confdef',
     ]
     apt_upgrade(options=dpkg_opts, fatal=True, dist=True)
+    reset_os_release()
     apt_install(packages=determine_packages(), options=dpkg_opts, fatal=True)
 
     # set CONFIGS to load templates from new release and regenerate config

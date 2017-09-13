@@ -309,8 +309,8 @@ class KeystoneRelationTests(CharmTestCase):
         self.os_release.return_value = 'havana'
         mock_ensure_ssl_cert_master.return_value = False
         self._shared_db_test(configs, 'keystone/3')
-        self.assertEquals([call('/etc/keystone/keystone.conf')],
-                          configs.write.call_args_list)
+        self.assertEqual([call('/etc/keystone/keystone.conf')],
+                         configs.write.call_args_list)
         self.assertTrue(leader_init.called)
 
     @patch.object(hooks, 'leader_init_db_if_ready')
@@ -322,8 +322,8 @@ class KeystoneRelationTests(CharmTestCase):
         self.os_release.return_value = 'havana'
         mock_ensure_ssl_cert_master.return_value = False
         self._postgresql_db_test(configs)
-        self.assertEquals([call('/etc/keystone/keystone.conf')],
-                          configs.write.call_args_list)
+        self.assertEqual([call('/etc/keystone/keystone.conf')],
+                         configs.write.call_args_list)
         self.assertTrue(leader_init.called)
 
     @patch.object(hooks, 'update_all_domain_backends')

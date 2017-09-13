@@ -99,11 +99,11 @@ class TestKeystoneContexts(CharmTestCase):
         ctxt.configure_cert = MagicMock()
         ctxt.configure_ca = MagicMock()
         ctxt.canonical_names = MagicMock()
-        self.assertEquals(ctxt(), {'endpoints': [('1.2.3.4',
-                                                  '1.2.3.4',
-                                                  34, 12)],
-                                   'namespace': 'keystone',
-                                   'ext_ports': [34]})
+        self.assertEqual(ctxt(), {'endpoints': [('1.2.3.4',
+                                                 '1.2.3.4',
+                                                 34, 12)],
+                                  'namespace': 'keystone',
+                                  'ext_ports': [34]})
         self.assertTrue(mock_https.called)
         mock_unit_get.assert_called_with('private-address')
 
@@ -140,7 +140,7 @@ class TestKeystoneContexts(CharmTestCase):
         ctxt = context.HAProxyContext()
 
         self.maxDiff = None
-        self.assertEquals(
+        self.assertEqual(
             ctxt(),
             {'listen_ports': {'admin_port': '12',
                               'public_port': '12'},

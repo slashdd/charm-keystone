@@ -127,13 +127,13 @@ class TestKeystoneUtils(CharmTestCase):
                 '/etc/apache2/sites-available/openstack_https_frontend.conf',
                 [self.ctxt]),
         ]
-        self.assertEquals(fake_renderer.register.call_args_list, ex_reg)
+        self.assertEqual(fake_renderer.register.call_args_list, ex_reg)
 
     def test_determine_ports(self):
         self.test_config.set('admin-port', '80')
         self.test_config.set('service-port', '81')
         result = utils.determine_ports()
-        self.assertEquals(result, ['80', '81'])
+        self.assertEqual(result, ['80', '81'])
 
     @patch('charmhelpers.contrib.openstack.utils.config')
     def test_determine_packages(self, _config):
@@ -141,7 +141,7 @@ class TestKeystoneUtils(CharmTestCase):
         _config.return_value = None
         result = utils.determine_packages()
         ex = utils.BASE_PACKAGES + ['keystone', 'python-keystoneclient']
-        self.assertEquals(set(ex), set(result))
+        self.assertEqual(set(ex), set(result))
 
     @patch('charmhelpers.contrib.openstack.utils.config')
     def test_determine_packages_git(self, _config):
@@ -151,7 +151,7 @@ class TestKeystoneUtils(CharmTestCase):
         ex = utils.BASE_PACKAGES + utils.BASE_GIT_PACKAGES
         for p in utils.GIT_PACKAGE_BLACKLIST:
             ex.remove(p)
-        self.assertEquals(set(ex), set(result))
+        self.assertEqual(set(ex), set(result))
 
     @patch.object(utils, 'disable_unused_apache_sites')
     @patch('os.path.exists')
@@ -813,7 +813,7 @@ class TestKeystoneUtils(CharmTestCase):
             call('/var/log/keystone', owner='keystone',
                  group='keystone', perms=0755, force=False),
         ]
-        self.assertEquals(mkdir.call_args_list, expected)
+        self.assertEqual(mkdir.call_args_list, expected)
         write_file.assert_called_with('/var/log/keystone/keystone.log',
                                       '', owner='keystone', group='keystone',
                                       perms=0600)
@@ -856,7 +856,7 @@ class TestKeystoneUtils(CharmTestCase):
             call('git.upstart', '/etc/init/keystone.conf',
                  keystone_context, perms=0o644, templates_dir='joined-string'),
         ]
-        self.assertEquals(self.render.call_args_list, expected)
+        self.assertEqual(self.render.call_args_list, expected)
         self.service_restart.assert_called_with('keystone')
 
     @patch.object(utils, 'get_manager')
@@ -896,7 +896,7 @@ class TestKeystoneUtils(CharmTestCase):
                 read_data="some_data\n")):
             isfile_mock.return_value = True
             x = utils.get_file_stored_domain_id('/a/file')
-            self.assertEquals(x, 'some_data')
+            self.assertEqual(x, 'some_data')
 
     def test_assess_status(self):
         with patch.object(utils, 'assess_status_func') as asf:
@@ -992,7 +992,7 @@ class TestKeystoneUtils(CharmTestCase):
             call(['pgrep', 'httpd']),
             call(['pgrep', 'httpd']),
         ]
-        self.assertEquals(self.subprocess.call.call_args_list, expected)
+        self.assertEqual(self.subprocess.call.call_args_list, expected)
 
     def test_get_requested_grants(self):
         settings = {'requested_grants': 'Admin,Member'}

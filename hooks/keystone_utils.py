@@ -2068,6 +2068,8 @@ def add_credentials_to_keystone(relation_id=None, remote_unit=None):
         "api_version": get_api_version(),
         "region": config('region')
     }
+    if domain:
+        relation_data['domain'] = domain
     # Get and pass CA bundle settings
     relation_data.update(get_ssl_ca_settings())
 

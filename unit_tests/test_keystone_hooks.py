@@ -25,7 +25,10 @@ from test_utils import CharmTestCase
 sys.modules['apt'] = MagicMock()
 
 os.environ['JUJU_UNIT_NAME'] = 'keystone'
-with patch('charmhelpers.core.hookenv.config') as config:
+with patch('charmhelpers.core.hookenv.config') as config, \
+        patch('charmhelpers.contrib.openstack.'
+              'utils.snap_install_requested') as snap_install_requested:
+    snap_install_requested.return_value = False
     config.return_value = 'keystone'
     import keystone_utils as utils
 
@@ -69,6 +72,7 @@ TO_PATCH = [
     # charmhelpers.contrib.openstack.utils
     'configure_installation_source',
     'git_install_requested',
+    'snap_install_requested',
     # charmhelpers.contrib.openstack.ip
     'resolve_address',
     # charmhelpers.contrib.openstack.ha.utils
@@ -120,6 +124,7 @@ class KeystoneRelationTests(CharmTestCase):
         super(KeystoneRelationTests, self).setUp(hooks, TO_PATCH)
         self.config.side_effect = self.test_config.get
         self.ssh_user = 'juju_keystone'
+        self.snap_install_requested.return_value = False
 
     @patch.object(utils, 'os_release')
     @patch.object(utils, 'git_install_requested')

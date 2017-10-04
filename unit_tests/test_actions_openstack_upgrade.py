@@ -17,7 +17,10 @@ import os
 
 os.environ['JUJU_UNIT_NAME'] = 'keystone'
 
-import openstack_upgrade
+with patch('charmhelpers.contrib.openstack.utils'
+           '.snap_install_requested') as snap_install_requested:
+    snap_install_requested.return_value = False
+    import openstack_upgrade
 
 from test_utils import (
     CharmTestCase

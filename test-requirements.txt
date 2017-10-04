@@ -9,6 +9,9 @@ charm-tools>=2.0.0
 requests==2.6.0
 # BEGIN: Amulet OpenStack Charm Helper Requirements
 # Liberty client lower constraints
+# The websocket-client issue should be resolved in the jujulib/theblues
+# Temporarily work around it
+websocket-client<=0.40.0
 amulet>=1.14.3,<2.0
 bundletester>=0.6.1,<1.0
 python-ceilometerclient>=1.5.0

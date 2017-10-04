@@ -17,9 +17,12 @@ from mock import patch
 
 from test_utils import CharmTestCase
 
-with patch('actions.hooks.keystone_utils.register_configs') as configs:
-    configs.return_value = 'test-config'
-    import actions.actions
+with patch('actions.hooks.charmhelpers.contrib.openstack.utils.'
+           'snap_install_requested') as snap_install_requested, \
+        patch('actions.hooks.keystone_utils.register_configs') as configs:
+        snap_install_requested.return_value = False
+        configs.return_value = 'test-config'
+        import actions.actions
 
 
 class PauseTestCase(CharmTestCase):

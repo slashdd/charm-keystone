@@ -24,13 +24,17 @@ mock_apt.apt_pkg = MagicMock()
 
 # NOTE(hopem): we have to mock hooks.charmhelpers (not charmhelpers)
 #              otherwise the mock is not applied to action.hooks.*
-with patch('hooks.charmhelpers.contrib.hardening.harden.harden') as mock_dec:
+with patch('hooks.charmhelpers.contrib.hardening.harden.harden') as mock_dec, \
+        patch('hooks.charmhelpers.contrib.openstack.utils.'
+              'snap_install_requested') as snap_install_requested, \
+        patch('hooks.keystone_utils.register_configs') as register_configs, \
+        patch('hooks.keystone_utils.os_release') as os_release:
+
+    snap_install_requested.return_value = False
     mock_dec.side_effect = (lambda *dargs, **dkwargs: lambda f:
                             lambda *args, **kwargs: f(*args, **kwargs))
-    with patch('hooks.keystone_utils.register_configs') as register_configs:
-        with patch('hooks.keystone_utils.os_release') as os_release:
-            os_release.return_value = 'juno'
-            import git_reinstall
+    os_release.return_value = 'juno'
+    import git_reinstall
 
 from test_utils import (
     CharmTestCase

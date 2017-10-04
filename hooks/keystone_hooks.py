@@ -145,6 +145,7 @@ from charmhelpers.payload.execd import execd_preinstall
 from charmhelpers.contrib.peerstorage import (
     peer_retrieve_by_prefix,
     peer_echo,
+    relation_get as relation_get_and_migrate,
 )
 from charmhelpers.contrib.openstack.ip import (
     ADMIN,
@@ -585,7 +586,9 @@ def send_ssl_sync_request():
                 prev = bin(_prev)
 
     if rid and prev ^ ssl_config:
-        clear_ssl_synced_units()
+        if is_leader():
+            clear_ssl_synced_units()
+
         log("Setting %s=%s" % (key, bin(ssl_config)), level=DEBUG)
         relation_set(relation_id=rid, relation_settings=settings)
 
@@ -623,8 +626,12 @@ def cluster_changed():
                                 peer_interface='cluster',
                                 ensure_local_user=True)
     # NOTE(jamespage) re-echo passwords for peer storage
-    echo_whitelist = ['_passwd', 'identity-service:', 'ssl-cert-master',
+    echo_whitelist = ['_passwd', 'identity-service:',
                       'db-initialised', 'ssl-cert-available-updates']
+    # Don't echo if leader since a re-election may be in progress.
+    if not is_leader():
+        echo_whitelist.append('ssl-cert-master')
+
     log("Peer echo whitelist: %s" % (echo_whitelist), level=DEBUG)
     peer_echo(includes=echo_whitelist, force=True)
 
@@ -632,14 +639,17 @@ def cluster_changed():
 
     initialise_pki()
 
-    # Figure out if we need to mandate a sync
-    units = get_ssl_sync_request_units()
-    synced_units = relation_get(attribute='ssl-synced-units',
-                                unit=local_unit())
-    diff = None
-    if synced_units:
-        synced_units = json.loads(synced_units)
-        diff = set(units).symmetric_difference(set(synced_units))
+    if is_leader():
+        # Figure out if we need to mandate a sync
+        units = get_ssl_sync_request_units()
+        synced_units = relation_get_and_migrate(attribute='ssl-synced-units',
+                                                unit=local_unit())
+        diff = None
+        if synced_units:
+            synced_units = json.loads(synced_units)
+            diff = set(units).symmetric_difference(set(synced_units))
+    else:
+        units = None
 
     if units and (not synced_units or diff):
         log("New peers joined and need syncing - %s" %
@@ -648,7 +658,7 @@ def cluster_changed():
     else:
         update_all_identity_relation_units()
 
-    if not is_elected_leader(CLUSTER_RES) and is_ssl_cert_master():
+    if not is_leader() and is_ssl_cert_master():
         # Force and sync and trigger a sync master re-election since we are not
         # leader anymore.
         force_ssl_sync()
@@ -662,6 +672,8 @@ def leader_elected():
     # When the local unit has been elected the leader, update the cron jobs
     # to ensure that the cron jobs are active on this unit.
     CONFIGS.write(TOKEN_FLUSH_CRON_FILE)
+
+    update_all_identity_relation_units()
 
 
 @hooks.hook('leader-settings-changed')

@@ -732,6 +732,7 @@ class KeystoneRelationTests(CharmTestCase):
         hooks.cluster_joined(rid='foo:1', ssl_sync_request=False)
         self.assertFalse(mock_send_ssl_sync_request.called)
 
+    @patch.object(hooks, 'relation_get_and_migrate')
     @patch.object(hooks, 'initialise_pki')
     @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(hooks, 'get_ssl_sync_request_units')
@@ -753,16 +754,18 @@ class KeystoneRelationTests(CharmTestCase):
                              mock_is_ssl_cert_master,
                              mock_get_ssl_sync_request_units,
                              mock_update_all_identity_relation_units,
-                             mock_initialise_pki):
+                             mock_initialise_pki,
+                             mock_relation_get_and_migrate):
 
         relation_settings = {'foo_passwd': '123',
                              'identity-service:16_foo': 'bar'}
 
+        mock_relation_get_and_migrate.return_value = None
         mock_is_ssl_cert_master.return_value = False
         mock_peer_units.return_value = ['unit/0']
         mock_ensure_ssl_cert_master.return_value = False
         mock_relation_ids.return_value = []
-        self.is_elected_leader.return_value = False
+        self.is_leader.return_value = False
 
         def fake_rel_get(attribute=None, *args, **kwargs):
             if not attribute:
@@ -775,8 +778,8 @@ class KeystoneRelationTests(CharmTestCase):
         mock_config.return_value = None
 
         hooks.cluster_changed()
-        whitelist = ['_passwd', 'identity-service:', 'ssl-cert-master',
-                     'db-initialised', 'ssl-cert-available-updates']
+        whitelist = ['_passwd', 'identity-service:', 'db-initialised',
+                     'ssl-cert-available-updates', 'ssl-cert-master']
         self.peer_echo.assert_called_with(force=True, includes=whitelist)
         ssh_authorized_peers.assert_called_with(
             user=self.ssh_user, group='juju_keystone',
@@ -784,8 +787,9 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertFalse(mock_synchronize_ca.called)
         self.assertTrue(configs.write_all.called)
 
+    @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(hooks.CONFIGS, 'write')
-    def test_leader_elected(self, mock_write):
+    def test_leader_elected(self, mock_write, mock_update):
         hooks.leader_elected()
         mock_write.assert_has_calls([call(utils.TOKEN_FLUSH_CRON_FILE)])
 

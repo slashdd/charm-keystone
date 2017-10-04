@@ -139,6 +139,7 @@ from charmhelpers.contrib.peerstorage import (
     peer_store_and_set,
     peer_store,
     peer_retrieve,
+    relation_set as relation_set_and_migrate_to_leader,
 )
 
 from charmhelpers.core.templating import render
@@ -1524,14 +1525,20 @@ def is_ssl_cert_master(votes=None):
         return True
 
     # Early in the process and juju leader
-    if not votes:
+    if not set_votes:
         log("This unit is the juju leader and there are no votes yet, "
             "becoming the ssl-cert-master",
             level=DEBUG)
         return True
+    elif (len(set_votes) == 1 and set_votes != set([local_unit()]) and
+            is_leader()):
+        log("This unit is the juju leader but not yet ssl-cert-master "
+            "(current votes = {})".format(set_votes), level=DEBUG)
+        return False
 
     # Should never reach here
-    log("Could not determine the ssl-cert-master. Missing edge case.",
+    log("Could not determine the ssl-cert-master. Missing edge case. "
+        "(current votes = {})".format(set_votes),
         level=ERROR)
     return False
 
@@ -1717,8 +1724,12 @@ def synchronize_ca(fatal=False):
     if not os.path.isdir(SYNC_FLAGS_DIR):
         mkdir(SYNC_FLAGS_DIR, SSH_USER, KEYSTONE_USER, 0o775)
 
+    restart_trigger = None
     for action, services in peer_service_actions.iteritems():
-        create_peer_service_actions(action, set(services))
+        services = set(services)
+        if services:
+            restart_trigger = str(uuid.uuid4())
+            create_peer_service_actions(action, services)
 
     create_peer_actions(peer_actions)
 
@@ -1736,13 +1747,23 @@ def synchronize_ca(fatal=False):
     if synced_units:
         # Format here needs to match that used when peers request sync
         synced_units = [u.replace('/', '-') for u in synced_units]
-        cluster_rel_settings['ssl-synced-units'] = \
+        ssl_synced_units = \
             json.dumps(synced_units)
+        # NOTE(hopem): we pull this onto the leader settings to avoid
+        # unnecessary cluster relation noise. This is possible because the
+        # setting is only needed by the cert master.
+        if 'ssl-synced-units' not in leader_get():
+            rid = relation_ids('cluster')[0]
+            relation_set_and_migrate_to_leader(relation_id=rid,
+                                               **{'ssl-synced-units':
+                                                  ssl_synced_units})
+        else:
+            leader_set({'ssl-synced-units': ssl_synced_units})
 
-    trigger = str(uuid.uuid4())
-    log("Sending restart-services-trigger=%s to all peers" % (trigger),
-        level=DEBUG)
-    cluster_rel_settings['restart-services-trigger'] = trigger
+    if restart_trigger:
+        log("Sending restart-services-trigger=%s to all peers" %
+            (restart_trigger), level=DEBUG)
+        cluster_rel_settings['restart-services-trigger'] = restart_trigger
 
     log("Sync complete", level=DEBUG)
     return cluster_rel_settings
@@ -1756,8 +1777,11 @@ def clear_ssl_synced_units():
     """
     log("Clearing ssl sync units", level=DEBUG)
     for rid in relation_ids('cluster'):
-        relation_set(relation_id=rid,
-                     relation_settings={'ssl-synced-units': None})
+        if 'ssl-synced-units' not in leader_get():
+            relation_set_and_migrate_to_leader(relation_id=rid,
+                                               **{'ssl-synced-units': None})
+        else:
+            leader_set({'ssl-synced-units': None})
 
 
 def update_hash_from_path(hash, path, recurse_depth=10):
@@ -1823,13 +1847,17 @@ def synchronize_ca_if_changed(force=False, fatal=False):
 
                 # If we are the sync master but not leader, ensure we have
                 # relinquished master status.
-                if not is_elected_leader(CLUSTER_RES):
-                    log("Re-electing ssl cert master.", level=INFO)
-                    peer_settings['ssl-cert-master'] = 'unknown'
+                cluster_rids = relation_ids('cluster')
+                if cluster_rids:
+                    master = relation_get('ssl-cert-master',
+                                          rid=cluster_rids[0],
+                                          unit=local_unit())
+                    if not is_leader() and master == local_unit():
+                        log("Re-electing ssl cert master.", level=INFO)
+                        peer_settings['ssl-cert-master'] = 'unknown'
 
-                if peer_settings:
-                    for rid in relation_ids('cluster'):
-                        relation_set(relation_id=rid,
+                    if peer_settings:
+                        relation_set(relation_id=cluster_rids[0],
                                      relation_settings=peer_settings)
 
                 return ret

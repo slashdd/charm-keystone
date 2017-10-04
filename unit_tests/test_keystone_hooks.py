@@ -124,6 +124,8 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(utils, 'os_release')
     @patch.object(utils, 'git_install_requested')
     @patch.object(unison, 'ensure_user')
+    @patch.object(hooks, 'service_stop', lambda *args: None)
+    @patch.object(hooks, 'service_start', lambda *args: None)
     def test_install_hook(self, ensure_user, git_requested, os_release):
         os_release.return_value = 'havana'
         git_requested.return_value = False
@@ -145,6 +147,8 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(utils, 'os_release')
     @patch.object(utils, 'git_install_requested')
     @patch.object(unison, 'ensure_user')
+    @patch.object(hooks, 'service_stop', lambda *args: None)
+    @patch.object(hooks, 'service_start', lambda *args: None)
     def test_install_hook_apache2(self, ensure_user,
                                   git_requested, os_release):
         os_release.return_value = 'havana'
@@ -168,6 +172,8 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(utils, 'os_release')
     @patch.object(utils, 'git_install_requested')
     @patch.object(unison, 'ensure_user')
+    @patch.object(hooks, 'service_stop', lambda *args: None)
+    @patch.object(hooks, 'service_start', lambda *args: None)
     def test_install_hook_git(self, ensure_user, git_requested, os_release):
         os_release.return_value = 'havana'
         git_requested.return_value = True

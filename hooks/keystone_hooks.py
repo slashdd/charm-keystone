@@ -667,6 +667,7 @@ def cluster_changed():
 
 
 @hooks.hook('leader-elected')
+@restart_on_change(restart_map(), stopstart=True)
 def leader_elected():
     log('Unit has been elected leader.', level=DEBUG)
     # When the local unit has been elected the leader, update the cron jobs
@@ -677,6 +678,7 @@ def leader_elected():
 
 
 @hooks.hook('leader-settings-changed')
+@restart_on_change(restart_map(), stopstart=True)
 def leader_settings_changed():
     # Since minions are notified of a regime change via the
     # leader-settings-changed hook, rewrite the token flush cron job to make

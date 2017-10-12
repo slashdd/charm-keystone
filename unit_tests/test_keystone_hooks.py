@@ -82,6 +82,7 @@ TO_PATCH = [
     'is_elected_leader',
     'get_hacluster_config',
     'is_clustered',
+    'enable_memcache',
     # keystone_utils
     'restart_map',
     'register_configs',
@@ -384,6 +385,7 @@ class KeystoneRelationTests(CharmTestCase):
                     'identity-service': ['identity-service:0']}
             return rids.get(relation, [])
 
+        self.enable_memcache.return_value = False
         self.os_release.return_value = 'mitaka'
         self.relation_ids.side_effect = fake_relation_ids
 
@@ -452,6 +454,7 @@ class KeystoneRelationTests(CharmTestCase):
             rids = {}
             return rids.get(relation, [])
 
+        self.enable_memcache.return_value = False
         self.os_release.return_value = 'mitaka'
         self.relation_ids.side_effect = fake_relation_ids
 
@@ -522,6 +525,7 @@ class KeystoneRelationTests(CharmTestCase):
             return rids.get(relation, [])
 
         self.os_release.return_value = 'mitaka'
+        self.enable_memcache.return_value = False
         self.relation_ids.side_effect = fake_relation_ids
 
         mock_run_in_apache.return_value = False
@@ -585,6 +589,7 @@ class KeystoneRelationTests(CharmTestCase):
                                         mock_run_in_apache,
                                         update,
                                         mock_update_domains):
+        self.enable_memcache.return_value = False
         mock_run_in_apache.return_value = False
         git_requested.return_value = True
         mock_ensure_ssl_cert_master.return_value = False
@@ -640,6 +645,7 @@ class KeystoneRelationTests(CharmTestCase):
                                                           mock_db_init,
                                                           mock_initialise_pki,
                                                           mock_run_in_apache):
+        self.enable_memcache.return_value = False
         mock_run_in_apache.return_value = False
         ensure_ssl_cert.return_value = False
         peer_units.return_value = []

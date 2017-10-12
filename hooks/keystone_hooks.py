@@ -74,6 +74,7 @@ from charmhelpers.contrib.openstack.utils import (
     snap_install_requested,
     install_os_snaps,
     get_snaps_install_info_from_origin,
+    enable_memcache,
 )
 
 from keystone_utils import (
@@ -250,7 +251,8 @@ def config_changed_postupgrade():
     ensure_ssl_dirs()
 
     save_script_rc()
-    if run_in_apache():
+    release = os_release('keystone')
+    if run_in_apache(release=release):
         # Need to ensure mod_wsgi is installed and apache2 is reloaded
         # immediatly as charm querys its local keystone before restart
         # decorator can fire
@@ -264,6 +266,11 @@ def config_changed_postupgrade():
             CONFIGS.write(WSGI_KEYSTONE_API_CONF)
         if not is_unit_paused_set():
             restart_pid_check('apache2')
+
+    if enable_memcache(release=release):
+        # If charm or OpenStack have been upgraded then the list of required
+        # packages may have changed so ensure they are installed.
+        apt_install(filter_installed_packages(determine_packages()))
 
     configure_https()
     open_port(config('service-port'))

@@ -1140,6 +1140,7 @@ class TestKeystoneUtils(CharmTestCase):
                          'credentials_project': 'services',
                          'credentials_project_id': 'abcdef0123456789',
                          'region': 'RegionOne',
+                         'domain': 'Non-Default',
                          'api_version': 3}
 
         utils.add_credentials_to_keystone(

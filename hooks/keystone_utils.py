@@ -79,6 +79,7 @@ from charmhelpers.contrib.openstack.utils import (
     snap_install_requested,
     install_os_snaps,
     get_snaps_install_info_from_origin,
+    enable_memcache,
 )
 
 from charmhelpers.contrib.python.packages import (
@@ -256,6 +257,7 @@ else:
 HAPROXY_CONF = '/etc/haproxy/haproxy.cfg'
 APACHE_CONF = '/etc/apache2/sites-available/openstack_https_frontend'
 APACHE_24_CONF = '/etc/apache2/sites-available/openstack_https_frontend.conf'
+MEMCACHED_CONF = '/etc/memcached.conf'
 
 SSL_CA_NAME = 'Ubuntu Cloud'
 CLUSTER_RES = 'grp_ks_vips'
@@ -280,7 +282,8 @@ BASE_RESOURCE_MAP = OrderedDict([
                      context.SyslogContext(),
                      keystone_context.HAProxyContext(),
                      context.BindHostContext(),
-                     context.WorkerConfigContext()],
+                     context.WorkerConfigContext(),
+                     context.MemcacheContext(package='keystone')],
     }),
     (KEYSTONE_LOGGER_CONF, {
         'contexts': [keystone_context.KeystoneLoggingContext()],
@@ -507,7 +510,8 @@ def resource_map():
     """
     resource_map = deepcopy(BASE_RESOURCE_MAP)
 
-    if CompareOpenStackReleases(os_release('keystone')) < 'liberty':
+    release = os_release('keystone')
+    if CompareOpenStackReleases(release) < 'liberty':
         resource_map.pop(POLICY_JSON)
     if os.path.exists('/etc/apache2/conf-available'):
         resource_map.pop(APACHE_CONF)
@@ -556,6 +560,12 @@ def resource_map():
                     keystone_context.KeystoneContext()],
                 'services': ['apache2']
             }
+
+    if enable_memcache(release=release):
+        resource_map[MEMCACHED_CONF] = {
+            'contexts': [context.MemcacheContext()],
+            'services': ['memcached']}
+
     return resource_map
 
 
@@ -588,11 +598,12 @@ def restart_function_map():
     return rfunc_map
 
 
-def run_in_apache():
+def run_in_apache(release=None):
     """Return true if keystone API is run under apache2 with mod_wsgi in
     this release.
     """
-    return (CompareOpenStackReleases(os_release('keystone')) >= 'liberty' and
+    release = release or os_release('keystone')
+    return (CompareOpenStackReleases(release) >= 'liberty' and
             not snap_install_requested())
 
 
@@ -647,7 +658,10 @@ def api_port(service):
 def determine_packages():
     # currently all packages match service names
     if snap_install_requested():
-        return sorted(BASE_PACKAGES_SNAP)
+        pkgs = deepcopy(BASE_PACKAGES_SNAP)
+        if enable_memcache(release=os_release('keystone')):
+            pkgs = pkgs + ['memcached']
+        return sorted(pkgs)
     else:
         packages = set(services()).union(BASE_PACKAGES)
         if git_install_requested():

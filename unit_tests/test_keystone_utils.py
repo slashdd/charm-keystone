@@ -134,6 +134,30 @@ class TestKeystoneUtils(CharmTestCase):
         ]
         self.assertEqual(fake_renderer.register.call_args_list, ex_reg)
 
+    @patch.object(utils, 'git_determine_usr_bin')
+    @patch.object(utils, 'snap_install_requested')
+    @patch.object(utils, 'os')
+    def test_resource_map_enable_memcache_mitaka(self, mock_os,
+                                                 snap_install_requested,
+                                                 git_determine_usr_bin):
+        self.os_release.return_value = 'mitaka'
+        snap_install_requested.return_value = False
+        git_determine_usr_bin.return_value = '/usr/bin'
+        mock_os.path.exists.return_value = True
+        self.assertTrue('/etc/memcached.conf' in utils.resource_map().keys())
+
+    @patch.object(utils, 'git_determine_usr_bin')
+    @patch.object(utils, 'snap_install_requested')
+    @patch.object(utils, 'os')
+    def test_resource_map_enable_memcache_liberty(self, mock_os,
+                                                  snap_install_requested,
+                                                  git_determine_usr_bin):
+        self.os_release.return_value = 'liberty'
+        snap_install_requested.return_value = False
+        git_determine_usr_bin.return_value = '/usr/bin'
+        mock_os.path.exists.return_value = True
+        self.assertFalse('/etc/memcached.conf' in utils.resource_map().keys())
+
     def test_determine_ports(self):
         self.test_config.set('admin-port', '80')
         self.test_config.set('service-port', '81')
@@ -150,6 +174,17 @@ class TestKeystoneUtils(CharmTestCase):
         self.assertEqual(set(ex), set(result))
 
     @patch('charmhelpers.contrib.openstack.utils.config')
+    def test_determine_packages_mitaka(self, _config):
+        self.os_release.return_value = 'mitaka'
+        self.snap_install_requested.return_value = False
+        _config.return_value = None
+        result = utils.determine_packages()
+        ex = utils.BASE_PACKAGES + [
+            'keystone', 'python-keystoneclient', 'libapache2-mod-wsgi',
+            'memcached']
+        self.assertEqual(set(ex), set(result))
+
+    @patch('charmhelpers.contrib.openstack.utils.config')
     def test_determine_packages_git(self, _config):
         self.os_release.return_value = 'havana'
         _config.return_value = openstack_origin_git
@@ -157,6 +192,15 @@ class TestKeystoneUtils(CharmTestCase):
         ex = utils.BASE_PACKAGES + utils.BASE_GIT_PACKAGES
         for p in utils.GIT_PACKAGE_BLACKLIST:
             ex.remove(p)
+        self.assertEqual(set(ex), set(result))
+
+    @patch('charmhelpers.contrib.openstack.utils.config')
+    def test_determine_packages_snap_install(self, _config):
+        self.os_release.return_value = 'mitaka'
+        self.snap_install_requested.return_value = True
+        _config.return_value = None
+        result = utils.determine_packages()
+        ex = utils.BASE_PACKAGES_SNAP + ['memcached']
         self.assertEqual(set(ex), set(result))
 
     @patch.object(utils, 'disable_unused_apache_sites')
@@ -1301,3 +1345,15 @@ class TestKeystoneUtils(CharmTestCase):
             1, 'a2dissite')
         utils.disable_unused_apache_sites()
         os_remove.assert_called_with(utils.UNUSED_APACHE_SITE_FILES[0])
+
+    def test_run_in_apache_kilo(self):
+        self.os_release.return_value = 'kilo'
+        self.assertFalse(utils.run_in_apache())
+
+    def test_run_in_apache_liberty(self):
+        self.os_release.return_value = 'liberty'
+        self.assertTrue(utils.run_in_apache())
+
+    def test_run_in_apache_set_release(self):
+        self.os_release.return_value = 'kilo'
+        self.assertTrue(utils.run_in_apache(release='liberty'))

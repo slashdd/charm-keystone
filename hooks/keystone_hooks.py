@@ -372,9 +372,10 @@ def pgsql_db_joined():
 
 
 def update_all_identity_relation_units(check_db_ready=True):
-    CONFIGS.write_all()
     if is_unit_paused_set():
         return
+    CONFIGS.write_all()
+    configure_https()
     if check_db_ready and not is_db_ready():
         log('Allowed_units list provided and this unit not present',
             level=INFO)

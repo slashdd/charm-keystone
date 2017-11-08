@@ -1120,6 +1120,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertFalse(self.migrate_database.called)
         self.assertFalse(update.called)
 
+    @patch.object(hooks, 'configure_https')
     @patch.object(hooks, 'admin_relation_changed')
     @patch.object(hooks, 'identity_credentials_changed')
     @patch.object(hooks, 'identity_changed')
@@ -1129,7 +1130,8 @@ class KeystoneRelationTests(CharmTestCase):
                                                 is_db_initialized,
                                                 identity_changed,
                                                 identity_credentials_changed,
-                                                admin_relation_changed):
+                                                admin_relation_changed,
+                                                configure_https):
         """ Verify all identity relations are updated """
         is_db_initialized.return_value = True
         self.relation_ids.return_value = ['identity-relation:0']
@@ -1151,8 +1153,9 @@ class KeystoneRelationTests(CharmTestCase):
         admin_relation_changed.assert_called_with('identity-relation:0')
         self.log.assert_has_calls(log_calls, any_order=True)
 
+    @patch.object(hooks, 'configure_https')
     @patch.object(hooks, 'CONFIGS')
-    def test_update_all_db_not_ready(self, configs):
+    def test_update_all_db_not_ready(self, configs, configure_https):
         """ Verify update identity relations when DB is not ready """
         self.is_db_ready.return_value = False
         hooks.update_all_identity_relation_units(check_db_ready=True)
@@ -1162,9 +1165,11 @@ class KeystoneRelationTests(CharmTestCase):
                                     'unit not present', level='INFO')
         self.assertFalse(self.relation_ids.called)
 
+    @patch.object(hooks, 'configure_https')
     @patch.object(hooks, 'is_db_initialised')
     @patch.object(hooks, 'CONFIGS')
-    def test_update_all_db_not_initializd(self, configs, is_db_initialized):
+    def test_update_all_db_not_initializd(self, configs, is_db_initialized,
+                                          configure_https):
         """ Verify update identity relations when DB is not initialized """
         is_db_initialized.return_value = False
         hooks.update_all_identity_relation_units(check_db_ready=False)
@@ -1175,9 +1180,11 @@ class KeystoneRelationTests(CharmTestCase):
                                     level='INFO')
         self.assertFalse(self.relation_ids.called)
 
+    @patch.object(hooks, 'configure_https')
     @patch.object(hooks, 'is_db_initialised')
     @patch.object(hooks, 'CONFIGS')
-    def test_update_all_leader(self, configs, is_db_initialized):
+    def test_update_all_leader(self, configs, is_db_initialized,
+                               configure_https):
         """ Verify update identity relations when the leader"""
         self.is_elected_leader.return_value = True
         is_db_initialized.return_value = True
@@ -1187,9 +1194,11 @@ class KeystoneRelationTests(CharmTestCase):
         # Still updates relations
         self.assertTrue(self.relation_ids.called)
 
+    @patch.object(hooks, 'configure_https')
     @patch.object(hooks, 'is_db_initialised')
     @patch.object(hooks, 'CONFIGS')
-    def test_update_all_not_leader(self, configs, is_db_initialized):
+    def test_update_all_not_leader(self, configs, is_db_initialized,
+                                   configure_https):
         """ Verify update identity relations when not the leader"""
         self.is_elected_leader.return_value = False
         is_db_initialized.return_value = True

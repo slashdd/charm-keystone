@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # Copyright 2018 Canonical Ltd.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,9 +20,11 @@ import time
 
 dir_path = os.path.dirname(os.path.realpath(__file__))
 hooks_path = os.path.abspath(os.path.join(dir_path, "..", "hooks"))
+root_path = os.path.abspath(os.path.join(dir_path, ".."))
 
-if hooks_path not in sys.path:
-    sys.path.append(hooks_path)
+for p in [hooks_path, root_path]:
+    if p not in sys.path:
+        sys.path.append(p)
 
 # now we can import charm related items
 import charmhelpers.core.hookenv

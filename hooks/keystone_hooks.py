@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 #
 # Copyright 2016 Canonical Ltd
 #
@@ -16,7 +16,19 @@
 
 import hashlib
 import json
+import os
 import sys
+
+_path = os.path.dirname(os.path.realpath(__file__))
+_root = os.path.abspath(os.path.join(_path, '..'))
+
+
+def _add_path(path):
+    if path not in sys.path:
+        sys.path.insert(1, path)
+
+
+_add_path(_root)
 
 from subprocess import check_call
 
@@ -408,9 +420,9 @@ def identity_changed(relation_id=None, remote_unit=None):
             # We base the decision to notify on whether these parameters have
             # changed (if csum is unchanged from previous notify, relation will
             # not fire).
-            csum.update(settings.get('public_url', None))
-            csum.update(settings.get('admin_url', None))
-            csum.update(settings.get('internal_url', None))
+            csum.update(settings.get('public_url', None).encode('utf-8'))
+            csum.update(settings.get('admin_url', None).encode('utf-8'))
+            csum.update(settings.get('internal_url', None).encode('utf-8'))
             notifications['%s-endpoint-changed' % (service)] = csum.hexdigest()
     else:
         # Each unit needs to set the db information otherwise if the unit
@@ -480,7 +492,7 @@ def cluster_changed():
     # NOTE(jamespage) re-echo passwords for peer storage
     echo_whitelist = ['_passwd', 'identity-service:']
 
-    log("Peer echo whitelist: %s" % (echo_whitelist), level=DEBUG)
+    log("Peer echo whitelist: {}".format(echo_whitelist), level=DEBUG)
     peer_echo(includes=echo_whitelist, force=True)
 
     update_all_identity_relation_units()
@@ -560,8 +572,9 @@ def ha_joined(relation_id=None):
                     if vip not in resource_params[vip_key]:
                         vip_key = '{}_{}'.format(vip_key, vip_params)
                     else:
-                        log("Resource '%s' (vip='%s') already exists in "
-                            "vip group - skipping" % (vip_key, vip), WARNING)
+                        log("Resource '{0}' (vip='{1}') already exists in "
+                            "vip group - skipping"
+                            .format(vip_key, vip), WARNING)
                         continue
 
                 vip_group.append(vip_key)

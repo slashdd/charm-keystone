@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python2
 #
 # Copyright 2016 Canonical Ltd
 #
@@ -14,11 +14,60 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# NOTE(tinwood): This file needs to remain Python2 as it uses keystoneclient
+# from the payload software to do it's work.
+
+from __future__ import print_function
+
+import json
+import os
+import stat
+import sys
+import time
+
 from keystoneclient.v2_0 import client
 from keystoneclient.v3 import client as keystoneclient_v3
 from keystoneclient.auth import token_endpoint
 from keystoneclient import session, exceptions
-from charmhelpers.core.decorators import retry_on_exception
+
+import uds_comms as uds
+
+
+_usage = """This file is called from the keystone_utils.py file to implement
+various keystone calls and functions.  It is called with one parameter which is
+the path to a Unix Domain Socket file.
+
+The messages passed to the this process from the keystone_utils.py includes the
+following keys:
+
+{
+    'path': The api path on the keystone manager object.
+    'api_version': the keystone API version to use.
+    'api_local_endpoint': the local endpoint to connect to.
+    'admin_token': the admin token to use with keystone.
+    'args': the non-keyword argument to supply to the keystone manager call.
+    'kwargs': any keyword args to supply to the keystone manager call.
+}
+
+The result of the call, or an error, is returned as a json encoded result in
+the same file that sent the arguments.
+
+{
+    'result': <whatever the result of the function call was>
+    'error': <if an error occured, the text of the error
+}
+
+This system is currently needed to decouple the majority of the charm from the
+underlying package being used for keystone.
+"""
+
+JSON_ENCODE_OPTIONS = dict(
+    sort_keys=True,
+    allow_nan=False,
+    indent=None,
+    separators=(',', ':'),
+)
+
 
 # Early versions of keystoneclient lib do not have an explicit
 # ConnectionRefused
@@ -40,6 +89,34 @@ def _get_keystone_manager_class(endpoint, token, api_version):
     if api_version == 3:
         return KeystoneManager3(endpoint, token)
     raise ValueError('No manager found for api version {}'.format(api_version))
+
+
+def retry_on_exception(num_retries, base_delay=0, exc_type=Exception):
+    """If the decorated function raises exception exc_type, allow num_retries
+    retry attempts before raise the exception.
+    """
+    def _retry_on_exception_inner_1(f):
+        def _retry_on_exception_inner_2(*args, **kwargs):
+            retries = num_retries
+            multiplier = 1
+            while True:
+                try:
+                    return f(*args, **kwargs)
+                except exc_type:
+                    if not retries:
+                        raise
+
+                delay = base_delay * multiplier
+                multiplier += 1
+                print("Retrying '%s' %d more times (delay={})"
+                      .format(f.__name__, retries, delay))
+                retries -= 1
+                if delay:
+                    time.sleep(delay)
+
+        return _retry_on_exception_inner_2
+
+    return _retry_on_exception_inner_1
 
 
 @retry_on_exception(5, base_delay=3, exc_type=econnrefused)
@@ -75,10 +152,12 @@ def get_keystone_manager(endpoint, token, api_version=None):
         for svc in manager.api.services.list():
             if svc.type == 'identity':
                 svc_id = svc.id
+                break
         version = None
         for ep in manager.api.endpoints.list():
             if ep.service_id == svc_id and hasattr(ep, 'adminurl'):
                 version = ep.adminurl.split('/')[-1]
+                break
         if version and version == 'v2.0':
             new_ep = base_ep + "/" + 'v2.0'
             return _get_keystone_manager_class(new_ep, token, 2)
@@ -90,6 +169,16 @@ def get_keystone_manager(endpoint, token, api_version=None):
 
 
 class KeystoneManager(object):
+
+    def resolved_api_version(self):
+        """Used by keystone_utils.py to determine which endpoint template
+        to create based on the current endpoint which needs to actually be done
+        in get_keystone_manager() in this file.
+
+        :returns: the current api version
+        :rtype: int
+        """
+        return self.api_version
 
     def resolve_domain_id(self, name):
         pass
@@ -120,6 +209,28 @@ class KeystoneManager(object):
             if type == s['type']:
                 return s['id']
 
+    def delete_service_by_id(self, service_id):
+        """Delete a service by the service id"""
+        self.api.services.delete(service_id)
+
+    def list_services(self):
+        """Return a list of services (dictionary items)"""
+        return [s.to_dict() for s in self.api.services.list()]
+
+    def create_service(self, service_name, service_type, description):
+        """Create a service using the api"""
+        self.api.services.create(service_name,
+                                 service_type,
+                                 description=description)
+
+    def list_endpoints(self):
+        """Return a list of endpoints (dictionary items)"""
+        return [e.to_dict() for e in self.api.endpoints.list()]
+
+    def create_role(self, name):
+        """Create the role by name."""
+        self.api.roles.create(name=name)
+
 
 class KeystoneManager2(KeystoneManager):
 
@@ -139,6 +250,10 @@ class KeystoneManager2(KeystoneManager):
         self.api.endpoints.create(region=region, service_id=service_id,
                                   publicurl=publicurl, adminurl=adminurl,
                                   internalurl=internalurl)
+
+    def delete_endpoint_by_id(self, endpoint_id):
+        """Delete an endpoint by the endpoint_id"""
+        self.api.endpoints.delete(endpoint_id)
 
     def tenants_list(self):
         return self.api.tenants.list()
@@ -164,11 +279,22 @@ class KeystoneManager2(KeystoneManager):
                               email=email,
                               tenant_id=tenant_id)
 
+    def user_exists(self, name, domain=None):
+        if domain is not None:
+            raise ValueError("For keystone v2, domain cannot be set")
+        if self.resolve_user_id(name):
+            users = manager.api.users.list()
+            for user in users:
+                if user.name.lower() == name.lower():
+                    return True
+        return False
+
     def update_password(self, user, password):
         self.api.users.update_password(user=user, password=password)
 
     def roles_for_user(self, user_id, tenant_id=None, domain_id=None):
-        return self.api.roles.roles_for_user(user_id, tenant_id)
+        roles = self.api.roles.roles_for_user(user_id, tenant_id)
+        return [r.to_dict() for r in roles]
 
     def add_user_role(self, user, role, tenant, domain):
         self.api.roles.add_user_role(user=user, role=role, tenant=tenant)
@@ -221,6 +347,13 @@ class KeystoneManager3(KeystoneManager):
         self.api.endpoints.create(service_id, internalurl,
                                   interface='internal', region=region)
 
+    def create_endpoint_by_type(self, service_id, endpoint, interface, region):
+        """Create an endpoint by interface (type), where _interface is
+        'internal', 'admin' or 'public'.
+        """
+        self.api.endpoints.create(
+            service_id, endpoint, interface=interface, region=region)
+
     def tenants_list(self):
         return self.api.projects.list()
 
@@ -251,15 +384,37 @@ class KeystoneManager3(KeystoneManager):
                                   password=password,
                                   email=email)
 
+    def user_exists(self, name, domain=None):
+        domain_id = None
+        if domain:
+            domain_id = manager.resolve_domain_id(domain)
+            if not domain_id:
+                raise ValueError(
+                    'Could not resolve domain_id for {} when checking if '
+                    ' user {} exists'.format(domain, name))
+        if manager.resolve_user_id(name, user_domain=domain):
+            users = manager.api.users.list(domain=domain_id)
+            for user in users:
+                if user.name.lower() == name.lower():
+                    # In v3 Domains are seperate user namespaces so need to
+                    # check that the domain matched if provided
+                    if domain:
+                        if domain_id == user.domain_id:
+                            return True
+                    else:
+                        return True
+        return False
+
     def update_password(self, user, password):
         self.api.users.update(user, password=password)
 
     def roles_for_user(self, user_id, tenant_id=None, domain_id=None):
         # Specify either a domain or project, not both
         if domain_id:
-            return self.api.roles.list(user_id, domain=domain_id)
+            roles = self.api.roles.list(user_id, domain=domain_id)
         else:
-            return self.api.roles.list(user_id, project=tenant_id)
+            roles = self.api.roles.list(user_id, project=tenant_id)
+        return [r.to_dict() for r in roles]
 
     def add_user_role(self, user, role, tenant, domain):
         # Specify either a domain or project, not both
@@ -274,12 +429,162 @@ class KeystoneManager3(KeystoneManager):
             if ep.service_id == service_id and ep.region == region and \
                     ep.interface == interface:
                 found_eps.append(ep)
-        return found_eps
+        return [e.to_dict() for e in found_eps]
 
     def delete_old_endpoint_v3(self, interface, service_id, region, url):
         eps = self.find_endpoint_v3(interface, service_id, region)
         for ep in eps:
-            if getattr(ep, 'url') != url:
-                self.api.endpoints.delete(ep.id)
+            # if getattr(ep, 'url') != url:
+            if ep.get('url', None) != url:
+                # self.api.endpoints.delete(ep.id)
+                self.api.endpoints.delete(ep['id'])
                 return True
         return False
+
+
+# the following functions are proxied from keystone_utils, so that a Python3
+# charm can work with a Python2 keystone_client (i.e. in the case of a snap
+# installed payload
+
+# used to provide a singleton if the credentials for the keystone_manager
+# haven't changed.
+_keystone_manager = dict(
+    api_version=None,
+    api_local_endpoint=None,
+    admin_token=None,
+    manager=None)
+
+
+def get_manager(api_version=None, api_local_endpoint=None, admin_token=None):
+    """Return a keystonemanager for the correct API version
+
+    This function actually returns a singleton of the right kind of
+    KeystoneManager (v2 or v3).  If the api_version, api_local_endpoint and
+    admin_token haven't changed then the current _keystone_manager object is
+    returned, otherwise a new one is created (and thus the old one goes out of
+    scope and is closed).  This is to that repeated calls to get_manager(...)
+    only results in a single authorisation request if the details don't change.
+    This is to speed up calls from the keystone charm into keystone and make
+    the charm more performant.  It's hoped that the complexity/performance
+    trade-off is a good choice.
+
+    :param api_verion: The version of the api to use or None.  if None then the
+        version is determined from the api_local_enpoint variable.
+    :param api_local_endpoint: where to find the keystone API
+    :param admin_token: the token used for authentication.
+    :raises: RuntimeError if api_local_endpoint or admin_token is not set.
+    :returns: a KeystoneManager derived class (possibly the singleton).
+    """
+    if api_local_endpoint is None:
+        raise RuntimeError("get_manager(): api_local_endpoint is not set")
+    if admin_token is None:
+        raise RuntimeError("get_manager(): admin_token is not set")
+    global _keystone_manager
+    if (api_version == _keystone_manager['api_version'] and
+            api_local_endpoint == _keystone_manager['api_local_endpoint'] and
+            admin_token == _keystone_manager['admin_token']):
+        return _keystone_manager['manager']
+    # only retain the params IF getting the manager actually works
+    _keystone_manager['manager'] = get_keystone_manager(
+        api_local_endpoint, admin_token, api_version)
+    _keystone_manager['api_version'] = api_version
+    _keystone_manager['api_local_endpoint'] = api_local_endpoint
+    _keystone_manager['admin_token'] = admin_token
+    return _keystone_manager['manager']
+
+
+class ManagerException(Exception):
+    pass
+
+
+"""
+In the following code, there is a slightly unusual construction:
+
+        _callable = manager
+        for attr in spec['path']:
+            _callable = getattr(_callable, attr)
+
+What this does is allow the calling file to make it look like it was just
+calling a deeply nested function in a class hierarchy.
+
+So in the calling file, you get something like this:
+
+    manager = get_manager()
+    manager.some_function(a, b, c, y=10)
+
+And that gets translated by the calling code into a json structure
+that looks like:
+
+{
+    "path": ['some_function'],
+    "args": [1, 2, 3],
+    "kwargs": {'y': 10},
+    ... other bits for tokens, etc ...
+}
+
+If it was `manager.some_class.some_function(a, b, c, y=10)` then the "path"
+would equal ['some_class', 'some_function'].
+
+So what these three lines do is replicate the call on the KeystoneManager class
+in this file, but successively grabbing attributes down/into the class using
+the path as the attributes at each level.
+"""
+
+if __name__ == '__main__':
+    # This script needs 1 argument which is the unix domain socket though which
+    # it communicates with the caller.  The program stays running until it is
+    # sent a 'STOP' command by the caller, or is just killed.
+    if len(sys.argv) != 2:
+        raise RuntimeError(
+            "{} called without 2 arguments: must pass the filename of the fifo"
+            .format(__file__))
+    filename = sys.argv[1]
+    if not stat.S_ISSOCK(os.stat(filename).st_mode):
+        raise RuntimeError(
+            "{} called with {} but it is not a Unix domain socket"
+            .format(__file__, filename))
+
+    uds_client = uds.UDSClient(filename)
+    uds_client.connect()
+    # endless loop whilst we process messages from the caller
+    while True:
+        try:
+            data = uds_client.receive()
+            if data == "QUIT":
+                break
+            spec = json.loads(data)
+            manager = get_manager(
+                api_version=spec['api_version'],
+                api_local_endpoint=spec['api_local_endpoint'],
+                admin_token=spec['admin_token'])
+            _callable = manager
+            for attr in spec['path']:
+                _callable = getattr(_callable, attr)
+            # now make the call and return the arguments
+            result = {'result': _callable(*spec['args'], **spec['kwargs'])}
+        except uds.UDSException as e:
+            print(str(e))
+            import traceback
+            traceback.print_exc()
+            try:
+                uds_client.close()
+            except Exception:
+                pass
+            sys.exit(1)
+        except ManagerException as e:
+            # deal with sending an error back.
+            print(str(e))
+            import traceback
+            traceback.print_exc()
+            result = {'error', str(e)}
+        except Exception as e:
+            print("{}: something went wrong: {}".format(__file__, str(e)))
+            import traceback
+            traceback.print_exc()
+            result = {'error': str(e)}
+        finally:
+            result_json = json.dumps(result, **JSON_ENCODE_OPTIONS)
+            uds_client.send(result_json)
+
+    # normal exit
+    exit(0)

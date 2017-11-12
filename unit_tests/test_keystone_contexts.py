@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import collections
+import importlib
 import os
 
 from mock import patch, MagicMock
@@ -20,6 +22,7 @@ with patch('charmhelpers.contrib.openstack.'
     snap_install_requested.return_value = False
     import keystone_utils  # noqa
     import keystone_context as context
+    importlib.reload(keystone_utils)
 
 from test_utils import (
     CharmTestCase
@@ -99,7 +102,7 @@ class TestKeystoneContexts(CharmTestCase):
     @patch('charmhelpers.contrib.openstack.context.relation_get')
     @patch('charmhelpers.contrib.openstack.context.log')
     @patch('charmhelpers.contrib.openstack.context.kv')
-    @patch('__builtin__.open')
+    @patch('builtins.open')
     def test_haproxy_context_service_enabled(
         self, mock_open, mock_kv, mock_log, mock_relation_get,
             mock_related_units, mock_unit_get, mock_relation_ids, mock_config,
@@ -122,27 +125,35 @@ class TestKeystoneContexts(CharmTestCase):
         ctxt = context.HAProxyContext()
 
         self.maxDiff = None
-        self.assertEqual(
-            ctxt(),
-            {'listen_ports': {'admin_port': '12',
-                              'public_port': '12'},
-             'local_host': '127.0.0.1',
-             'haproxy_host': '0.0.0.0',
-             'stat_port': '8888',
-             'stat_password': 'abcdefghijklmnopqrstuvwxyz123456',
-             'service_ports': {'admin-port': ['12', '34'],
-                               'public-port': ['12', '34']},
-             'default_backend': '1.2.3.4',
-             'ipv6_enabled': True,
-             'frontends': {'1.2.3.4': {
-                 'network': '1.2.3.4/255.255.255.0',
-                 'backends': {
-                     'keystone': '1.2.3.4',
-                     'unit-0': '10.0.0.0'
-                 }
-             }}
-             }
-        )
+        _ctxt = ctxt()
+        test_ctxt = {
+            'listen_ports': {
+                'admin_port': '12',
+                'public_port': '12'
+            },
+            'ipv6_enabled': True,
+            'local_host': '127.0.0.1',
+            'haproxy_host': '0.0.0.0',
+            'stat_port': '8888',
+            'stat_password': 'abcdefghijklmnopqrstuvwxyz123456',
+            'service_ports': {
+                'admin-port': ['12', '34'],
+                'public-port': ['12', '34']
+            },
+            'default_backend': '1.2.3.4',
+            'frontends': {
+                '1.2.3.4': {
+                    'network': '1.2.3.4/255.255.255.0',
+                    'backends': collections.OrderedDict([
+                        ('keystone', '1.2.3.4'),
+                        ('unit-0', '10.0.0.0')
+                    ]),
+                }
+            }
+        }
+        self.assertEqual(sorted(list(_ctxt.keys())),
+                         sorted(list(test_ctxt.keys())))
+        self.assertEqual(_ctxt, test_ctxt)
 
     @patch.object(context, 'config')
     def test_keystone_logger_context(self, mock_config):
@@ -285,7 +296,7 @@ class TestKeystoneContexts(CharmTestCase):
         ctxt = context.KeystoneFIDServiceProviderContext()
 
         self.maxDiff = None
-        self.assertItemsEqual(
+        self.assertCountEqual(
             ctxt(),
             {
                 "fid_sps": [
@@ -319,7 +330,7 @@ class TestKeystoneContexts(CharmTestCase):
         ctxt = context.KeystoneFIDServiceProviderContext()
 
         self.maxDiff = None
-        self.assertItemsEqual(ctxt(), {})
+        self.assertCountEqual(ctxt(), {})
 
     @patch.object(context, 'relation_ids')
     @patch.object(context, 'related_units')
@@ -427,4 +438,4 @@ class TestKeystoneContexts(CharmTestCase):
         ctxt = context.WebSSOTrustedDashboardContext()
 
         self.maxDiff = None
-        self.assertItemsEqual(ctxt(), {})
+        self.assertCountEqual(ctxt(), {})

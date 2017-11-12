@@ -12,26 +12,26 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import builtins
+import collections
+from mock import patch, call, MagicMock, mock_open, Mock
 import json
 import os
 import subprocess
-import sys
 import time
 
-from mock import MagicMock, call, mock_open, patch
 from test_utils import CharmTestCase
-
-if sys.version_info.major == 2:
-    import __builtin__ as builtins
-else:
-    import builtins
 
 os.environ['JUJU_UNIT_NAME'] = 'keystone'
 with patch('charmhelpers.core.hookenv.config') as config, \
         patch('charmhelpers.contrib.openstack.'
-              'utils.snap_install_requested') as snap_install_requested:
-    snap_install_requested.return_value = False
+              'utils.snap_install_requested',
+              Mock(return_value=False)):
+    import importlib
     import keystone_utils as utils
+    # we have to force utils to reload as another test module may already have
+    # pulled it in, and thus all this fancy patching will just fail
+    importlib.reload(utils)
 
 TO_PATCH = [
     'api_port',
@@ -123,7 +123,7 @@ class TestKeystoneUtils(CharmTestCase):
                 '/etc/apache2/sites-available/openstack_https_frontend.conf',
                 [self.ctxt]),
         ]
-        self.assertEqual(fake_renderer.register.call_args_list, ex_reg)
+        fake_renderer.register.assert_has_calls(ex_reg, any_order=True)
 
     @patch.object(utils, 'snap_install_requested')
     @patch.object(utils, 'os')
@@ -337,6 +337,7 @@ class TestKeystoneUtils(CharmTestCase):
                                           'admin_url': '10.0.0.2',
                                           'internal_url': '192.168.1.2'}
 
+        mock_keystone.user_exists.return_value = False
         utils.add_service_to_keystone(
             relation_id=relation_id,
             remote_unit=remote_unit)
@@ -374,8 +375,8 @@ class TestKeystoneUtils(CharmTestCase):
                          'service_tenant_id': 'tenant_id',
                          'api_version': test_api_version}
 
-        filtered = {}
-        for k, v in relation_data.iteritems():
+        filtered = collections.OrderedDict()
+        for k, v in relation_data.items():
             if v == '__null__':
                 filtered[k] = None
             else:
@@ -415,6 +416,7 @@ class TestKeystoneUtils(CharmTestCase):
                                           'ec2_internal_url': '192.168.1.2'}
         self.get_local_endpoint.return_value = 'http://localhost:80/v2.0/'
         KeystoneManager.resolve_tenant_id.return_value = 'tenant_id'
+        KeystoneManager.user_exists.return_value = False
         leader_get.return_value = None
 
         utils.add_service_to_keystone(
@@ -559,43 +561,6 @@ class TestKeystoneUtils(CharmTestCase):
     def test_create_user_credentials_user_exists_v3(self):
         self.test_create_user_credentials_user_exists(test_api_version=3)
 
-    @patch.object(utils, 'get_manager')
-    def test_create_user_case_sensitivity(self, KeystoneManager):
-        """ Test case sensitivity of check for existence in
-            the user creation process """
-        mock_keystone = MagicMock()
-        KeystoneManager.return_value = mock_keystone
-
-        mock_user = MagicMock()
-        mock_keystone.resolve_user_id.return_value = mock_user
-        mock_keystone.api.users.list.return_value = [mock_user]
-
-        # User found is the same i.e. userA == userA
-        mock_user.name = 'userA'
-        utils.create_user('userA', 'passA')
-        mock_keystone.resolve_user_id.assert_called_with('userA',
-                                                         user_domain=None)
-        mock_keystone.create_user.assert_not_called()
-
-        # User found has different case but is the same
-        # i.e. Usera != userA
-        mock_user.name = 'Usera'
-        utils.create_user('userA', 'passA')
-        mock_keystone.resolve_user_id.assert_called_with('userA',
-                                                         user_domain=None)
-        mock_keystone.create_user.assert_not_called()
-
-        # User is different i.e. UserB != userA
-        mock_user.name = 'UserB'
-        utils.create_user('userA', 'passA')
-        mock_keystone.resolve_user_id.assert_called_with('userA',
-                                                         user_domain=None)
-        mock_keystone.create_user.assert_called_with(name='userA',
-                                                     password='passA',
-                                                     tenant_id=None,
-                                                     domain_id=None,
-                                                     email='juju@localhost')
-
     @patch.object(utils, 'set_service_password')
     @patch.object(utils, 'get_service_password')
     @patch.object(utils, 'create_user_credentials')
@@ -705,7 +670,8 @@ class TestKeystoneUtils(CharmTestCase):
         self.assertFalse(utils.is_db_ready(use_current_context=True))
 
         self.relation_ids.return_value = ['acme:0']
-        self.assertRaises(utils.is_db_ready, use_current_context=True)
+        with self.assertRaises(Exception):
+            utils.is_db_ready(use_current_context=True)
 
         allowed_units = 'unit/0'
         self.related_units.return_value = ['unit/0']
@@ -772,7 +738,7 @@ class TestKeystoneUtils(CharmTestCase):
         mock_keystone.resolve_service_id.return_value = 'sid1'
         KeystoneManager.return_value = mock_keystone
         utils.delete_service_entry('bob', 'bill')
-        mock_keystone.api.services.delete.assert_called_with('sid1')
+        mock_keystone.delete_service_by_id.assert_called_once_with('sid1')
 
     @patch('os.path.isfile')
     def test_get_file_stored_domain_id(self, isfile_mock):

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
 import os
 import sys
 
@@ -29,21 +30,17 @@ with patch('charmhelpers.core.hookenv.config') as config, \
     snap_install_requested.return_value = False
     config.return_value = 'keystone'
     import keystone_utils as utils
+    importlib.reload(utils)
 
-_reg = utils.register_configs
-_map = utils.restart_map
+    with patch('charmhelpers.contrib.hardening.harden.harden') as mock_dec, \
+            patch('keystone_utils.register_configs'), \
+            patch('keystone_utils.restart_map'):
+        mock_dec.side_effect = (lambda *dargs, **dkwargs: lambda f:
+                                lambda *args, **kwargs: f(*args, **kwargs))
+        with patch.object(utils, 'run_in_apache') as mock_run_in_apache:
+            import keystone_hooks as hooks
+            importlib.reload(hooks)
 
-utils.register_configs = MagicMock()
-utils.restart_map = MagicMock()
-
-with patch('charmhelpers.contrib.hardening.harden.harden') as mock_dec:
-    mock_dec.side_effect = (lambda *dargs, **dkwargs: lambda f:
-                            lambda *args, **kwargs: f(*args, **kwargs))
-    with patch('keystone_utils.run_in_apache') as mock_run_in_apache:
-        import keystone_hooks as hooks
-
-utils.register_configs = _reg
-utils.restart_map = _map
 
 TO_PATCH = [
     # charmhelpers.core.hookenv
@@ -133,7 +130,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.apt_install.assert_called_with(
             ['apache2', 'haproxy', 'keystone', 'openssl', 'pwgen',
              'python-keystoneclient', 'python-mysqldb', 'python-psycopg2',
-             'python-six', 'uuid'], fatal=True)
+             'python3-six', 'uuid'], fatal=True)
         self.disable_unused_apache_sites.assert_not_called()
 
     @patch.object(utils, 'os_release')
@@ -151,9 +148,8 @@ class KeystoneRelationTests(CharmTestCase):
         self.apt_install.assert_called_with(
             ['apache2', 'haproxy', 'keystone', 'openssl', 'pwgen',
              'python-keystoneclient', 'python-mysqldb', 'python-psycopg2',
-             'python-six', 'uuid'], fatal=True)
+             'python3-six', 'uuid'], fatal=True)
         self.disable_unused_apache_sites.assert_called_with()
-
     mod_ch_openstack_utils = 'charmhelpers.contrib.openstack.utils'
 
     @patch.object(utils, 'os_release')

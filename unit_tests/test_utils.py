@@ -17,8 +17,7 @@ import os
 import unittest
 import yaml
 
-from contextlib import contextmanager
-from mock import patch, MagicMock
+from mock import patch
 
 patch('charmhelpers.contrib.openstack.utils.set_os_workload_status').start()
 patch('charmhelpers.core.hookenv.status_set').start()
@@ -39,7 +38,7 @@ def load_config():
 
     if not config:
         logging.error('Could not find config.yaml in any parent directory '
-                      'of %s. ' % file)
+                      'of %s. ' % __file__)
         raise Exception
 
     with open(config) as f:
@@ -52,7 +51,7 @@ def get_default_config():
     '''
     default_config = {}
     config = load_config()
-    for k, v in config.iteritems():
+    for k, v in config.items():
         if 'default' in v:
             default_config[k] = v['default']
         else:
@@ -117,21 +116,3 @@ class TestRelation(object):
         elif attr in self.relation_data:
             return self.relation_data[attr]
         return None
-
-
-@contextmanager
-def patch_open():
-    '''Patch open() to allow mocking both open() itself and the file that is
-    yielded.
-    Yields the mock for "open" and "file", respectively.
-    '''
-    mock_open = MagicMock(spec=open)
-    mock_file = MagicMock(spec=file)
-
-    @contextmanager
-    def stub_open(*args, **kwargs):
-        mock_open(*args, **kwargs)
-        yield mock_file
-
-    with patch('__builtin__.open', stub_open):
-        yield mock_open, mock_file

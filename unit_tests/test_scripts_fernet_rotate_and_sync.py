@@ -29,7 +29,7 @@ class FernetRotateAndSync(CharmTestCase):
 
     @patch('charmhelpers.core.hookenv.log')
     @patch('time.ctime')
-    @patch('__builtin__.print')
+    @patch('builtins.print')
     def test_cli_log(self, mock_print, mock_ctime, mock_ch_log):
         mock_ctime.return_value = 'FAKE_TIMESTAMP'
         script.cli_log('message', level='DEBUG')

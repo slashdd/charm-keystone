@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 #
 # Copyright 2016 Canonical Ltd
 #
@@ -18,10 +18,10 @@ import json
 import os
 import shutil
 import subprocess
+import tempfile
 import time
-import urlparse
+import urllib.parse
 import uuid
-import sys
 
 from itertools import chain
 from collections import OrderedDict
@@ -71,6 +71,7 @@ from charmhelpers.core.decorators import (
 )
 
 from charmhelpers.core.hookenv import (
+    atexit,
     config,
     is_leader,
     leader_get,
@@ -112,6 +113,7 @@ from charmhelpers.contrib.peerstorage import (
 
 import keystone_context
 
+import uds_comms as uds
 
 TEMPLATES = 'templates/'
 
@@ -124,7 +126,7 @@ BASE_PACKAGES = [
     'python-keystoneclient',
     'python-mysqldb',
     'python-psycopg2',
-    'python-six',
+    'python3-six',
     'pwgen',
     'uuid',
 ]
@@ -132,7 +134,7 @@ BASE_PACKAGES = [
 BASE_PACKAGES_SNAP = [
     'haproxy',
     'openssl',
-    'python-six',
+    'python3-six',
     'pwgen',
     'uuid',
 ]
@@ -431,7 +433,7 @@ def filter_null(settings, null='__null__'):
     so that the value is actually unset.
     """
     filtered = {}
-    for k, v in settings.iteritems():
+    for k, v in settings.items():
         if v == null:
             filtered[k] = None
         else:
@@ -558,14 +560,14 @@ def register_configs():
     release = os_release('keystone')
     configs = templating.OSConfigRenderer(templates_dir=TEMPLATES,
                                           openstack_release=release)
-    for cfg, rscs in resource_map().iteritems():
+    for cfg, rscs in resource_map().items():
         configs.register(cfg, rscs['contexts'])
     return configs
 
 
 def restart_map():
     return OrderedDict([(cfg, v['services'])
-                        for cfg, v in resource_map().iteritems()
+                        for cfg, v in resource_map().items()
                         if v['services']])
 
 
@@ -577,7 +579,7 @@ def services():
 def determine_ports():
     """Assemble a list of API ports for services we are managing"""
     ports = [config('admin-port'), config('service-port')]
-    return list(set(ports))
+    return sorted(list(set(ports)))
 
 
 def api_port(service):
@@ -779,29 +781,31 @@ def delete_service_entry(service_name, service_type):
     manager = get_manager()
     service_id = manager.resolve_service_id(service_name, service_type)
     if service_id:
-        manager.api.services.delete(service_id)
-        log("Deleted service entry '%s'" % service_name, level=DEBUG)
+        manager.delete_service_by_id(service_id)
+        log("Deleted service entry '{}'".format(service_name), level=DEBUG)
 
 
 def create_service_entry(service_name, service_type, service_desc, owner=None):
     """ Add a new service entry to keystone if one does not already exist """
     manager = get_manager()
-    for service in [s._info for s in manager.api.services.list()]:
+    for service in manager.list_services():
         if service['name'] == service_name:
-            log("Service entry for '%s' already exists." % service_name,
+            log("Service entry for '{}' already exists.".format(service_name),
                 level=DEBUG)
             return
 
-    manager.api.services.create(service_name,
-                                service_type,
-                                description=service_desc)
-    log("Created new service entry '%s'" % service_name, level=DEBUG)
+    manager.create_service(service_name, service_type,
+                           description=service_desc)
+
+    log("Created new service entry '{}'".format(service_name), level=DEBUG)
 
 
 def create_endpoint_template(region, service, publicurl, adminurl,
                              internalurl):
     manager = get_manager()
-    if manager.api_version == 2:
+    # this needs to be a round-trip to the manager.py script to discover what
+    # the "current" api_version might be, as it can't just be asserted.
+    if manager.resolved_api_version() == 2:
         create_endpoint_template_v2(manager, region, service, publicurl,
                                     adminurl, internalurl)
     else:
@@ -814,7 +818,7 @@ def create_endpoint_template_v2(manager, region, service, publicurl, adminurl,
     """ Create a new endpoint template for service if one does not already
         exist matching name *and* region """
     service_id = manager.resolve_service_id(service)
-    for ep in [e._info for e in manager.api.endpoints.list()]:
+    for ep in manager.list_endpoints():
         if ep['service_id'] == service_id and ep['region'] == region:
             log("Endpoint template already exists for '%s' in '%s'"
                 % (service, region))
@@ -829,15 +833,15 @@ def create_endpoint_template_v2(manager, region, service, publicurl, adminurl,
             else:
                 # delete endpoint and recreate if endpoint urls need updating.
                 log("Updating endpoint template with new endpoint urls.")
-                manager.api.endpoints.delete(ep['id'])
+                manager.delete_endpoint_by_id(ep['id'])
 
     manager.create_endpoints(region=region,
                              service_id=service_id,
                              publicurl=publicurl,
                              adminurl=adminurl,
                              internalurl=internalurl)
-    log("Created new endpoint template for '%s' in '%s'" % (region, service),
-        level=DEBUG)
+    log("Created new endpoint template for '{}' in '{}'"
+        .format(region, service), level=DEBUG)
 
 
 def create_endpoint_template_v3(manager, region, service, publicurl, adminurl,
@@ -862,11 +866,11 @@ def create_endpoint_template_v3(manager, region, service, publicurl, adminurl,
             region
         )
         if ep_deleted or not ep_exists:
-            manager.api.endpoints.create(
-                service_id,
-                endpoints[ep_type],
+            manager.create_endpoint_by_type(
+                region=region,
+                service_id=service_id,
                 interface=ep_type,
-                region=region
+                endpoint=endpoints[ep_type],
             )
 
 
@@ -878,11 +882,11 @@ def create_tenant(name, domain):
         manager.create_tenant(tenant_name=name,
                               domain=domain,
                               description='Created by Juju')
-        log("Created new tenant '%s' in domain '%s'" % (name, domain),
+        log("Created new tenant '{}' in domain '{}'".format(name, domain),
             level=DEBUG)
         return
 
-    log("Tenant '%s' already exists." % name, level=DEBUG)
+    log("Tenant '{}' already exists.".format(name), level=DEBUG)
 
 
 def create_or_show_domain(name):
@@ -890,88 +894,209 @@ def create_or_show_domain(name):
     manager = get_manager()
     domain_id = manager.resolve_domain_id(name)
     if domain_id:
-        log("Domain '%s' already exists." % name, level=DEBUG)
+        log("Domain '{}' already exists.".format(name), level=DEBUG)
     else:
         manager.create_domain(domain_name=name,
                               description='Created by Juju')
-        log("Created new domain: %s" % name, level=DEBUG)
+        log("Created new domain: {}".format(name), level=DEBUG)
         domain_id = manager.resolve_domain_id(name)
     return domain_id
 
 
 def user_exists(name, domain=None):
     manager = get_manager()
-    domain_id = None
-    if domain:
-        domain_id = manager.resolve_domain_id(domain)
-        if not domain_id:
-            error_out('Could not resolve domain_id for {} when checking if '
-                      ' user {} exists'.format(domain, name))
-    if manager.resolve_user_id(name, user_domain=domain):
-        if manager.api_version == 2:
-            users = manager.api.users.list()
-        else:
-            users = manager.api.users.list(domain=domain_id)
-        for user in users:
-            if user.name.lower() == name.lower():
-                # In v3 Domains are seperate user namespaces so need to check
-                # that the domain matched if provided
-                if domain:
-                    if domain_id == user.domain_id:
-                        return True
-                else:
-                    return True
-
-    return False
+    return manager.user_exists(name, domain=domain)
 
 
 def create_user(name, password, tenant=None, domain=None):
     """Creates a user if it doesn't already exist, as a member of tenant"""
     manager = get_manager()
     if user_exists(name, domain=domain):
-        log("A user named '%s' already exists in domain '%s'" % (name, domain),
-            level=DEBUG)
+        log("A user named '{}' already exists in domain '{}'"
+            .format(name, domain), level=DEBUG)
         return
 
     tenant_id = None
     if tenant:
         tenant_id = manager.resolve_tenant_id(tenant, domain=domain)
         if not tenant_id:
-            error_out("Could not resolve tenant_id for tenant '%s' in domain "
-                      "'%s'" % (tenant, domain))
+            error_out("Could not resolve tenant_id for tenant '{}' in domain "
+                      "'{}'".format(tenant, domain))
 
     domain_id = None
     if domain:
         domain_id = manager.resolve_domain_id(domain)
         if not domain_id:
-            error_out('Could not resolve domain_id for domain %s when creating'
-                      ' user %s' % (domain, name))
+            error_out('Could not resolve domain_id for domain {} when creating'
+                      ' user {}'.format(domain, name))
 
     manager.create_user(name=name,
                         password=password,
                         email='juju@localhost',
                         tenant_id=tenant_id,
                         domain_id=domain_id)
-    log("Created new user '%s' tenant: '%s' domain: '%s'" % (name, tenant_id,
-        domain_id), level=DEBUG)
+    log("Created new user '{}' tenant: '{}' domain: '{}'"
+        .format(name, tenant_id, domain_id), level=DEBUG)
 
 
 def get_manager(api_version=None):
-    """Return a keystonemanager for the correct API version"""
-    set_python_path()
-    from manager import get_keystone_manager
-    return get_keystone_manager(get_local_endpoint(), get_admin_token(),
-                                api_version)
+    return KeystoneManagerProxy(api_version=api_version)
+
+
+class KeystoneManagerProxy(object):
+
+    def __init__(self, api_version=None, path=None):
+        self._path = path or []
+        self.api_version = api_version
+
+    def __getattribute__(self, attr):
+        if attr in ['__class__', '_path', 'api_version']:
+            return super().__getattribute__(attr)
+        return self.__class__(api_version=self.api_version,
+                              path=self._path + [attr])
+
+    def __call__(self, *args, **kwargs):
+        # Following line retained commented-out for future debugging
+        # print("Called: {} ({}, {})".format(self._path, args, kwargs))
+        return _proxy_manager_call(self._path, self.api_version, args, kwargs)
+
+
+JSON_ENCODE_OPTIONS = dict(
+    sort_keys=True,
+    allow_nan=False,
+    indent=None,
+    separators=(',', ':'),
+)
+
+
+def _proxy_manager_call(path, api_version, args, kwargs):
+    package = dict(path=path,
+                   api_version=api_version,
+                   api_local_endpoint=get_local_endpoint(),
+                   admin_token=get_admin_token(),
+                   args=args,
+                   kwargs=kwargs)
+    serialized = json.dumps(package, **JSON_ENCODE_OPTIONS)
+    server = _get_server_instance()
+    try:
+        server.send(serialized)
+        # wait for the reply
+        result_str = server.receive()
+        result = json.loads(result_str)
+        if 'error' in result:
+            s = ("The call within manager.py failed with the error: '{}'. "
+                 "The call was: path={}, args={}, kwargs={}, api_version={}"
+                 .format(result['error'], path, args, kwargs, api_version))
+            log(s, level=ERROR)
+            raise RuntimeError(s)
+        return json.loads(result_str)['result']
+    except RuntimeError as e:
+        raise e
+    except Exception as e:
+        s = ("Decoding the result from the call to manager.py resulted in "
+             "error '{}' (command: path={}, args={}, kwargs={}"
+             .format(str(e), path, args, kwargs))
+        log(s, level=ERROR)
+        raise RuntimeError(s)
+
+
+# singleton to ensure that there's only one manager instance.
+_the_manager_instance = None
+
+
+def _get_server_instance():
+    """Get a SockServer instance and run up the manager to connect to it.
+    Ensure that the manager.py is running and is ready to receive messages (i.e
+    do the handshake.  Check that it is still running, and if not, start it
+    again.  In that instance, restart the SockServer
+    """
+    global _the_manager_instance
+    if _the_manager_instance is None:
+        _the_manager_instance = ManagerServer()
+    return _the_manager_instance.server
+
+
+class ManagerServer():
+    """This is a singleton server that launches and kills the manager.py script
+    that is used to allow 'calling' into Keystone when it is in a completely
+    different process.  The object handles kill/quiting the manager.py script
+    when this keystone charm exits using the atexit charmhelpers `atexit()`
+    command to do the cleanup.
+
+    The server() method also ensures that the manager.py script is still
+    running, and if not, relaunches it.  This is to try to make the using the
+    manager.py methods as transparent, and speedy, as possible.
+    """
+
+    def __init__(self):
+        self.pvar = None
+        self._server = None
+        self.socket_file = os.path.join(tempfile.gettempdir(), "keystone-uds")
+        atexit(lambda: self.clean_up())
+
+    @property
+    def server(self):
+        self._ensure_running()
+        return self._server
+
+    def _ensure_running(self):
+        if self.pvar is None or self.pvar.poll() is not None:
+            if self._server is not None:
+                self._server.close()
+            self._server = uds.UDSServer(self.socket_file)
+            self._launch_manager()
+            self._server.wait_for_connection()
+
+    def _launch_manager(self):
+        script = os.path.abspath(os.path.join(os.path.dirname(__file__),
+                                              'manager.py'))
+        # need to set the environment variable PYTHONPATH to include the
+        # payload's directory for the manager.py to find the various keystone
+        # clients
+        env = os.environ
+        _python_path = determine_python_path()
+        if _python_path:
+            if _python_path not in os.environ.get('PYTHONPATH', ''):
+                env['PYTHONPATH'] = ':'.join(
+                    os.environ.get('PYTHONPATH', '').split(':') +
+                    [_python_path])
+        # also ensure that the python executable is available if snap
+        # installed.
+        if snap_install_requested():
+            _bin_path = os.path.join(SNAP_BASE_DIR, 'usr/bin')
+            if _bin_path not in os.environ.get('PATH', ''):
+                env['PATH'] = ':'.join(
+                    os.environ.get('PATH', '').split(':') +
+                    [_bin_path])
+        # launch the process and return immediately
+        self.pvar = subprocess.Popen([script, self.socket_file],
+                                     env=env, close_fds=True)
+
+    def clean_up(self):
+        if self.pvar is not None and self.pvar.poll() is None:
+            self._server.send("QUIT")
+            try:
+                self.pvar.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                self.pvar.kill()
+            self.pvar = None
+        if self._server is not None:
+            self._server.close()
+            self._server = None
+        try:
+            os.remove(self.socket_file)
+        except OSError:
+            pass
 
 
 def create_role(name, user=None, tenant=None, domain=None):
     """Creates a role if it doesn't already exist. grants role to user"""
     manager = get_manager()
     if not manager.resolve_role_id(name):
-        manager.api.roles.create(name=name)
-        log("Created new role '%s'" % name, level=DEBUG)
+        manager.create_role(name=name)
+        log("Created new role '{}'".format(name), level=DEBUG)
     else:
-        log("A role named '%s' already exists" % name, level=DEBUG)
+        log("A role named '{}' already exists".format(name), level=DEBUG)
 
     if not user and not tenant:
         return
@@ -1010,8 +1135,8 @@ def grant_role(user, role, tenant=None, domain=None, user_domain=None,
     if tenant:
         tenant_id = manager.resolve_tenant_id(tenant, domain=project_domain)
         if not tenant_id:
-            error_out("Could not resolve tenant_id for tenant '%s' in domain "
-                      "'%s'" % (tenant, domain))
+            error_out("Could not resolve tenant_id for tenant '{}' in domain "
+                      "'{}'".format(tenant, domain))
 
     domain_id = None
     if domain:
@@ -1021,7 +1146,7 @@ def grant_role(user, role, tenant=None, domain=None, user_domain=None,
 
     cur_roles = manager.roles_for_user(user_id, tenant_id=tenant_id,
                                        domain_id=domain_id)
-    if not cur_roles or role_id not in [r.id for r in cur_roles]:
+    if not cur_roles or role_id not in [r['id'] for r in cur_roles]:
         manager.add_user_role(user=user_id,
                               role=role_id,
                               tenant=tenant_id,
@@ -1043,7 +1168,7 @@ def grant_role(user, role, tenant=None, domain=None, user_domain=None,
 
 def store_data(backing_file, data):
     with open(backing_file, 'w+') as fd:
-        fd.writelines("%s\n" % data)
+        fd.writelines("{}\n".format(data))
 
 
 def get_admin_passwd(user=None):
@@ -1058,7 +1183,7 @@ def get_admin_passwd(user=None):
         log("Generating new passwd for user: %s" %
             config("admin-user"))
         cmd = ['pwgen', '-c', '16', '1']
-        passwd = str(subprocess.check_output(cmd)).strip()
+        passwd = str(subprocess.check_output(cmd).decode('UTF-8')).strip()
 
     return passwd
 
@@ -1088,31 +1213,11 @@ def get_api_version():
     return api_version
 
 
-def set_python_path():
-    """ Set the Python path to include snap installed python libraries
-
-    The charm itself requires access to the python client. When installed as a
-    snap the client libraries are in /snap/$SNAP/common/lib/python2.7. This
-    function sets the python path to allow clients to be imported from snap
-    installs.
-    """
-    if snap_install_requested():
-        sys.path.append(determine_python_path())
-
-
 def ensure_initial_admin(config):
     # Allow retry on fail since leader may not be ready yet.
     # NOTE(hopem): ks client may not be installed at module import time so we
     # use this wrapped approach instead.
-    set_python_path()
-    try:
-        from keystoneclient.apiclient.exceptions import InternalServerError
-    except:
-        # Backwards-compatibility for earlier versions of keystoneclient (< I)
-        from keystoneclient.exceptions import (ClientException as
-                                               InternalServerError)
-
-    @retry_on_exception(3, base_delay=3, exc_type=InternalServerError)
+    @retry_on_exception(3, base_delay=3, exc_type=RuntimeError)
     def _ensure_initial_admin(config):
         """Ensures the minimum admin stuff exists in whatever database we're
         using.
@@ -1193,9 +1298,9 @@ def endpoint_url(ip, port, suffix=None):
     if is_ipv6(ip):
         ip = "[{}]".format(ip)
     if suffix:
-        ep = "%s://%s:%s/%s" % (proto, ip, port, suffix)
+        ep = "{}://{}:{}/{}".format(proto, ip, port, suffix)
     else:
-        ep = "%s://%s:%s" % (proto, ip, port)
+        ep = "{}://{}:{}".format(proto, ip, port)
     return ep
 
 
@@ -1212,15 +1317,14 @@ def create_keystone_endpoint(public_ip, service_port,
 
 def update_user_password(username, password, domain):
     manager = get_manager()
-    log("Updating password for user '%s'" % username)
+    log("Updating password for user '{}'".format(username))
 
     user_id = manager.resolve_user_id(username, user_domain=domain)
     if user_id is None:
-        error_out("Could not resolve user id for '%s'" % username)
+        error_out("Could not resolve user id for '{}'".format(username))
 
     manager.update_password(user=user_id, password=password)
-    log("Successfully updated password for user '%s'" %
-        username)
+    log("Successfully updated password for user '{}'".format(username))
 
 
 def load_stored_passwords(path=SERVICE_PASSWD_PATH):
@@ -1250,7 +1354,7 @@ def _migrate_service_passwords():
     if is_leader() and os.path.exists(SERVICE_PASSWD_PATH):
         log('Migrating on-disk stored passwords to leader storage')
         creds = load_stored_passwords()
-        for k, v in creds.iteritems():
+        for k, v in creds.items():
             leader_set({"{}_passwd".format(k): v})
         os.unlink(SERVICE_PASSWD_PATH)
 
@@ -1273,18 +1377,6 @@ def is_password_changed(username, passwd):
     return (_passwd is None or passwd != _passwd)
 
 
-def relation_list(rid):
-    cmd = [
-        'relation-list',
-        '-r', rid,
-    ]
-    result = str(subprocess.check_output(cmd)).split()
-    if result == "":
-        return None
-    else:
-        return result
-
-
 def create_user_credentials(user, passwd_get_callback, passwd_set_callback,
                             tenant=None, new_roles=None,
                             grants=None, domain=None):
@@ -1298,9 +1390,9 @@ def create_user_credentials(user, passwd_get_callback, passwd_set_callback,
             level=INFO)
         return
 
-    log("Creating service credentials for '%s'" % user, level=DEBUG)
+    log("Creating service credentials for '{}'".format(user), level=DEBUG)
     if user_exists(user, domain=domain):
-        log("User '%s' already exists" % (user), level=DEBUG)
+        log("User '{}' already exists".format(user), level=DEBUG)
         # NOTE(dosaboy): see LP #1648677
         if is_password_changed(user, passwd):
             update_user_password(user, passwd, domain)
@@ -1315,13 +1407,13 @@ def create_user_credentials(user, passwd_get_callback, passwd_set_callback,
             grant_role(user, role, tenant=tenant, user_domain=domain,
                        project_domain=domain)
     else:
-        log("No role grants requested for user '%s'" % (user), level=DEBUG)
+        log("No role grants requested for user '{}'".format(user), level=DEBUG)
 
     if new_roles:
         # Allow the remote service to request creation of any additional roles.
         # Currently used by Swift and Ceilometer.
         for role in new_roles:
-            log("Creating requested role '%s'" % role, level=DEBUG)
+            log("Creating requested role '{}'".format(role), level=DEBUG)
             create_role(role, user=user, tenant=tenant, domain=domain)
 
     return passwd
@@ -1344,22 +1436,25 @@ def create_service_credentials(user, new_roles=None):
     if not tenant:
         raise Exception("No service tenant provided in config")
 
-    domain = None
-    if get_api_version() > 2:
-        domain = DEFAULT_DOMAIN
-    passwd = create_user_credentials(user, get_service_password,
-                                     set_service_password,
-                                     tenant=tenant, new_roles=new_roles,
-                                     grants=[config('admin-role')],
-                                     domain=domain)
-    if get_api_version() > 2:
-        # Create account in SERVICE_DOMAIN as well using same password
-        domain = SERVICE_DOMAIN
+    if get_api_version() < 3:
         passwd = create_user_credentials(user, get_service_password,
                                          set_service_password,
                                          tenant=tenant, new_roles=new_roles,
                                          grants=[config('admin-role')],
-                                         domain=domain)
+                                         domain=None)
+    else:
+        # api version 3 or above
+        create_user_credentials(user, get_service_password,
+                                set_service_password,
+                                tenant=tenant, new_roles=new_roles,
+                                grants=[config('admin-role')],
+                                domain=DEFAULT_DOMAIN)
+        # Create account in SERVICE_DOMAIN as well using same password
+        passwd = create_user_credentials(user, get_service_password,
+                                         set_service_password,
+                                         tenant=tenant, new_roles=new_roles,
+                                         grants=[config('admin-role')],
+                                         domain=SERVICE_DOMAIN)
     return passwd
 
 
@@ -1367,15 +1462,14 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
     manager = get_manager()
     settings = relation_get(rid=relation_id, unit=remote_unit)
     # the minimum settings needed per endpoint
-    single = set(['service', 'region', 'public_url', 'admin_url',
-                  'internal_url'])
+    single = {'service', 'region', 'public_url', 'admin_url', 'internal_url'}
     https_cns = []
 
     protocol = get_protocol()
 
     if single.issubset(settings):
         # other end of relation advertised only one endpoint
-        if 'None' in settings.itervalues():
+        if 'None' in settings.values():
             # Some backend services advertise no endpoint but require a
             # hook execution to update auth strategy.
             relation_data = {}
@@ -1395,7 +1489,7 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
             # Allow the remote service to request creation of any additional
             # roles. Currently used by Horizon
             for role in get_requested_roles(settings):
-                log("Creating requested role: %s" % role)
+                log("Creating requested role: {}".format(role))
                 create_role(role)
 
             peer_store_and_set(relation_id=relation_id, **relation_data)
@@ -1413,14 +1507,16 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
             service_username = settings['service']
             prefix = config('service-admin-prefix')
             if prefix:
-                service_username = "%s%s" % (prefix, service_username)
+                service_username = "{}{}".format(prefix, service_username)
 
             # NOTE(jamespage) internal IP for backwards compat for SSL certs
-            internal_cn = urlparse.urlparse(settings['internal_url']).hostname
+            internal_cn = (urllib.parse
+                           .urlparse(settings['internal_url']).hostname)
             https_cns.append(internal_cn)
-            public_cn = urlparse.urlparse(settings['public_url']).hostname
+            public_cn = urllib.parse.urlparse(settings['public_url']).hostname
             https_cns.append(public_cn)
-            https_cns.append(urlparse.urlparse(settings['admin_url']).hostname)
+            https_cns.append(
+                urllib.parse.urlparse(settings['admin_url']).hostname)
     else:
         # assemble multiple endpoints from relation data. service name
         # should be prepended to setting name, ie:
@@ -1438,8 +1534,8 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         #       'public_url': $foo
         #   }
         # }
-        endpoints = {}
-        for k, v in settings.iteritems():
+        endpoints = OrderedDict()  # for Python3 we need a consistent order
+        for k, v in settings.items():
             ep = k.split('_')[0]
             x = '_'.join(k.split('_')[1:])
             if ep not in endpoints:
@@ -1461,19 +1557,22 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
                 services.append(ep['service'])
                 # NOTE(jamespage) internal IP for backwards compat for
                 # SSL certs
-                internal_cn = urlparse.urlparse(ep['internal_url']).hostname
+                internal_cn = (urllib.parse
+                               .urlparse(ep['internal_url']).hostname)
                 https_cns.append(internal_cn)
-                https_cns.append(urlparse.urlparse(ep['public_url']).hostname)
-                https_cns.append(urlparse.urlparse(ep['admin_url']).hostname)
+                https_cns.append(
+                    urllib.parse.urlparse(ep['public_url']).hostname)
+                https_cns.append(
+                    urllib.parse.urlparse(ep['admin_url']).hostname)
 
         service_username = '_'.join(sorted(services))
 
         # If an admin username prefix is provided, ensure all services use it.
         prefix = config('service-admin-prefix')
         if service_username and prefix:
-            service_username = "%s%s" % (prefix, service_username)
+            service_username = "{}{}".format(prefix, service_username)
 
-    if 'None' in settings.itervalues():
+    if 'None' in settings.values():
         return
 
     if not service_username:
@@ -1599,7 +1698,7 @@ def get_protocol():
 
 def ensure_valid_service(service):
     if service not in valid_services.keys():
-        log("Invalid service requested: '%s'" % service)
+        log("Invalid service requested: '{}'".format(service))
         relation_set(admin_token=-1)
         return
 
@@ -1686,14 +1785,14 @@ def send_notifications(data, force=False):
     for rid in rel_ids:
         rs = relation_get(unit=local_unit(), rid=rid)
         if rs:
-            keys += rs.keys()
+            keys += list(rs.keys())
 
         # Don't bother checking if we have already identified a diff
         if diff:
             continue
 
         # Work out if this notification changes anything
-        for k, v in data.iteritems():
+        for k, v in data.items():
             if rs.get(k, None) != v:
                 diff = True
                 break
@@ -1707,14 +1806,14 @@ def send_notifications(data, force=False):
     _notifications = {k: None for k in set(keys)}
 
     # Set new values
-    for k, v in data.iteritems():
+    for k, v in data.items():
         _notifications[k] = v
 
     if force:
         _notifications['trigger'] = str(uuid.uuid4())
 
     # Broadcast
-    log("Sending identity-service notifications (trigger=%s)" % (force),
+    log("Sending identity-service notifications (trigger={})".format(force),
         level=DEBUG)
     for rid in rel_ids:
         relation_set(relation_id=rid, relation_settings=_notifications)
@@ -1736,16 +1835,16 @@ def is_db_ready(use_current_context=False, db_rel=None):
 
     if use_current_context:
         if not any([relation_id() in relation_ids(r) for r in db_rels]):
-            raise Exception("use_current_context=True but not in one of %s "
-                            "rel hook contexts (currently in %s)." %
-                            (', '.join(db_rels), relation_id()))
+            raise Exception("use_current_context=True but not in one of {} "
+                            "rel hook contexts (currently in {})."
+                            .format(', '.join(db_rels), relation_id()))
 
         allowed_units = relation_get(attribute=key)
         if allowed_units and local_unit() in allowed_units.split():
             return True
 
         # We are in shared-db rel but don't yet have permissions
-        log("%s does not yet have db permissions" % (local_unit()),
+        log("{} does not yet have db permissions".format(local_unit()),
             level=DEBUG)
         return False
     else:

@@ -186,6 +186,7 @@ class TestKeystoneContexts(CharmTestCase):
              'service_ports': {'admin-port': ['12', '34'],
                                'public-port': ['12', '34']},
              'default_backend': '1.2.3.4',
+             'ipv6_enabled': True,
              'frontends': {'1.2.3.4': {
                  'network': '1.2.3.4/255.255.255.0',
                  'backends': {

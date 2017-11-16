@@ -422,6 +422,11 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
     def validate_keystone_users(self, client):
         """Verify all existing roles."""
         u.log.debug('Checking keystone users...')
+
+        if self._get_openstack_release() < self.xenial_pike:
+            cinder_user = 'cinder_cinderv2'
+        else:
+            cinder_user = 'cinderv3_cinderv2'
         base = [
             {'name': 'demoUser',
              'enabled': True,
@@ -431,7 +436,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
              'enabled': True,
              'id': u.not_null,
              'email': 'juju@localhost'},
-            {'name': 'cinder_cinderv2',
+            {'name': cinder_user,
              'enabled': True,
              'id': u.not_null,
              'email': u'juju@localhost'}
@@ -609,6 +614,9 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             'volume': [endpoint_check],
             'identity': [endpoint_check]
         }
+        if self._get_openstack_release() >= self.xenial_pike:
+            expected.pop('volume')
+            expected['volumev2'] = [endpoint_check]
         actual = self.keystone_v2.service_catalog.get_endpoints()
 
         ret = u.validate_svc_catalog_endpoint_data(expected, actual)
@@ -704,6 +712,8 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             'service_tenant_id': u.not_null,
             'service_host': u.valid_ip
         }
+        if self._get_openstack_release() >= self.xenial_pike:
+            expected['service_username'] = 'cinderv3_cinderv2'
         for unit in self.keystone_sentries:
             ret = u.validate_relation_data(unit, relation, expected)
             if ret:
@@ -728,6 +738,22 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             'cinderv2_admin_url': u.valid_url,
             'private-address': u.valid_ip,
         }
+
+        if self._get_openstack_release() >= self.xenial_pike:
+            expected.pop('cinder_region')
+            expected.pop('cinder_service')
+            expected.pop('cinder_public_url')
+            expected.pop('cinder_admin_url')
+            expected.pop('cinder_internal_url')
+            expected.update({
+                'cinderv2_region': 'RegionOne',
+                'cinderv3_region': 'RegionOne',
+                'cinderv3_service': 'cinderv3',
+                'cinderv3_region': 'RegionOne',
+                'cinderv3_public_url': u.valid_url,
+                'cinderv3_internal_url': u.valid_url,
+                'cinderv3_admin_url': u.valid_url})
+
         ret = u.validate_relation_data(unit, relation, expected)
         if ret:
             message = u.relation_error('cinder identity-service', ret)

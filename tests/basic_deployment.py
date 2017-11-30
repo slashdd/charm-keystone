@@ -45,7 +45,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
     DEFAULT_DOMAIN = 'default'
 
     def __init__(self, series=None, openstack=None,
-                 source=None, git=False, stable=False, snap_source=None):
+                 source=None, git=False, stable=True, snap_source=None):
         """Deploy the entire test environment."""
         super(KeystoneBasicDeployment, self).__init__(series, openstack,
                                                       source, stable)

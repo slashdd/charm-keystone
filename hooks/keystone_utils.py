@@ -1151,7 +1151,18 @@ def set_admin_passwd(passwd, user=None):
 
 def get_api_version():
     api_version = config('preferred-api-version')
-    if api_version not in [2, 3]:
+    cmp_release = CompareOpenStackReleases(
+        get_os_codename_install_source(config('openstack-origin'))
+    )
+    if not api_version:
+        # NOTE(jamespage): Queens dropped support for v2, so default
+        #                  to v3.
+        if cmp_release >= 'queens':
+            api_version = 3
+        else:
+            api_version = 2
+    if ((cmp_release < 'queens' and api_version not in [2, 3]) or
+            (cmp_release >= 'queens' and api_version != 3)):
         raise ValueError('Bad preferred-api-version')
     return api_version
 

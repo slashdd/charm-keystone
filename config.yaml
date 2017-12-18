@@ -146,10 +146,11 @@ options:
     description: Enable PKI token signing.
   preferred-api-version:
     type: int
-    default: 2
+    default:
     description: |
       Use this keystone api version for keystone endpoints and advertise this
-      version to identity client charms.
+      version to identity client charms.  For OpenStack releases < Queens this
+      option defaults to 2; for Queens or later it defaults to 3.
   haproxy-server-timeout:
     type: int
     default:

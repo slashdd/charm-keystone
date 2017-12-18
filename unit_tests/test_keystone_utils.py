@@ -107,6 +107,7 @@ class TestKeystoneUtils(CharmTestCase):
                 'contexts': [self.ctxt],
             }
         }
+        self.get_os_codename_install_source.return_value = 'icehouse'
 
     @patch('charmhelpers.contrib.openstack.templating.OSConfigRenderer')
     @patch('os.path.exists')
@@ -1357,3 +1358,21 @@ class TestKeystoneUtils(CharmTestCase):
     def test_run_in_apache_set_release(self):
         self.os_release.return_value = 'kilo'
         self.assertTrue(utils.run_in_apache(release='liberty'))
+
+    def test_get_api_version_icehouse(self):
+        self.assertEqual(utils.get_api_version(), 2)
+
+    def test_get_api_version_queens(self):
+        self.get_os_codename_install_source.return_value = 'queens'
+        self.assertEqual(utils.get_api_version(), 3)
+
+    def test_get_api_version_invalid_option_value(self):
+        self.test_config.set('preferred-api-version', 4)
+        with self.assertRaises(ValueError):
+            utils.get_api_version()
+
+    def test_get_api_version_queens_invalid_option_value(self):
+        self.test_config.set('preferred-api-version', 2)
+        self.get_os_codename_install_source.return_value = 'queens'
+        with self.assertRaises(ValueError):
+            utils.get_api_version()

@@ -2126,7 +2126,7 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
                 https_cns.append(urlparse.urlparse(ep['public_url']).hostname)
                 https_cns.append(urlparse.urlparse(ep['admin_url']).hostname)
 
-        service_username = '_'.join(services)
+        service_username = '_'.join(sorted(services))
 
         # If an admin username prefix is provided, ensure all services use it.
         prefix = config('service-admin-prefix')

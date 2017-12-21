@@ -39,9 +39,6 @@ TO_PATCH = [
     'get_requested_roles',
     'get_service_password',
     'get_os_codename_install_source',
-    'git_clone_and_install',
-    'git_pip_venv_dir',
-    'git_src_dir',
     'grant_role',
     'configure_installation_source',
     'is_elected_leader',
@@ -57,12 +54,10 @@ TO_PATCH = [
     'relation_set',
     'relation_ids',
     'relation_id',
-    'render',
     'local_unit',
     'related_units',
     'https',
     'peer_store',
-    'pip_install',
     # generic
     'apt_update',
     'apt_upgrade',
@@ -74,15 +69,6 @@ TO_PATCH = [
     'is_leader',
     'reset_os_release',
 ]
-
-openstack_origin_git = \
-    """repositories:
-         - {name: requirements,
-            repository: 'git://git.openstack.org/openstack/requirements',
-            branch: stable/juno}
-         - {name: keystone,
-            repository: 'git://git.openstack.org/openstack/keystone',
-            branch: stable/juno}"""
 
 
 class TestKeystoneUtils(CharmTestCase):
@@ -134,27 +120,21 @@ class TestKeystoneUtils(CharmTestCase):
         ]
         self.assertEqual(fake_renderer.register.call_args_list, ex_reg)
 
-    @patch.object(utils, 'git_determine_usr_bin')
     @patch.object(utils, 'snap_install_requested')
     @patch.object(utils, 'os')
     def test_resource_map_enable_memcache_mitaka(self, mock_os,
-                                                 snap_install_requested,
-                                                 git_determine_usr_bin):
+                                                 snap_install_requested):
         self.os_release.return_value = 'mitaka'
         snap_install_requested.return_value = False
-        git_determine_usr_bin.return_value = '/usr/bin'
         mock_os.path.exists.return_value = True
         self.assertTrue('/etc/memcached.conf' in utils.resource_map().keys())
 
-    @patch.object(utils, 'git_determine_usr_bin')
     @patch.object(utils, 'snap_install_requested')
     @patch.object(utils, 'os')
     def test_resource_map_enable_memcache_liberty(self, mock_os,
-                                                  snap_install_requested,
-                                                  git_determine_usr_bin):
+                                                  snap_install_requested):
         self.os_release.return_value = 'liberty'
         snap_install_requested.return_value = False
-        git_determine_usr_bin.return_value = '/usr/bin'
         mock_os.path.exists.return_value = True
         self.assertFalse('/etc/memcached.conf' in utils.resource_map().keys())
 
@@ -182,16 +162,6 @@ class TestKeystoneUtils(CharmTestCase):
         ex = utils.BASE_PACKAGES + [
             'keystone', 'python-keystoneclient', 'libapache2-mod-wsgi',
             'memcached']
-        self.assertEqual(set(ex), set(result))
-
-    @patch('charmhelpers.contrib.openstack.utils.config')
-    def test_determine_packages_git(self, _config):
-        self.os_release.return_value = 'havana'
-        _config.return_value = openstack_origin_git
-        result = utils.determine_packages()
-        ex = utils.BASE_PACKAGES + utils.BASE_GIT_PACKAGES
-        for p in utils.GIT_PACKAGE_BLACKLIST:
-            ex.remove(p)
         self.assertEqual(set(ex), set(result))
 
     @patch('charmhelpers.contrib.openstack.utils.config')
@@ -829,85 +799,6 @@ class TestKeystoneUtils(CharmTestCase):
         self.is_elected_leader.return_value = True
         self.assertFalse(utils.ensure_ssl_cert_master())
         self.assertFalse(self.relation_set.called)
-
-    @patch.object(utils, 'git_install_requested')
-    @patch.object(utils, 'git_post_install')
-    @patch.object(utils, 'git_pre_install')
-    def test_git_install(self, git_requested, git_pre, git_post):
-        projects_yaml = openstack_origin_git
-        git_requested.return_value = True
-        utils.git_install(projects_yaml)
-        self.assertTrue(git_pre.called)
-        self.git_clone_and_install.assert_called_with(openstack_origin_git,
-                                                      core_project='keystone')
-        self.assertTrue(git_post.called)
-
-    @patch.object(utils, 'mkdir')
-    @patch.object(utils, 'write_file')
-    @patch.object(utils, 'add_user_to_group')
-    @patch.object(utils, 'add_group')
-    @patch.object(utils, 'adduser')
-    def test_git_pre_install(self, adduser, add_group, add_user_to_group,
-                             write_file, mkdir):
-        utils.git_pre_install()
-        adduser.assert_called_with('keystone', shell='/bin/bash',
-                                   system_user=True,
-                                   home_dir='/var/lib/keystone')
-        add_group.assert_called_with('keystone', system_group=True)
-        add_user_to_group.assert_called_with('keystone', 'keystone')
-        expected = [
-            call('/var/lib/keystone', owner='keystone',
-                 group='keystone', perms=0755, force=False),
-            call('/var/lib/keystone/cache', owner='keystone',
-                 group='keystone', perms=0755, force=False),
-            call('/var/log/keystone', owner='keystone',
-                 group='keystone', perms=0755, force=False),
-        ]
-        self.assertEqual(mkdir.call_args_list, expected)
-        write_file.assert_called_with('/var/log/keystone/keystone.log',
-                                      '', owner='keystone', group='keystone',
-                                      perms=0600)
-
-    @patch('os.path.join')
-    @patch('os.path.exists')
-    @patch('os.symlink')
-    @patch('shutil.copytree')
-    @patch('shutil.rmtree')
-    @patch('subprocess.check_call')
-    def test_git_post_install(self, check_call, rmtree, copytree, symlink,
-                              exists, join):
-        self.os_release.return_value = 'havana'
-        projects_yaml = openstack_origin_git
-        join.return_value = 'joined-string'
-        self.git_pip_venv_dir.return_value = '/mnt/openstack-git/venv'
-        self.lsb_release.return_value = {'DISTRIB_RELEASE': '15.04'}
-        utils.git_post_install(projects_yaml)
-        expected = [
-            call('joined-string', '/etc/keystone'),
-        ]
-        copytree.assert_has_calls(expected)
-        expected = [
-            call('joined-string', '/usr/local/bin/keystone-manage'),
-        ]
-        symlink.assert_has_calls(expected, any_order=True)
-        keystone_context = {
-            'service_description': 'Keystone API server',
-            'service_name': 'Keystone',
-            'user_name': 'keystone',
-            'start_dir': '/var/lib/keystone',
-            'process_name': 'keystone',
-            'executable_name': 'joined-string',
-            'config_files': ['/etc/keystone/keystone.conf'],
-            'log_file': '/var/log/keystone/keystone.log',
-        }
-        expected = [
-            call('git/logging.conf', '/etc/keystone/logging.conf', {},
-                 perms=0o644),
-            call('git.upstart', '/etc/init/keystone.conf',
-                 keystone_context, perms=0o644, templates_dir='joined-string'),
-        ]
-        self.assertEqual(self.render.call_args_list, expected)
-        self.service_restart.assert_called_with('keystone')
 
     @patch.object(utils, 'get_manager')
     def test_is_service_present(self, KeystoneManager):

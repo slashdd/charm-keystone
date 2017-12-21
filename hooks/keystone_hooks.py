@@ -62,9 +62,7 @@ from charmhelpers.fetch import (
 )
 
 from charmhelpers.contrib.openstack.utils import (
-    config_value_changed,
     configure_installation_source,
-    git_install_requested,
     openstack_upgrade_available,
     sync_db_with_multi_ipv6_addresses,
     os_release,
@@ -85,7 +83,6 @@ from keystone_utils import (
     do_openstack_upgrade_reexec,
     ensure_initial_admin,
     get_admin_passwd,
-    git_install,
     migrate_database,
     save_script_rc,
     post_snap_install,
@@ -195,11 +192,7 @@ def install():
         service_start('haproxy')
         if run_in_apache():
             disable_unused_apache_sites()
-            if not git_install_requested():
-                service_pause('keystone')
-
-    status_set('maintenance', 'Git install')
-    git_install(config('openstack-origin-git'))
+            service_pause('keystone')
 
     unison.ensure_user(user=SSH_USER, group=SSH_USER)
     unison.ensure_user(user=SSH_USER, group=KEYSTONE_USER)
@@ -222,11 +215,7 @@ def config_changed():
     if not os.path.isdir(homedir):
         mkdir(homedir, SSH_USER, SSH_USER, 0o775)
 
-    if git_install_requested():
-        if config_value_changed('openstack-origin-git'):
-            status_set('maintenance', 'Running Git install')
-            git_install(config('openstack-origin-git'))
-    elif not config('action-managed-upgrade'):
+    if not config('action-managed-upgrade'):
         if openstack_upgrade_available('keystone'):
             status_set('maintenance', 'Running openstack upgrade')
             do_openstack_upgrade_reexec(configs=CONFIGS)
@@ -258,8 +247,7 @@ def config_changed_postupgrade():
         # decorator can fire
         apt_install(filter_installed_packages(determine_packages()))
         # when deployed from source, init scripts aren't installed
-        if not git_install_requested():
-            service_pause('keystone')
+        service_pause('keystone')
 
         disable_unused_apache_sites()
         if WSGI_KEYSTONE_API_CONF in CONFIGS.templates:

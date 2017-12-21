@@ -1,5 +1,3 @@
-git-reinstall:
-  description: Reinstall keystone from the openstack-origin-git repositories.
 pause:
   description: |
     Pause keystone services.

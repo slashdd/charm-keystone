@@ -28,13 +28,11 @@ from charmhelpers.core.hookenv import (
     Hooks,
     UnregisteredHookError,
     config,
-    is_relation_made,
     log,
     local_unit,
     DEBUG,
     INFO,
     WARNING,
-    ERROR,
     relation_get,
     relation_ids,
     relation_set,
@@ -334,13 +332,6 @@ def initialise_pki():
 
 @hooks.hook('shared-db-relation-joined')
 def db_joined():
-    if is_relation_made('pgsql-db'):
-        # error, postgresql is used
-        e = ('Attempting to associate a mysql database when there is already '
-             'associated a postgresql one')
-        log(e, level=ERROR)
-        raise Exception(e)
-
     if config('prefer-ipv6'):
         sync_db_with_multi_ipv6_addresses(config('database'),
                                           config('database-user'))
@@ -357,18 +348,6 @@ def db_joined():
         relation_set(database=config('database'),
                      username=config('database-user'),
                      hostname=host)
-
-
-@hooks.hook('pgsql-db-relation-joined')
-def pgsql_db_joined():
-    if is_relation_made('shared-db'):
-        # raise error
-        e = ('Attempting to associate a postgresql database when there'
-             ' is already associated a mysql one')
-        log(e, level=ERROR)
-        raise Exception(e)
-
-    relation_set(database=config('database'))
 
 
 def update_all_identity_relation_units(check_db_ready=True):
@@ -449,20 +428,6 @@ def leader_init_db_if_ready(use_current_context=False):
 def db_changed():
     if 'shared-db' not in CONFIGS.complete_contexts():
         log('shared-db relation incomplete. Peer not ready?')
-    else:
-        CONFIGS.write(KEYSTONE_CONF)
-        leader_init_db_if_ready(use_current_context=True)
-        if CompareOpenStackReleases(
-                os_release('keystone-common')) >= 'liberty':
-            CONFIGS.write(POLICY_JSON)
-
-
-@hooks.hook('pgsql-db-relation-changed')
-@restart_on_change(restart_map(), restart_functions=restart_function_map())
-@synchronize_ca_if_changed()
-def pgsql_db_changed():
-    if 'pgsql-db' not in CONFIGS.complete_contexts():
-        log('pgsql-db relation incomplete. Peer not ready?')
     else:
         CONFIGS.write(KEYSTONE_CONF)
         leader_init_db_if_ready(use_current_context=True)

@@ -53,7 +53,6 @@ TO_PATCH = [
     # charmhelpers.core.hookenv
     'Hooks',
     'config',
-    'is_relation_made',
     'log',
     'local_unit',
     'filter_installed_packages',
@@ -239,36 +238,10 @@ class KeystoneRelationTests(CharmTestCase):
         mock_config.side_effect = cfg
 
         self.get_relation_ip.return_value = '192.168.20.1'
-        self.is_relation_made.return_value = False
         hooks.db_joined()
         self.relation_set.assert_called_with(database='keystone',
                                              username='keystone',
                                              hostname='192.168.20.1')
-
-    def test_postgresql_db_joined(self):
-        self.is_relation_made.return_value = False
-        hooks.pgsql_db_joined()
-        self.relation_set.assert_called_with(database='keystone'),
-
-    def test_db_joined_with_postgresql(self):
-        self.is_relation_made.return_value = True
-
-        with self.assertRaises(Exception) as context:
-            hooks.db_joined()
-        self.assertEqual(
-            context.exception.message,
-            'Attempting to associate a mysql database when there '
-            'is already associated a postgresql one')
-
-    def test_postgresql_joined_with_db(self):
-        self.is_relation_made.return_value = True
-
-        with self.assertRaises(Exception) as context:
-            hooks.pgsql_db_joined()
-        self.assertEqual(
-            context.exception.message,
-            'Attempting to associate a postgresql database when there '
-            'is already associated a mysql one')
 
     @patch('keystone_utils.log')
     @patch('keystone_utils.ensure_ssl_cert_master')
@@ -284,20 +257,6 @@ class KeystoneRelationTests(CharmTestCase):
             'shared-db relation incomplete. Peer not ready?'
         )
 
-    @patch('keystone_utils.log')
-    @patch('keystone_utils.ensure_ssl_cert_master')
-    @patch.object(hooks, 'CONFIGS')
-    def test_postgresql_db_changed_missing_relation_data(self, configs,
-                                                         mock_ensure_leader,
-                                                         mock_log):
-        mock_ensure_leader.return_value = False
-        configs.complete_contexts = MagicMock()
-        configs.complete_contexts.return_value = []
-        hooks.pgsql_db_changed()
-        self.log.assert_called_with(
-            'pgsql-db relation incomplete. Peer not ready?'
-        )
-
     def _shared_db_test(self, configs, unit_name):
         self.relation_get.return_value = 'keystone/0 keystone/3'
         self.local_unit.return_value = unit_name
@@ -305,12 +264,6 @@ class KeystoneRelationTests(CharmTestCase):
         configs.complete_contexts.return_value = ['shared-db']
         configs.write = MagicMock()
         hooks.db_changed()
-
-    def _postgresql_db_test(self, configs):
-        configs.complete_contexts = MagicMock()
-        configs.complete_contexts.return_value = ['pgsql-db']
-        configs.write = MagicMock()
-        hooks.pgsql_db_changed()
 
     @patch.object(hooks, 'leader_init_db_if_ready')
     @patch('keystone_utils.ensure_ssl_cert_master')
@@ -321,19 +274,6 @@ class KeystoneRelationTests(CharmTestCase):
         self.os_release.return_value = 'havana'
         mock_ensure_ssl_cert_master.return_value = False
         self._shared_db_test(configs, 'keystone/3')
-        self.assertEqual([call('/etc/keystone/keystone.conf')],
-                         configs.write.call_args_list)
-        self.assertTrue(leader_init.called)
-
-    @patch.object(hooks, 'leader_init_db_if_ready')
-    @patch('keystone_utils.ensure_ssl_cert_master')
-    @patch.object(hooks, 'CONFIGS')
-    def test_postgresql_db_changed(self, configs,
-                                   mock_ensure_ssl_cert_master,
-                                   leader_init):
-        self.os_release.return_value = 'havana'
-        mock_ensure_ssl_cert_master.return_value = False
-        self._postgresql_db_test(configs)
         self.assertEqual([call('/etc/keystone/keystone.conf')],
                          configs.write.call_args_list)
         self.assertTrue(leader_init.called)

@@ -278,7 +278,6 @@ BASE_RESOURCE_MAP = OrderedDict([
         'services': BASE_SERVICES,
         'contexts': [keystone_context.KeystoneContext(),
                      context.SharedDBContext(ssl_dir=KEYSTONE_CONF_DIR),
-                     context.PostgresqlDBContext(),
                      context.SyslogContext(),
                      keystone_context.HAProxyContext(),
                      context.BindHostContext(),
@@ -299,7 +298,6 @@ BASE_RESOURCE_MAP = OrderedDict([
         'contexts': [keystone_context.KeystoneContext(),
                      keystone_context.NginxSSLContext(),
                      context.SharedDBContext(ssl_dir=KEYSTONE_CONF_DIR),
-                     context.PostgresqlDBContext(),
                      context.SyslogContext(),
                      keystone_context.HAProxyContext(),
                      context.BindHostContext(),
@@ -309,7 +307,6 @@ BASE_RESOURCE_MAP = OrderedDict([
         'services': BASE_SERVICES,
         'contexts': [keystone_context.KeystoneContext(),
                      context.SharedDBContext(ssl_dir=KEYSTONE_CONF_DIR),
-                     context.PostgresqlDBContext(),
                      context.SyslogContext(),
                      keystone_context.HAProxyContext(),
                      keystone_context.NginxSSLContext(),
@@ -481,7 +478,7 @@ valid_services = {
 # The interface is said to be satisfied if anyone of the interfaces in the
 # list has a complete context.
 REQUIRED_INTERFACES = {
-    'database': ['shared-db', 'pgsql-db'],
+    'database': ['shared-db'],
 }
 
 
@@ -2424,7 +2421,7 @@ def is_db_ready(use_current_context=False, db_rel=None):
     returns True otherwise False.
     """
     key = 'allowed_units'
-    db_rels = ['shared-db', 'pgsql-db']
+    db_rels = ['shared-db']
     if db_rel:
         db_rels = [db_rel]
 

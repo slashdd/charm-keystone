@@ -426,7 +426,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         if self._get_openstack_release() < self.xenial_pike:
             cinder_user = 'cinder_cinderv2'
         else:
-            cinder_user = 'cinderv3_cinderv2'
+            cinder_user = 'cinderv2_cinderv3'
         base = [
             {'name': 'demoUser',
              'enabled': True,
@@ -713,7 +713,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             'service_host': u.valid_ip
         }
         if self._get_openstack_release() >= self.xenial_pike:
-            expected['service_username'] = 'cinderv3_cinderv2'
+            expected['service_username'] = 'cinderv2_cinderv3'
         for unit in self.keystone_sentries:
             ret = u.validate_relation_data(unit, relation, expected)
             if ret:

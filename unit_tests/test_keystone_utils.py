@@ -431,6 +431,49 @@ class TestKeystoneUtils(CharmTestCase):
                                         adminurl='10.0.0.2',
                                         internalurl='192.168.1.2')
 
+    @patch.object(utils, 'get_requested_roles')
+    @patch.object(utils, 'create_service_credentials')
+    @patch.object(utils, 'leader_get')
+    @patch('charmhelpers.contrib.openstack.ip.config')
+    @patch.object(utils, 'ensure_valid_service')
+    @patch.object(utils, 'add_endpoint')
+    @patch.object(utils, 'get_manager')
+    def test_add_service_to_keystone_multi_endpoints_bug_1739409(
+            self, KeystoneManager, add_endpoint, ensure_valid_service,
+            ip_config, leader_get, create_service_credentials,
+            get_requested_roles):
+        relation_id = 'identity-service:8'
+        remote_unit = 'nova-cloud-controller/0'
+        get_requested_roles.return_value = 'role1'
+        self.relation_get.return_value = {
+            'ec2_admin_url': 'http://10.5.0.16:8773/services/Cloud',
+            'ec2_internal_url': 'http://10.5.0.16:8773/services/Cloud',
+            'ec2_public_url': 'http://10.5.0.16:8773/services/Cloud',
+            'ec2_region': 'RegionOne',
+            'ec2_service': 'ec2',
+            'nova_admin_url': 'http://10.5.0.16:8774/v2/$(tenant_id)s',
+            'nova_internal_url': 'http://10.5.0.16:8774/v2/$(tenant_id)s',
+            'nova_public_url': 'http://10.5.0.16:8774/v2/$(tenant_id)s',
+            'nova_region': 'RegionOne',
+            'nova_service': 'nova',
+            'private-address': '10.5.0.16',
+            's3_admin_url': 'http://10.5.0.16:3333',
+            's3_internal_url': 'http://10.5.0.16:3333',
+            's3_public_url': 'http://10.5.0.16:3333',
+            's3_region': 'RegionOne',
+            's3_service': 's3'}
+
+        self.get_local_endpoint.return_value = 'http://localhost:80/v2.0/'
+        KeystoneManager.resolve_tenant_id.return_value = 'tenant_id'
+        leader_get.return_value = None
+
+        utils.add_service_to_keystone(
+            relation_id=relation_id,
+            remote_unit=remote_unit)
+        create_service_credentials.assert_called_once_with(
+            'ec2_nova_s3',
+            new_roles='role1')
+
     @patch.object(utils, 'set_service_password')
     @patch.object(utils, 'get_service_password')
     @patch.object(utils, 'user_exists')

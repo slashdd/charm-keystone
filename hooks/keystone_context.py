@@ -291,11 +291,11 @@ class KeystoneContext(context.OSContextGenerator):
         from keystone_utils import (
             api_port, set_admin_token, endpoint_url, resolve_address,
             PUBLIC, ADMIN, PKI_CERTS_DIR, ensure_pki_cert_paths, ADMIN_DOMAIN,
-            snap_install_requested,
+            snap_install_requested, get_api_version,
         )
         ctxt = {}
         ctxt['token'] = set_admin_token(config('admin-token'))
-        ctxt['api_version'] = int(config('preferred-api-version'))
+        ctxt['api_version'] = get_api_version()
         ctxt['admin_role'] = config('admin-role')
         if ctxt['api_version'] > 2:
             ctxt['service_tenant_id'] = \

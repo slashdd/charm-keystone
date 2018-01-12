@@ -21,7 +21,6 @@ Basic keystone amulet functional tests.
 import amulet
 import json
 import os
-import yaml
 
 from charmhelpers.contrib.openstack.amulet.deployment import (
     OpenStackAmuletDeployment
@@ -45,13 +44,12 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
     DEFAULT_DOMAIN = 'default'
 
     def __init__(self, series=None, openstack=None,
-                 source=None, git=False, stable=False, snap_source=None):
+                 source=None, stable=False, snap_source=None):
         """Deploy the entire test environment."""
         super(KeystoneBasicDeployment, self).__init__(series, openstack,
                                                       source, stable)
         self.keystone_num_units = 3
         self.keystone_api_version = 2
-        self.git = git
 
         self._setup_test_object(snap_source)
         self._add_services()
@@ -141,33 +139,6 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             'admin-token': 'ubuntutesting',
             'preferred-api-version': self.keystone_api_version,
         })
-
-        if self.git:
-            amulet_http_proxy = os.environ.get('AMULET_HTTP_PROXY')
-
-            reqs_repo = 'git://github.com/openstack/requirements'
-            keystone_repo = 'git://github.com/openstack/keystone'
-            if self._get_openstack_release() == self.trusty_icehouse:
-                reqs_repo = 'git://github.com/coreycb/requirements'
-                keystone_repo = 'git://github.com/coreycb/keystone'
-
-            branch = 'stable/' + self._get_openstack_release_string()
-
-            openstack_origin_git = {
-                'repositories': [
-                    {'name': 'requirements',
-                     'repository': reqs_repo,
-                     'branch': branch},
-                    {'name': 'keystone',
-                     'repository': keystone_repo,
-                     'branch': branch},
-                ],
-                'directory': '/mnt/openstack-git',
-                'http_proxy': amulet_http_proxy,
-                'https_proxy': amulet_http_proxy,
-            }
-            self.keystone_config['openstack-origin-git'] = \
-                yaml.dump(openstack_origin_git)
 
         pxc_config = {
             'dataset-size': '25%',

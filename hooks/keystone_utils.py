@@ -60,18 +60,10 @@ from charmhelpers.contrib.openstack.utils import (
     configure_installation_source,
     error_out,
     get_os_codename_install_source,
-    git_clone_and_install,
-    git_default_repos,
-    git_determine_usr_bin,
-    git_install_requested,
-    git_pip_venv_dir,
-    git_src_dir,
-    git_yaml_value,
     os_release,
     save_script_rc as _save_script_rc,
     pause_unit,
     resume_unit,
-    is_unit_paused_set,
     make_assess_status_func,
     os_application_version_set,
     CompareOpenStackReleases,
@@ -80,10 +72,6 @@ from charmhelpers.contrib.openstack.utils import (
     install_os_snaps,
     get_snaps_install_info_from_origin,
     enable_memcache,
-)
-
-from charmhelpers.contrib.python.packages import (
-    pip_install,
 )
 
 from charmhelpers.core.strutils import (
@@ -97,7 +85,6 @@ from charmhelpers.core.decorators import (
 )
 
 from charmhelpers.core.hookenv import (
-    charm_dir,
     config,
     leader_get,
     leader_set,
@@ -123,9 +110,6 @@ from charmhelpers.fetch import (
 )
 
 from charmhelpers.core.host import (
-    adduser,
-    add_group,
-    add_user_to_group,
     mkdir,
     service_stop,
     service_start,
@@ -142,8 +126,6 @@ from charmhelpers.contrib.peerstorage import (
     peer_retrieve,
     relation_set as relation_set_and_migrate_to_leader,
 )
-
-from charmhelpers.core.templating import render
 
 import keystone_context
 import keystone_ssl as ssl
@@ -176,25 +158,6 @@ BASE_PACKAGES_SNAP = [
 ]
 
 VERSION_PACKAGE = 'keystone'
-
-BASE_GIT_PACKAGES = [
-    'libffi-dev',
-    'libmysqlclient-dev',
-    'libssl-dev',
-    'libxml2-dev',
-    'libxslt1-dev',
-    'libyaml-dev',
-    'python-dev',
-    'python-pip',
-    'python-setuptools',
-    'zlib1g-dev',
-]
-
-# ubuntu packages that should not be installed when deploying from git
-GIT_PACKAGE_BLACKLIST = [
-    'keystone',
-]
-
 
 SSH_USER = 'juju_keystone'
 if snap_install_requested():
@@ -544,16 +507,12 @@ def resource_map():
                     svcs.remove('keystone')
                 if 'apache2' not in svcs:
                     svcs.append('apache2')
-            admin_script = os.path.join(git_determine_usr_bin(),
-                                        "keystone-wsgi-admin")
-            public_script = os.path.join(git_determine_usr_bin(),
-                                         "keystone-wsgi-public")
             resource_map[WSGI_KEYSTONE_API_CONF] = {
                 'contexts': [
                     context.WSGIWorkerConfigContext(
                         name="keystone",
-                        admin_script=admin_script,
-                        public_script=public_script),
+                        admin_script='/usr/bin/keystone-wsgi-admin',
+                        public_script='/usr/bin/keystone-wsgi-public'),
                     keystone_context.KeystoneContext()],
                 'services': ['apache2']
             }
@@ -661,9 +620,6 @@ def determine_packages():
         return sorted(pkgs)
     else:
         packages = set(services()).union(BASE_PACKAGES)
-        if git_install_requested():
-            packages |= set(BASE_GIT_PACKAGES)
-            packages -= set(GIT_PACKAGE_BLACKLIST)
         if run_in_apache():
             packages.add('libapache2-mod-wsgi')
         return sorted(packages)
@@ -2468,23 +2424,10 @@ def is_db_ready(use_current_context=False, db_rel=None):
     return not rel_has_units
 
 
-def determine_usr_bin():
-    """Return the /usr/bin path for Apache2 vhost config.
-    The /usr/bin path will be located in the virtualenv if the charm
-    is configured to deploy keystone from source.
-    """
-    if git_install_requested():
-        projects_yaml = config('openstack-origin-git')
-        projects_yaml = git_default_repos(projects_yaml)
-        return os.path.join(git_pip_venv_dir(projects_yaml), 'bin')
-    else:
-        return '/usr/bin'
-
-
 def determine_python_path():
     """Return the python-path
 
-    Determine if git or snap installed and return the appropriate python path.
+    Determine if snap installed and return the appropriate python path.
     Returns None unless the charm if neither condition is true.
 
     :returns: string python path or None
@@ -2492,106 +2435,8 @@ def determine_python_path():
     _python_path = 'lib/python2.7/site-packages'
     if snap_install_requested():
         return os.path.join(SNAP_BASE_DIR, _python_path)
-    elif git_install_requested():
-        projects_yaml = config('openstack-origin-git')
-        projects_yaml = git_default_repos(projects_yaml)
-        return os.path.join(git_pip_venv_dir(projects_yaml), _python_path)
     else:
         return None
-
-
-def git_install(projects_yaml):
-    """Perform setup, and install git repos specified in yaml parameter."""
-    if git_install_requested():
-        git_pre_install()
-        projects_yaml = git_default_repos(projects_yaml)
-        git_clone_and_install(projects_yaml, core_project='keystone')
-        git_post_install(projects_yaml)
-
-
-def git_pre_install():
-    """Perform keystone pre-install setup."""
-    dirs = [
-        '/var/lib/keystone',
-        '/var/lib/keystone/cache',
-        '/var/log/keystone',
-    ]
-
-    logs = [
-        '/var/log/keystone/keystone.log',
-    ]
-
-    adduser('keystone', shell='/bin/bash', system_user=True,
-            home_dir='/var/lib/keystone')
-    add_group('keystone', system_group=True)
-    add_user_to_group('keystone', 'keystone')
-
-    for d in dirs:
-        mkdir(d, owner=KEYSTONE_USER, group=KEYSTONE_USER, perms=0o755,
-              force=False)
-
-    for l in logs:
-        write_file(l, '', owner=KEYSTONE_USER, group=KEYSTONE_USER,
-                   perms=0o600)
-
-
-def git_post_install(projects_yaml):
-    """Perform keystone post-install setup."""
-    http_proxy = git_yaml_value(projects_yaml, 'http_proxy')
-    if http_proxy:
-        pip_install('mysql-python', proxy=http_proxy,
-                    venv=git_pip_venv_dir(projects_yaml))
-    else:
-        pip_install('mysql-python',
-                    venv=git_pip_venv_dir(projects_yaml))
-
-    src_etc = os.path.join(git_src_dir(projects_yaml, 'keystone'), 'etc')
-    configs = {
-        'src': src_etc,
-        'dest': '/etc/keystone',
-    }
-
-    if os.path.exists(configs['dest']):
-        shutil.rmtree(configs['dest'])
-    shutil.copytree(configs['src'], configs['dest'])
-
-    # NOTE(coreycb): Need to find better solution than bin symlinks.
-    symlinks = [
-        {'src': os.path.join(git_pip_venv_dir(projects_yaml),
-                             'bin/keystone-manage'),
-         'link': '/usr/local/bin/keystone-manage'},
-    ]
-
-    for s in symlinks:
-        if os.path.lexists(s['link']):
-            os.remove(s['link'])
-        os.symlink(s['src'], s['link'])
-
-    render('git/logging.conf', '/etc/keystone/logging.conf', {}, perms=0o644)
-
-    bin_dir = os.path.join(git_pip_venv_dir(projects_yaml), 'bin')
-    # The charm runs the keystone API under apache2 for openstack liberty
-    # onward.  Prior to liberty upstart is used.
-    if CompareOpenStackReleases(os_release('keystone')) < 'liberty':
-        keystone_context = {
-            'service_description': 'Keystone API server',
-            'service_name': 'Keystone',
-            'user_name': 'keystone',
-            'start_dir': '/var/lib/keystone',
-            'process_name': 'keystone',
-            'executable_name': os.path.join(bin_dir, 'keystone-all'),
-            'config_files': ['/etc/keystone/keystone.conf'],
-        }
-
-        keystone_context['log_file'] = '/var/log/keystone/keystone.log'
-        templates_dir = 'hooks/charmhelpers/contrib/openstack/templates'
-        templates_dir = os.path.join(charm_dir(), templates_dir)
-        render('git.upstart', '/etc/init/keystone.conf', keystone_context,
-               perms=0o644, templates_dir=templates_dir)
-
-    # Don't restart if the unit is supposed to be paused.
-    if not is_unit_paused_set():
-        service_restart(keystone_service())
 
 
 def get_optional_interfaces():

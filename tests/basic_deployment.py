@@ -48,8 +48,8 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         """Deploy the entire test environment."""
         super(KeystoneBasicDeployment, self).__init__(series, openstack,
                                                       source, stable)
-        self.keystone_num_units = 3
-        self.keystone_api_version = 2
+
+        self._initialize_deployment_differences()
 
         self._setup_test_object(snap_source)
         self._add_services()
@@ -63,6 +63,11 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
 
         self.d.sentry.wait()
         self._initialize_tests()
+        self._initialize_test_differences()
+
+    def _initialize_deployment_differences(self):
+        self.keystone_num_units = 3
+        self.keystone_api_version = 2
 
     def _setup_test_object(self, snap_source):
         self.snap_source = snap_source
@@ -181,22 +186,23 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
 
     def set_api_version(self, api_version):
         # Avoid costly settings if we are already at the correct api_version
-        if not self.api_change_required(api_version):
-            return True
-        u.log.debug('Setting preferred-api-version={}'.format(api_version))
-        se_rels = []
-        for i in range(0, self.keystone_num_units):
-            se_rels.append(
-                (self.keystone_sentries[i], 'cinder:identity-service'),
-            )
-        # Make config change, wait for propagation
-        u.keystone_configure_api_version(se_rels, self, api_version)
+        if self.api_change_required(api_version):
+            u.log.debug('Setting preferred-api-version={}'.format(api_version))
+            se_rels = []
+            for i in range(0, self.keystone_num_units):
+                se_rels.append(
+                    (self.keystone_sentries[i], 'cinder:identity-service'),
+                )
+            # Make config change, wait for propagation
+            u.keystone_configure_api_version(se_rels, self, api_version)
 
-        # Success if we get here, get and store client.
+        # Store in self.keystone_client
         if api_version == 2:
             self.keystone_v2 = self.get_keystone_client(api_version=2)
+            self.keystone_client = self.keystone_v2
         else:
             self.keystone_v3 = self.get_keystone_client(api_version=3)
+            self.keystone_client = self.keystone_v3
         self.keystone_api_version = api_version
 
     def get_keystone_client(self, api_version=None, keystone_ip=None):
@@ -221,41 +227,42 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         self.demo_tenant = 'demoTenant'
         self.demo_role = 'demoRole'
         self.demo_user = 'demoUser'
-        if not u.tenant_exists(self.keystone_v2, self.demo_tenant):
-            tenant = self.keystone_v2.tenants.create(
+        if not u.tenant_exists(self.keystone_client, self.demo_tenant):
+            tenant = self.keystone_client.tenants.create(
                 tenant_name=self.demo_tenant,
                 description='demo tenant',
                 enabled=True)
-            self.keystone_v2.roles.create(name=self.demo_role)
-            self.keystone_v2.users.create(name=self.demo_user,
-                                          password='password',
-                                          tenant_id=tenant.id,
-                                          email='demo@demo.com')
+            self.keystone_client.roles.create(name=self.demo_role)
+            self.keystone_client.users.create(name=self.demo_user,
+                                              password='password',
+                                              tenant_id=tenant.id,
+                                              email='demo@demo.com')
 
         # Authenticate keystone demo
         self.keystone_demo = u.authenticate_keystone_user(
-            self.keystone_v2, user=self.demo_user,
+            self.keystone_client, user=self.demo_user,
             password='password', tenant=self.demo_tenant)
 
     def create_users_v3(self):
         # Create a demo tenant/role/user
         self.demo_project = 'demoProject'
         self.demo_user_v3 = 'demoUserV3'
+        self.demo_role = 'demoRoleV3'
         self.demo_domain_admin = 'demoDomainAdminV3'
         self.demo_domain = 'demoDomain'
         try:
-            domain = self.keystone_v3.domains.find(name=self.demo_domain)
+            domain = self.keystone_client.domains.find(name=self.demo_domain)
         except keystoneclient.exceptions.NotFound:
-            domain = self.keystone_v3.domains.create(
+            domain = self.keystone_client.domains.create(
                 self.demo_domain,
                 description='Demo Domain',
                 enabled=True
             )
 
         try:
-            self.keystone_v3.projects.find(name=self.demo_project)
+            self.keystone_client.projects.find(name=self.demo_project)
         except keystoneclient.exceptions.NotFound:
-            self.keystone_v3.projects.create(
+            self.keystone_client.projects.create(
                 self.demo_project,
                 domain,
                 description='Demo Project',
@@ -263,14 +270,14 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             )
 
         try:
-            self.keystone_v3.roles.find(name=self.demo_role)
+            self.keystone_client.roles.find(name=self.demo_role)
         except keystoneclient.exceptions.NotFound:
-            self.keystone_v3.roles.create(name=self.demo_role)
+            self.keystone_client.roles.create(name=self.demo_role)
 
-        if not self.find_keystone_v3_user(self.keystone_v3,
+        if not self.find_keystone_v3_user(self.keystone_client,
                                           self.demo_user_v3,
                                           self.demo_domain):
-            self.keystone_v3.users.create(
+            self.keystone_client.users.create(
                 self.demo_user_v3,
                 domain=domain.id,
                 project=self.demo_project,
@@ -280,14 +287,14 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
                 enabled=True)
 
         try:
-            self.keystone_v3.roles.find(name='Admin')
+            self.keystone_client.roles.find(name='Admin')
         except keystoneclient.exceptions.NotFound:
-            self.keystone_v3.roles.create(name='Admin')
+            self.keystone_client.roles.create(name='Admin')
 
-        if not self.find_keystone_v3_user(self.keystone_v3,
+        if not self.find_keystone_v3_user(self.keystone_client,
                                           self.demo_domain_admin,
                                           self.demo_domain):
-            user = self.keystone_v3.users.create(
+            user = self.keystone_client.users.create(
                 self.demo_domain_admin,
                 domain=domain.id,
                 project=self.demo_project,
@@ -296,10 +303,10 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
                 description='Demo Admin',
                 enabled=True)
 
-            role = self.keystone_v3.roles.find(name='Admin')
-            u.log.debug("self.keystone_v3.roles.grant('{}', user='{}', "
+            role = self.keystone_client.roles.find(name='Admin')
+            u.log.debug("self.keystone_client.roles.grant('{}', user='{}', "
                         "domain='{}')".format(role.id, user.id, domain.id))
-            self.keystone_v3.roles.grant(
+            self.keystone_client.roles.grant(
                 role.id,
                 user=user.id,
                 domain=domain.id)
@@ -319,6 +326,8 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         self.keystone_ip = self.keystone_sentries[0].relation(
             'shared-db',
             'percona-cluster:shared-db')['private-address']
+
+    def _initialize_test_differences(self):
         self.set_api_version(2)
         self.create_users_v2()
 
@@ -369,7 +378,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
 
     def test_102_keystone_tenants(self):
         self.set_api_version(2)
-        self.validate_keystone_tenants(self.keystone_v2)
+        self.validate_keystone_tenants(self.keystone_client)
 
     def validate_keystone_roles(self, client):
         """Verify all existing roles."""
@@ -388,7 +397,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
 
     def test_104_keystone_roles(self):
         self.set_api_version(2)
-        self.validate_keystone_roles(self.keystone_v2)
+        self.validate_keystone_roles(self.keystone_client)
 
     def validate_keystone_users(self, client):
         """Verify all existing roles."""
@@ -444,7 +453,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
 
     def test_106_keystone_users(self):
         self.set_api_version(2)
-        self.validate_keystone_users(self.keystone_v2)
+        self.validate_keystone_users(self.keystone_client)
 
     def is_liberty_or_newer(self):
         # os_release = self._get_openstack_release_string()
@@ -469,15 +478,15 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
     def test_112_keystone_list_resources(self):
         if self.is_mitaka_or_newer():
             self.set_api_version(3)
-            self.validate_keystone_tenants(self.keystone_v3)
-            self.validate_keystone_roles(self.keystone_v3)
-            self.validate_keystone_users(self.keystone_v3)
+            self.validate_keystone_tenants(self.keystone_client)
+            self.validate_keystone_roles(self.keystone_client)
+            self.validate_keystone_users(self.keystone_client)
 
     def test_118_keystone_create_users(self):
         if self.is_mitaka_or_newer():
             self.set_api_version(3)
             self.create_users_v3()
-            actual_user = self.find_keystone_v3_user(self.keystone_v3,
+            actual_user = self.find_keystone_v3_user(self.keystone_client,
                                                      self.demo_user_v3,
                                                      self.demo_domain)
             assert actual_user is not None
@@ -498,7 +507,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
         if self.is_mitaka_or_newer():
             self.set_api_version(3)
             self.create_users_v3()
-            actual_domain = self.keystone_v3.domains.find(
+            actual_domain = self.keystone_client.domains.find(
                 name=self.demo_domain
             )
             expect = {
@@ -597,7 +606,8 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
     def test_140_keystone_endpoint(self):
         """Verify the keystone endpoint data."""
         u.log.debug('Checking keystone api endpoint data...')
-        endpoints = self.keystone_v2.endpoints.list()
+        self.set_api_version(2)
+        endpoints = self.keystone_client.endpoints.list()
         admin_port = '35357'
         internal_port = public_port = '5000'
         expected = {
@@ -617,7 +627,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
     def test_142_cinder_endpoint(self):
         """Verify the cinder endpoint data."""
         u.log.debug('Checking cinder endpoint...')
-        endpoints = self.keystone_v2.endpoints.list()
+        endpoints = self.keystone_client.endpoints.list()
         admin_port = internal_port = public_port = '8776'
         expected = {
             'id': u.not_null,
@@ -947,11 +957,11 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
                 message="Unit is ready",
                 timeout=timeout,
                 include_only=['keystone'])
-            domain = self.keystone_v3.domains.find(name='admin_domain')
-            v3_admin_user = self.keystone_v3.users.list(domain=domain)[0]
+            domain = self.keystone_client.domains.find(name='admin_domain')
+            v3_admin_user = self.keystone_client.users.list(domain=domain)[0]
             u.log.debug(v3_admin_user)
-            self.keystone_v3.users.update(user=v3_admin_user,
-                                          password='wrongpass')
+            self.keystone_client.users.update(user=v3_admin_user,
+                                              password='wrongpass')
             u.log.debug('Removing keystone percona-cluster relation')
             self.d.unrelate('keystone:shared-db', 'percona-cluster:shared-db')
             self.d.sentry.wait(timeout=timeout)
@@ -976,3 +986,179 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
                     amulet.FAIL,
                     msg="Admin user password not reset")
             u.log.debug('OK')
+
+
+class KeystoneV3Deployment(KeystoneBasicDeployment):
+    """Amulet tests on a basic keystone deployment."""
+
+    def _initialize_deployment_differences(self):
+        self.keystone_num_units = 3
+        self.keystone_api_version = 3
+
+    def _initialize_test_differences(self):
+        self.keystone_client = self.get_keystone_client(api_version=3)
+        self.create_users_v3()
+
+    def api_change_required(self, api_version):
+        u.log.warn('This is a Keystone V3 only deployment.')
+        return False
+
+    def set_api_version(self, api_version):
+        u.log.warn('This is a Keystone V3 only deployment. '
+                   'Ignoring request for api version 2')
+
+    def validate_keystone_tenants(self, client):
+        """Verify all existing tenants."""
+        u.log.debug('Checking keystone tenants...')
+        expected = [
+            {'name': 'services',
+             'enabled': True,
+             'description': 'Created by Juju',
+             'id': u.not_null},
+            {'name': 'demoProject',
+             'enabled': True,
+             'description': 'Demo Project',
+             'id': u.not_null},
+            {'name': 'admin',
+             'enabled': True,
+             'description': 'Created by Juju',
+             'id': u.not_null}
+        ]
+        actual = client.projects.list()
+
+        ret = u.validate_tenant_data(expected, actual)
+        if ret:
+            amulet.raise_status(amulet.FAIL, msg=ret)
+
+    def validate_keystone_roles(self, client):
+        """Verify all existing roles."""
+        u.log.debug('Checking keystone roles...')
+        expected = [
+            {'name': 'demoRoleV3',
+             'id': u.not_null},
+            {'name': 'Admin',
+             'id': u.not_null}
+        ]
+        actual = client.roles.list()
+
+        ret = u.validate_role_data(expected, actual)
+        if ret:
+            amulet.raise_status(amulet.FAIL, msg=ret)
+
+    def validate_keystone_users(self, client):
+        """Verify all existing roles."""
+        u.log.debug('Checking keystone users...')
+
+        if self._get_openstack_release() < self.xenial_pike:
+            cinder_user = 'cinder_cinderv2'
+        else:
+            cinder_user = 'cinderv2_cinderv3'
+        base = [
+            {'name': 'demoUserV3',
+             'enabled': True,
+             'id': u.not_null,
+             'email': 'demov3@demo.com'},
+            {'name': 'admin',
+             'enabled': True,
+             'id': u.not_null,
+             'email': 'juju@localhost'},
+            {'name': cinder_user,
+             'enabled': True,
+             'id': u.not_null,
+             'email': u'juju@localhost'}
+        ]
+        expected = []
+        for user_info in base:
+            user_info['default_project_id'] = u.not_null
+            expected.append(user_info)
+        # Ensure list is scoped to the default domain
+        # when checking v3 users (v2->v3 upgrade check)
+        actual = client.users.list(
+            domain=client.domains.find(name=self.DEFAULT_DOMAIN).id
+        )
+        actual += client.users.list(
+            domain=client.domains.find(name=self.demo_domain).id)
+        actual += client.users.list(
+            domain=client.domains.find(name='admin_domain').id)
+        ret = u.validate_user_data(expected, actual,
+                                   api_version=self.keystone_api_version)
+        if ret:
+            amulet.raise_status(amulet.FAIL, msg=ret)
+
+    def test_138_service_catalog(self):
+        """Verify that the service catalog endpoint data is valid."""
+        u.log.debug('Checking keystone service catalog...')
+        expected = {
+            u'identity': [{u'id': u.not_null,
+                           u'interface': u'admin',
+                           u'region': u'RegionOne',
+                           u'region_id': u'RegionOne',
+                           u'url': u.valid_url},
+                          {u'id': u.not_null,
+                           u'interface': u'public',
+                           u'region': u'RegionOne',
+                           u'region_id': u'RegionOne',
+                           u'url': u.valid_url},
+                          {u'id': u.not_null,
+                           u'interface': u'internal',
+                           u'region': u'RegionOne',
+                           u'region_id': u'RegionOne',
+                           u'url': u.valid_url}],
+
+            u'volumev2': [{u'id': u.not_null,
+                           u'interface': u'admin',
+                           u'region': u'RegionOne',
+                           u'region_id': u'RegionOne',
+                           u'url': u.valid_url},
+                          {u'id': u.not_null,
+                           u'interface': u'public',
+                           u'region': u'RegionOne',
+                           u'region_id': u'RegionOne',
+                           u'url': u.valid_url},
+                          {u'id': u.not_null,
+                           u'interface': u'internal',
+                           u'region': u'RegionOne',
+                           u'region_id': u'RegionOne',
+                           u'url': u.valid_url}]}
+
+        actual = self.keystone_client.service_catalog.get_endpoints()
+        ret = u.validate_v3_svc_catalog_endpoint_data(expected, actual)
+        if ret:
+            amulet.raise_status(amulet.FAIL, msg=ret)
+
+    def test_140_keystone_endpoint(self):
+        """Verify the keystone endpoint data."""
+        u.log.debug('Checking keystone api endpoint data...')
+        admin_port = '35357'
+        internal_port = public_port = '5000'
+        expected = {'id': u.not_null,
+                    'region': 'RegionOne',
+                    'region_id': 'RegionOne',
+                    'interface': u.not_null,
+                    'url': u.valid_url,
+                    'service_id': u.not_null}
+
+        endpoints = self.keystone_client.endpoints.list()
+        ret = u.validate_v3_endpoint_data(endpoints, admin_port, internal_port,
+                                          public_port, expected)
+        if ret:
+            amulet.raise_status(amulet.FAIL,
+                                msg='keystone endpoint: {}'.format(ret))
+
+    def test_142_cinder_endpoint(self):
+        """Verify the cinder endpoint data."""
+        u.log.debug('Checking cinder endpoint...')
+        admin_port = internal_port = public_port = '8776'
+        expected = {'id': u.not_null,
+                    'region': 'RegionOne',
+                    'region_id': 'RegionOne',
+                    'interface': u.not_null,
+                    'url': u.valid_url,
+                    'service_id': u.not_null}
+        endpoints = self.keystone_client.endpoints.list()
+        ret = u.validate_v3_endpoint_data(endpoints, admin_port, internal_port,
+                                          public_port, expected,
+                                          expected_num_eps=6)
+        if ret:
+            amulet.raise_status(amulet.FAIL,
+                                msg='cinder endpoint: {}'.format(ret))

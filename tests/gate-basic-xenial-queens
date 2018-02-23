@@ -16,10 +16,10 @@
 
 """Amulet tests on a basic keystone deployment on xenial-queens."""
 
-from basic_deployment import KeystoneBasicDeployment
+from basic_deployment import KeystoneV3Deployment
 
 if __name__ == '__main__':
-    deployment = KeystoneBasicDeployment(series='xenial',
-                                         openstack='cloud:xenial-queens',
-                                         source='cloud:xenial-updates/queens')
+    deployment = KeystoneV3Deployment(series='xenial',
+                                      openstack='cloud:xenial-queens',
+                                      source='cloud:xenial-updates/queens')
     deployment.run_tests()

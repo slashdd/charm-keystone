@@ -303,12 +303,15 @@ class TestKeystoneUtils(CharmTestCase):
         self.relation_ids.return_value = ['cluster/0']
 
         service_domain = None
+        service_domain_id = None
         service_role = 'Admin'
         if test_api_version > 2:
             service_domain = 'service_domain'
+            service_domain_id = '1234567890'
 
         mock_keystone = MagicMock()
         mock_keystone.resolve_tenant_id.return_value = 'tenant_id'
+        mock_keystone.resolve_domain_id.return_value = service_domain_id
         KeystoneManager.return_value = mock_keystone
 
         self.relation_get.return_value = {'service': 'keystone',
@@ -345,6 +348,7 @@ class TestKeystoneUtils(CharmTestCase):
                          'service_username': 'keystone',
                          'service_password': 'password',
                          'service_domain': service_domain,
+                         'service_domain_id': service_domain_id,
                          'service_tenant': 'tenant',
                          'https_keystone': '__null__',
                          'ssl_cert': '__null__', 'ssl_key': '__null__',
@@ -365,6 +369,8 @@ class TestKeystoneUtils(CharmTestCase):
                                                    **relation_data)
         self.relation_set.assert_called_with(relation_id=relation_id,
                                              **filtered)
+        if test_api_version > 2:
+            mock_keystone.resolve_domain_id.assert_called_with(service_domain)
 
     def test_add_service_to_keystone_no_clustered_no_https_complete_values_v3(
             self):

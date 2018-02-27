@@ -2108,8 +2108,10 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
     service_password = create_service_credentials(service_username,
                                                   new_roles=roles)
     service_domain = None
+    service_domain_id = None
     if get_api_version() > 2:
         service_domain = SERVICE_DOMAIN
+        service_domain_id = manager.resolve_domain_id(SERVICE_DOMAIN)
     service_tenant = config('service-tenant')
     service_tenant_id = manager.resolve_tenant_id(service_tenant,
                                                   domain=service_domain)
@@ -2125,6 +2127,7 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         "service_username": service_username,
         "service_password": service_password,
         "service_domain": service_domain,
+        "service_domain_id": service_domain_id,
         "service_tenant": service_tenant,
         "service_tenant_id": service_tenant_id,
         "https_keystone": '__null__',

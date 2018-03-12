@@ -351,11 +351,14 @@ options:
   https-service-endpoints:
     type: string
     default: "False"
-    description: Manage SSL certificates for all service endpoints.
+    description: Manage SSL certificates for all service endpoints. This option
+      should be False when specifying ssl\_\* options.
   use-https:
     type: string
     default: "no"
-    description: Use SSL for Keystone itself. Set to 'yes' to enable it.
+    description: Use SSL for Keystone itself using a charm-generated CA. Set to
+      'yes' to enable it. This option should be 'no' when specifying ssl\_\*
+      options.
   ssl_cert:
     type: string
     default:

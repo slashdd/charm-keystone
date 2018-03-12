@@ -11,7 +11,7 @@ The following interfaces are provided:
 
     - nrpe-external-master: Used to generate Nagios checks.
 
-    - identity-service: Openstack API endpoints request an entry in the 
+    - identity-service: Openstack API endpoints request an entry in the
       Keystone service catalog + endpoint template catalog. When a relation
       is established, Keystone receives: service name, region, public_url,
       admin_url and internal_url. It first checks that the requested service
@@ -94,33 +94,28 @@ If 'dns-ha' is set and none of the os-{admin,internal,public}-hostname(s) are se
 SSL/HTTPS
 ---------
 
-Support for SSL and https endpoint is provided via a set of configuration
-options on the charm. There are two types supported;
+Support for SSL and https endpoint is provided via various charm configuration
+options.
 
-use-https - if enabled this option tells Keystone to configure the identity
-endpoint as https. Under this model the keystone charm will either use the CA
-as provided by the user (see ssl_* options below) or will generate its own and
-sync across peers. The cert will be distributed to all service endpoints which
-will be configured to use https.
+To enable SSL and https endpoint with a charm-generated CA, set the following
+configuration options:
 
-https-service-endpoints - if enabled this option tells Keystone to configure
-ALL endpoints as https. Under this model the keystone charm will either use the
-CA as provided by the user (see ssl_* options below) or will generate its own
-and sync across peers. The cert will be distributed to all service endpoints
-which will be configured to use https as well as configuring themselves to be
-used as https.
+- use-https - if enabled this option tells Keystone to configure the identity
+  endpoint as https, and the keystone charm will generate its own CA and sync
+  across peers. The cert will be distributed to all service endpoints which
+  will be configured to use https.
 
-When configuring the charms to use SSL there are three charm config options as
-ssl_ca, ssl_cert and ssl_key.
+- https-service-endpoints - if enabled this option tells Keystone to configure
+  ALL endpoints as https. Under this model the keystone charm will generate its
+  own CA and sync across peers. The cert will be distributed to all service
+  endpoints which will be configured to use https as well as configuring
+  themselves to be used as https.
 
-- The user can provide their own CA, SSL cert and key using the options ssl_ca,
-  ssl_cert, ssl_key.
-
-- The user can provide SSL cert and key using ssl_cert and ssl_key when the cert
-  is signed by a trusted CA.
-
-- If not provided, the keystone charm will automatically generate a CA and certs
-  to distribute to endpoints.
+To enable SSL and https endpoint with your own CA, SSL cert, and key set the
+following configuration options: ssl_ca, ssl_cert, and ssl_key. The user can
+provide SSL cert and key using ssl_cert and ssl_key only when the cert is
+signed by a trusted CA. These options should not be used with use-https and
+https-service-endpoints.
 
 When the charm configures itself as a CA (generally only recommended for test
 purposes) it will elect an "ssl-cert-master" whose duty is to generate the CA
@@ -179,5 +174,5 @@ Alternatively these can also be provided as part of a juju native bundle configu
 
 NOTE: Spaces must be configured in the underlying provider prior to attempting to use them.
 
-NOTE: Existing deployments using os-*-network configuration options will continue to function; these options are preferred over any network space binding provided if set.
+NOTE: Existing deployments using os\-\*-network configuration options will continue to function; these options are preferred over any network space binding provided if set.
 

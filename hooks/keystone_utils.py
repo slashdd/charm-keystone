@@ -1692,8 +1692,10 @@ def synchronize_ca(fatal=False):
 
     # NOTE: certs needed for token signing e.g. pki and revocation list query.
     log("Syncing token certs", level=DEBUG)
-    paths_to_sync.append(PKI_CERTS_DIR)
-    peer_actions.append('ensure-pki-permissions')
+    # pike dropped support for PKI token; only run on releases <= pike
+    if CompareOpenStackReleases(os_release('keystone-common')) <= 'pike':
+        paths_to_sync.append(PKI_CERTS_DIR)
+        peer_actions.append('ensure-pki-permissions')
 
     if not paths_to_sync:
         log("Nothing to sync - skipping", level=DEBUG)

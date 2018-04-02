@@ -1,7 +1,7 @@
 Overview
 ========
 
-This charm provides Keystone, the Openstack identity service. It's target
+This charm provides Keystone, the Openstack identity service. Its target
 platform is (ideally) Ubuntu LTS + Openstack.
 
 Usage

@@ -94,10 +94,10 @@ class SSLContext(context.ApacheSSLContext):
 
         write_file(path=os.path.join(self.ssl_dir, 'cert_{}'.format(cn)),
                    content=cert, owner=SSH_USER, group=KEYSTONE_USER,
-                   perms=0o644)
+                   perms=0o640)
         write_file(path=os.path.join(self.ssl_dir, 'key_{}'.format(cn)),
                    content=key, owner=SSH_USER, group=KEYSTONE_USER,
-                   perms=0o644)
+                   perms=0o640)
 
     def configure_ca(self):
         from keystone_utils import (

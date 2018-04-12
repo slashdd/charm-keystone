@@ -15,7 +15,6 @@
 from mock import patch, call, MagicMock
 from test_utils import CharmTestCase
 import os
-from base64 import b64encode
 import subprocess
 
 os.environ['JUJU_UNIT_NAME'] = 'keystone'
@@ -30,7 +29,6 @@ TO_PATCH = [
     'config',
     'os_release',
     'log',
-    'get_ca',
     'create_role',
     'create_service_entry',
     'create_endpoint_template',
@@ -41,12 +39,9 @@ TO_PATCH = [
     'get_os_codename_install_source',
     'grant_role',
     'configure_installation_source',
-    'is_elected_leader',
-    'is_ssl_cert_master',
     'https',
     'lsb_release',
     'peer_store_and_set',
-    'service_restart',
     'service_stop',
     'service_start',
     'snap_install_requested',
@@ -66,7 +61,6 @@ TO_PATCH = [
     'time',
     'pwgen',
     'os_application_version_set',
-    'is_leader',
     'reset_os_release',
 ]
 
@@ -174,6 +168,7 @@ class TestKeystoneUtils(CharmTestCase):
         ex = utils.BASE_PACKAGES_SNAP + ['memcached']
         self.assertEqual(set(ex), set(result))
 
+    @patch.object(utils, 'is_elected_leader')
     @patch.object(utils, 'disable_unused_apache_sites')
     @patch('os.path.exists')
     @patch.object(utils, 'run_in_apache')
@@ -181,11 +176,11 @@ class TestKeystoneUtils(CharmTestCase):
     @patch.object(utils, 'migrate_database')
     def test_openstack_upgrade_leader(
             self, migrate_database, determine_packages,
-            run_in_apache, os_path_exists, disable_unused_apache_sites):
+            run_in_apache, os_path_exists, disable_unused_apache_sites,
+            mock_is_elected_leader):
         configs = MagicMock()
         self.test_config.set('openstack-origin', 'cloud:xenial-newton')
         determine_packages.return_value = []
-        self.is_elected_leader.return_value = True
         os_path_exists.return_value = True
         run_in_apache.return_value = True
 
@@ -231,9 +226,8 @@ class TestKeystoneUtils(CharmTestCase):
     @patch.object(utils, 'get_api_version')
     @patch.object(utils, 'get_manager')
     @patch.object(utils, 'resolve_address')
-    @patch.object(utils, 'b64encode')
     def test_add_service_to_keystone_clustered_https_none_values(
-            self, b64encode, _resolve_address, _get_manager,
+            self, _resolve_address, _get_manager,
             _get_api_version, _leader_get):
         _get_api_version.return_value = 2
         _leader_get.return_value = None
@@ -241,11 +235,9 @@ class TestKeystoneUtils(CharmTestCase):
         remote_unit = 'unit/0'
         _resolve_address.return_value = '10.10.10.10'
         self.https.return_value = True
-        self.test_config.set('https-service-endpoints', 'True')
         self.test_config.set('vip', '10.10.10.10')
         self.test_config.set('admin-port', 80)
         self.test_config.set('service-port', 81)
-        b64encode.return_value = 'certificate'
         self.get_requested_roles.return_value = ['role1', ]
 
         self.relation_get.return_value = {'service': 'keystone',
@@ -262,12 +254,10 @@ class TestKeystoneUtils(CharmTestCase):
 
         relation_data = {'auth_host': '10.10.10.10',
                          'service_host': '10.10.10.10',
-                         'auth_protocol': 'https',
                          'service_protocol': 'https',
                          'auth_port': 80,
+                         'auth_protocol': 'https',
                          'service_port': 81,
-                         'https_keystone': 'True',
-                         'ca_cert': 'certificate',
                          'region': 'RegionOne',
                          'api_version': 2,
                          'admin_domain_id': None}
@@ -649,12 +639,15 @@ class TestKeystoneUtils(CharmTestCase):
         mock_relation_set.assert_called_once_with(relation_id=relation_id,
                                                   relation_settings=settings)
 
+    @patch.object(utils, 'is_elected_leader')
     @patch.object(utils, 'peer_retrieve')
     @patch.object(utils, 'peer_store')
     def test_get_admin_passwd_pwd_set(self, mock_peer_store,
-                                      mock_peer_retrieve):
+                                      mock_peer_retrieve,
+                                      mock_is_elected_leader):
         mock_peer_retrieve.return_value = None
         self.test_config.set('admin-password', 'supersecret')
+        mock_is_elected_leader.return_value = True
         self.assertEqual(utils.get_admin_passwd(), 'supersecret')
         mock_peer_store.assert_called_once_with('admin_passwd', 'supersecret')
 
@@ -702,96 +695,6 @@ class TestKeystoneUtils(CharmTestCase):
         self.related_units.return_value = []
         self.assertTrue(utils.is_db_ready())
 
-    @patch.object(utils, 'peer_units')
-    def test_ensure_ssl_cert_master_ssl_no_peers(self, mock_peer_units):
-        def mock_rel_get(unit=None, **kwargs):
-            return None
-
-        self.relation_get.side_effect = mock_rel_get
-        self.relation_ids.return_value = ['cluster:0']
-        self.local_unit.return_value = 'unit/0'
-        self.related_units.return_value = []
-        mock_peer_units.return_value = []
-        # This should get ignored since we are overriding
-        self.is_ssl_cert_master.return_value = False
-        self.is_elected_leader.return_value = False
-        self.assertTrue(utils.ensure_ssl_cert_master())
-        settings = {'ssl-cert-master': 'unit/0'}
-        self.relation_set.assert_called_with(relation_id='cluster:0',
-                                             relation_settings=settings)
-
-    @patch.object(utils, 'peer_units')
-    def test_ensure_ssl_cert_master_ssl_master_no_peers(self,
-                                                        mock_peer_units):
-        def mock_rel_get(unit=None, **kwargs):
-            if unit == 'unit/0':
-                return 'unit/0'
-
-            return None
-
-        self.relation_get.side_effect = mock_rel_get
-        self.relation_ids.return_value = ['cluster:0']
-        self.local_unit.return_value = 'unit/0'
-        self.related_units.return_value = []
-        mock_peer_units.return_value = []
-        # This should get ignored since we are overriding
-        self.is_ssl_cert_master.return_value = False
-        self.is_elected_leader.return_value = False
-        self.assertTrue(utils.ensure_ssl_cert_master())
-        settings = {'ssl-cert-master': 'unit/0'}
-        self.relation_set.assert_called_with(relation_id='cluster:0',
-                                             relation_settings=settings)
-
-    @patch.object(utils, 'peer_units')
-    def test_ensure_ssl_cert_master_ssl_not_leader(self, mock_peer_units):
-        self.relation_ids.return_value = ['cluster:0']
-        self.local_unit.return_value = 'unit/0'
-        mock_peer_units.return_value = ['unit/1']
-        self.is_ssl_cert_master.return_value = False
-        self.is_elected_leader.return_value = False
-        self.assertFalse(utils.ensure_ssl_cert_master())
-        self.assertFalse(self.relation_set.called)
-
-    @patch.object(utils, 'peer_units')
-    def test_ensure_ssl_cert_master_is_leader_new_peer(self,
-                                                       mock_peer_units):
-        def mock_rel_get(unit=None, **kwargs):
-            if unit == 'unit/0':
-                return 'unit/0'
-
-            return 'unknown'
-
-        self.relation_get.side_effect = mock_rel_get
-        self.relation_ids.return_value = ['cluster:0']
-        self.local_unit.return_value = 'unit/0'
-        mock_peer_units.return_value = ['unit/1']
-        self.related_units.return_value = ['unit/1']
-        self.is_ssl_cert_master.return_value = False
-        self.is_elected_leader.return_value = True
-        self.assertFalse(utils.ensure_ssl_cert_master())
-        settings = {'ssl-cert-master': 'unit/0'}
-        self.relation_set.assert_called_with(relation_id='cluster:0',
-                                             relation_settings=settings)
-
-    @patch.object(utils, 'peer_units')
-    def test_ensure_ssl_cert_master_is_leader_no_new_peer(self,
-                                                          mock_peer_units):
-        def mock_rel_get(unit=None, **kwargs):
-            if unit == 'unit/0':
-                return 'unit/0'
-
-            return 'unit/0'
-
-        self.relation_get.side_effect = mock_rel_get
-        self.relation_ids.return_value = ['cluster:0']
-        self.local_unit.return_value = 'unit/0'
-        mock_peer_units.return_value = ['unit/1']
-        self.related_units.return_value = ['unit/1']
-        self.is_ssl_cert_master.return_value = False
-        self.is_elected_leader.return_value = True
-        self.assertFalse(utils.ensure_ssl_cert_master())
-        self.assertFalse(self.relation_set.called)
-
     @patch.object(utils, 'leader_set')
     @patch.object(utils, 'leader_get')
     @patch('charmhelpers.contrib.openstack.ip.unit_get')
@@ -825,30 +728,6 @@ class TestKeystoneUtils(CharmTestCase):
             auth_port=35357,
             region='RegionOne',
         )
-
-    @patch.object(utils, 'peer_units')
-    def test_ensure_ssl_cert_master_is_leader_bad_votes(self,
-                                                        mock_peer_units):
-        counter = {0: 0}
-
-        def mock_rel_get(unit=None, **kwargs):
-            """Returns a mix of votes."""
-            if unit == 'unit/0':
-                return 'unit/0'
-
-            ret = 'unit/%d' % (counter[0])
-            counter[0] += 1
-            return ret
-
-        self.relation_get.side_effect = mock_rel_get
-        self.relation_ids.return_value = ['cluster:0']
-        self.local_unit.return_value = 'unit/0'
-        mock_peer_units.return_value = ['unit/1']
-        self.related_units.return_value = ['unit/1']
-        self.is_ssl_cert_master.return_value = False
-        self.is_elected_leader.return_value = True
-        self.assertFalse(utils.ensure_ssl_cert_master())
-        self.assertFalse(self.relation_set.called)
 
     @patch.object(utils, 'get_manager')
     def test_is_service_present(self, KeystoneManager):
@@ -1005,16 +884,6 @@ class TestKeystoneUtils(CharmTestCase):
         https.return_value = True
         protocol = utils.get_protocol()
         self.assertEqual(protocol, 'https')
-
-    def test_get_ssl_ca_settings(self):
-        CA = MagicMock()
-        CA.get_ca_bundle.return_value = 'certstring'
-        self.test_config.set('https-service-endpoints', 'True')
-        self.get_ca.return_value = CA
-        expected_settings = {'https_keystone': 'True',
-                             'ca_cert': b64encode('certstring')}
-        settings = utils.get_ssl_ca_settings()
-        self.assertEqual(settings, expected_settings)
 
     @patch.object(utils, 'get_manager')
     def test_add_credentials_keystone_not_ready(self, get_manager):
@@ -1198,67 +1067,6 @@ class TestKeystoneUtils(CharmTestCase):
                                                    new_roles=['New', 'Member'],
                                                    grants=['New', 'Member'],
                                                    tenant='myproject')
-        self.peer_store_and_set.assert_called_with(relation_id=relation_id,
-                                                   **relation_data)
-
-    @patch.object(utils, 'set_service_password')
-    @patch.object(utils, 'get_service_password')
-    @patch.object(utils, 'get_ssl_ca_settings')
-    @patch.object(utils, 'create_user_credentials')
-    @patch.object(utils, 'get_protocol')
-    @patch.object(utils, 'resolve_address')
-    @patch.object(utils, 'get_api_version')
-    @patch.object(utils, 'get_manager')
-    def test_add_credentials_keystone_ssl(self, get_manager,
-                                          get_api_version,
-                                          resolve_address,
-                                          get_protocol,
-                                          create_user_credentials,
-                                          get_ssl_ca_settings,
-                                          get_callback, set_callback):
-        """ Verify add_credentials with SSL """
-        manager = MagicMock()
-        manager.resolve_tenant_id.return_value = 'abcdef0123456789'
-        get_manager.return_value = manager
-        remote_unit = 'unit/0'
-        relation_id = 'identity-credentials:0'
-        get_api_version.return_value = 2
-        get_protocol.return_value = 'https'
-        resolve_address.return_value = '10.10.10.10'
-        create_user_credentials.return_value = 'password'
-        get_ssl_ca_settings.return_value = {'https_keystone': 'True',
-                                            'ca_cert': 'base64certstring'}
-        self.relation_get.return_value = {'username': 'requester'}
-        self.get_service_password.return_value = 'password'
-        self.get_requested_roles.return_value = []
-        self.test_config.set('admin-port', 80)
-        self.test_config.set('service-port', 81)
-        self.test_config.set('https-service-endpoints', 'True')
-        relation_data = {'auth_host': '10.10.10.10',
-                         'credentials_host': '10.10.10.10',
-                         'credentials_port': 81,
-                         'auth_port': 80,
-                         'auth_protocol': 'https',
-                         'credentials_username': 'requester',
-                         'credentials_protocol': 'https',
-                         'credentials_password': 'password',
-                         'credentials_project': 'services',
-                         'credentials_project_id': 'abcdef0123456789',
-                         'region': 'RegionOne',
-                         'api_version': 2,
-                         'https_keystone': 'True',
-                         'ca_cert': 'base64certstring'}
-
-        utils.add_credentials_to_keystone(
-            relation_id=relation_id,
-            remote_unit=remote_unit)
-        create_user_credentials.assert_called_with('requester',
-                                                   get_callback,
-                                                   set_callback,
-                                                   domain=None,
-                                                   new_roles=[],
-                                                   grants=['Admin'],
-                                                   tenant='services')
         self.peer_store_and_set.assert_called_with(relation_id=relation_id,
                                                    **relation_data)
 

@@ -16,12 +16,10 @@
 
 import hashlib
 import json
-import os
 import sys
 
 from subprocess import check_call
 
-from charmhelpers.contrib import unison
 from charmhelpers.core import unitdata
 
 from charmhelpers.core.hookenv import (
@@ -29,7 +27,6 @@ from charmhelpers.core.hookenv import (
     UnregisteredHookError,
     config,
     log,
-    local_unit,
     DEBUG,
     INFO,
     WARNING,
@@ -44,15 +41,10 @@ from charmhelpers.core.hookenv import (
 )
 
 from charmhelpers.core.host import (
-    mkdir,
     service_pause,
     service_stop,
     service_start,
     service_restart,
-)
-
-from charmhelpers.core.strutils import (
-    bool_from_string,
 )
 
 from charmhelpers.fetch import (
@@ -85,32 +77,18 @@ from keystone_utils import (
     migrate_database,
     save_script_rc,
     post_snap_install,
-    synchronize_ca_if_changed,
     register_configs,
     restart_map,
     services,
     CLUSTER_RES,
     KEYSTONE_CONF,
-    KEYSTONE_USER,
     POLICY_JSON,
     TOKEN_FLUSH_CRON_FILE,
-    SSH_USER,
     setup_ipv6,
     send_notifications,
-    check_peer_actions,
-    get_ssl_sync_request_units,
-    is_ssl_cert_master,
     is_db_ready,
-    clear_ssl_synced_units,
     is_db_initialised,
-    update_certs_if_available,
-    ensure_ssl_dir,
-    ensure_pki_dir_permissions,
-    ensure_permissions,
-    force_ssl_sync,
     filter_null,
-    ensure_ssl_dirs,
-    ensure_pki_cert_paths,
     is_service_present,
     delete_service_entry,
     assess_status,
@@ -128,7 +106,6 @@ from keystone_utils import (
 from charmhelpers.contrib.hahelpers.cluster import (
     is_elected_leader,
     get_hacluster_config,
-    peer_units,
     https,
     is_clustered,
 )
@@ -142,7 +119,6 @@ from charmhelpers.payload.execd import execd_preinstall
 from charmhelpers.contrib.peerstorage import (
     peer_retrieve_by_prefix,
     peer_echo,
-    relation_get as relation_get_and_migrate,
 )
 from charmhelpers.contrib.openstack.ip import (
     ADMIN,
@@ -199,13 +175,9 @@ def install():
             disable_unused_apache_sites()
             service_pause('keystone')
 
-    unison.ensure_user(user=SSH_USER, group=SSH_USER)
-    unison.ensure_user(user=SSH_USER, group=KEYSTONE_USER)
-
 
 @hooks.hook('config-changed')
 @restart_on_change(restart_map(), restart_functions=restart_function_map())
-@synchronize_ca_if_changed(fatal=True)
 @harden()
 def config_changed():
     if config('prefer-ipv6'):
@@ -214,36 +186,21 @@ def config_changed():
         sync_db_with_multi_ipv6_addresses(config('database'),
                                           config('database-user'))
 
-    unison.ensure_user(user=SSH_USER, group=SSH_USER)
-    unison.ensure_user(user=SSH_USER, group=KEYSTONE_USER)
-    homedir = unison.get_homedir(SSH_USER)
-    if not os.path.isdir(homedir):
-        mkdir(homedir, SSH_USER, SSH_USER, 0o775)
-
     if not config('action-managed-upgrade'):
         if openstack_upgrade_available('keystone'):
             status_set('maintenance', 'Running openstack upgrade')
             do_openstack_upgrade_reexec(configs=CONFIGS)
 
     for r_id in relation_ids('cluster'):
-        cluster_joined(rid=r_id, ssl_sync_request=False)
+        cluster_joined(rid=r_id)
 
     config_changed_postupgrade()
 
 
 @hooks.hook('config-changed-postupgrade')
 @restart_on_change(restart_map(), restart_functions=restart_function_map())
-@synchronize_ca_if_changed(fatal=True)
 @harden()
 def config_changed_postupgrade():
-    # Ensure ssl dir exists and is unison-accessible
-    ensure_ssl_dir()
-
-    if not snap_install_requested():
-        check_call(['chmod', '-R', 'g+wrx', '/var/lib/keystone/'])
-
-    ensure_ssl_dirs()
-
     save_script_rc()
     release = os_release('keystone')
     if run_in_apache(release=release):
@@ -275,55 +232,12 @@ def config_changed_postupgrade():
     if snap_install_requested() and not is_unit_paused_set():
         service_restart('snap.keystone.*')
 
-    initialise_pki()
-
     update_all_identity_relation_units()
     update_all_domain_backends()
     update_all_fid_backends()
 
-    # Ensure sync request is sent out (needed for any/all ssl change)
-    send_ssl_sync_request()
-
     for r_id in relation_ids('ha'):
         ha_joined(relation_id=r_id)
-
-
-@synchronize_ca_if_changed(fatal=True)
-def initialise_pki():
-    """Create certs and keys required for token signing.
-
-    Used for PKI and signing token revocation list.
-
-    NOTE: keystone.conf [signing] section must be up-to-date prior to
-          executing this.
-    """
-    if CompareOpenStackReleases(os_release('keystone-common')) >= 'pike':
-        # pike dropped support for PKI token; skip function
-        return
-    ensure_pki_cert_paths()
-    if not peer_units() or is_ssl_cert_master():
-        log("Ensuring PKI token certs created", level=DEBUG)
-        if snap_install_requested():
-            cmd = ['/snap/bin/keystone-manage', 'pki_setup',
-                   '--keystone-user', KEYSTONE_USER,
-                   '--keystone-group', KEYSTONE_USER]
-            _log_dir = '/var/snap/keystone/common/log'
-        else:
-            cmd = ['keystone-manage', 'pki_setup',
-                   '--keystone-user', KEYSTONE_USER,
-                   '--keystone-group', KEYSTONE_USER]
-            _log_dir = '/var/log/keystone'
-        check_call(cmd)
-
-        # Ensure logfile has keystone perms since we may have just created it
-        # with root.
-        ensure_permissions(_log_dir, user=KEYSTONE_USER,
-                           group=KEYSTONE_USER, perms=0o744)
-        ensure_permissions('{}/keystone.log'.format(_log_dir),
-                           user=KEYSTONE_USER, group=KEYSTONE_USER,
-                           perms=0o644)
-
-    ensure_pki_dir_permissions()
 
 
 @hooks.hook('shared-db-relation-joined')
@@ -377,11 +291,6 @@ def update_all_identity_relation_units(check_db_ready=True):
             identity_credentials_changed(relation_id=rid, remote_unit=unit)
 
 
-@synchronize_ca_if_changed(force=True)
-def update_all_identity_relation_units_force_sync():
-    update_all_identity_relation_units()
-
-
 def update_all_domain_backends():
     """Re-trigger hooks for all domain-backend relations/units"""
     for rid in relation_ids('domain-backend'):
@@ -431,7 +340,6 @@ def leader_init_db_if_ready(use_current_context=False):
 
 @hooks.hook('shared-db-relation-changed')
 @restart_on_change(restart_map(), restart_functions=restart_function_map())
-@synchronize_ca_if_changed()
 def db_changed():
     if 'shared-db' not in CONFIGS.complete_contexts():
         log('shared-db relation incomplete. Peer not ready?')
@@ -446,7 +354,6 @@ def db_changed():
 
 @hooks.hook('identity-service-relation-changed')
 @restart_on_change(restart_map(), restart_functions=restart_function_map())
-@synchronize_ca_if_changed()
 def identity_changed(relation_id=None, remote_unit=None):
     CONFIGS.write_all()
 
@@ -528,59 +435,8 @@ def identity_credentials_changed(relation_id=None, remote_unit=None):
         log('Deferring identity_credentials_changed() to service leader.')
 
 
-def send_ssl_sync_request():
-    """Set sync request on cluster relation.
-
-    Value set equals number of ssl configs currently enabled so that if they
-    change, we ensure that certs are synced. This setting is consumed by
-    cluster-relation-changed ssl master. We also clear the 'synced' set to
-    guarantee that a sync will occur.
-
-    Note the we do nothing if the setting is already applied.
-    """
-    unit = local_unit().replace('/', '-')
-    # Start with core config (e.g. used for signing revoked token list)
-    ssl_config = 0b1
-
-    use_https = config('use-https')
-    if use_https and bool_from_string(use_https):
-        ssl_config ^= 0b10
-
-    https_service_endpoints = config('https-service-endpoints')
-    if (https_service_endpoints and
-            bool_from_string(https_service_endpoints)):
-        ssl_config ^= 0b100
-
-    enable_pki = config('enable-pki')
-    if enable_pki and bool_from_string(enable_pki):
-        ssl_config ^= 0b1000
-
-    key = 'ssl-sync-required-%s' % (unit)
-    settings = {key: ssl_config}
-
-    prev = 0b0
-    rid = None
-    for rid in relation_ids('cluster'):
-        for unit in related_units(rid):
-            _prev = relation_get(rid=rid, unit=unit, attribute=key) or 0b0
-            if _prev and _prev > prev:
-                prev = bin(_prev)
-
-    if rid and prev ^ ssl_config:
-        if is_leader():
-            clear_ssl_synced_units()
-
-        log("Setting %s=%s" % (key, bin(ssl_config)), level=DEBUG)
-        relation_set(relation_id=rid, relation_settings=settings)
-
-
 @hooks.hook('cluster-relation-joined')
-def cluster_joined(rid=None, ssl_sync_request=True):
-    unison.ssh_authorized_peers(user=SSH_USER,
-                                group=SSH_USER,
-                                peer_interface='cluster',
-                                ensure_local_user=True)
-
+def cluster_joined(rid=None):
     settings = {}
 
     for addr_type in ADDRESS_TYPES:
@@ -594,57 +450,19 @@ def cluster_joined(rid=None, ssl_sync_request=True):
 
     relation_set(relation_id=rid, relation_settings=settings)
 
-    if ssl_sync_request:
-        send_ssl_sync_request()
-
 
 @hooks.hook('cluster-relation-changed')
 @restart_on_change(restart_map(), stopstart=True)
-@update_certs_if_available
 def cluster_changed():
-    unison.ssh_authorized_peers(user=SSH_USER,
-                                group=SSH_USER,
-                                peer_interface='cluster',
-                                ensure_local_user=True)
     # NOTE(jamespage) re-echo passwords for peer storage
-    echo_whitelist = ['_passwd', 'identity-service:',
-                      'db-initialised', 'ssl-cert-available-updates']
-    # Don't echo if leader since a re-election may be in progress.
-    if not is_leader():
-        echo_whitelist.append('ssl-cert-master')
+    echo_whitelist = ['_passwd', 'identity-service:', 'db-initialised']
 
     log("Peer echo whitelist: %s" % (echo_whitelist), level=DEBUG)
     peer_echo(includes=echo_whitelist, force=True)
 
-    check_peer_actions()
+    update_all_identity_relation_units()
 
-    initialise_pki()
-
-    if is_leader():
-        # Figure out if we need to mandate a sync
-        units = get_ssl_sync_request_units()
-        synced_units = relation_get_and_migrate(attribute='ssl-synced-units',
-                                                unit=local_unit())
-        diff = None
-        if synced_units:
-            synced_units = json.loads(synced_units)
-            diff = set(units).symmetric_difference(set(synced_units))
-    else:
-        units = None
-
-    if units and (not synced_units or diff):
-        log("New peers joined and need syncing - %s" %
-            (', '.join(units)), level=DEBUG)
-        update_all_identity_relation_units_force_sync()
-    else:
-        update_all_identity_relation_units()
-
-    if not is_leader() and is_ssl_cert_master():
-        # Force and sync and trigger a sync master re-election since we are not
-        # leader anymore.
-        force_ssl_sync()
-    else:
-        CONFIGS.write_all()
+    CONFIGS.write_all()
 
 
 @hooks.hook('leader-elected')
@@ -739,7 +557,6 @@ def ha_joined(relation_id=None):
 
 @hooks.hook('ha-relation-changed')
 @restart_on_change(restart_map(), restart_functions=restart_function_map())
-@synchronize_ca_if_changed()
 def ha_changed():
     CONFIGS.write_all()
 
@@ -747,10 +564,7 @@ def ha_changed():
     if clustered:
         log('Cluster configured, notifying other services and updating '
             'keystone endpoint configuration')
-        if is_ssl_cert_master():
-            update_all_identity_relation_units_force_sync()
-        else:
-            update_all_identity_relation_units()
+        update_all_identity_relation_units()
 
 
 @hooks.hook('identity-admin-relation-changed')
@@ -808,7 +622,6 @@ def domain_backend_changed(relation_id=None, unit=None):
             db.flush()
 
 
-@synchronize_ca_if_changed(fatal=True)
 def configure_https():
     '''
     Enables SSL API Apache config if appropriate and kicks identity-service
@@ -831,17 +644,10 @@ def configure_https():
 
 @hooks.hook('upgrade-charm')
 @restart_on_change(restart_map(), stopstart=True)
-@synchronize_ca_if_changed()
 @harden()
 def upgrade_charm():
     status_set('maintenance', 'Installing apt packages')
     apt_install(filter_installed_packages(determine_packages()))
-    unison.ssh_authorized_peers(user=SSH_USER,
-                                group=SSH_USER,
-                                peer_interface='cluster',
-                                ensure_local_user=True)
-
-    ensure_ssl_dirs()
 
     if run_in_apache():
         disable_unused_apache_sites()

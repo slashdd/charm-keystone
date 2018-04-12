@@ -14,24 +14,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import glob
-import grp
-import hashlib
-import json
 import os
-import pwd
-import re
 import shutil
 import subprocess
-import tarfile
-import threading
 import time
 import urlparse
 import uuid
 import sys
 
 from itertools import chain
-from base64 import b64encode
 from collections import OrderedDict
 from copy import deepcopy
 
@@ -39,7 +30,6 @@ from charmhelpers.contrib.hahelpers.cluster import (
     is_elected_leader,
     determine_api_port,
     https,
-    peer_units,
     get_hacluster_config,
 )
 
@@ -79,8 +69,6 @@ from charmhelpers.core.strutils import (
     bool_from_string,
 )
 
-import charmhelpers.contrib.unison as unison
-
 from charmhelpers.core.decorators import (
     retry_on_exception,
 )
@@ -98,9 +86,6 @@ from charmhelpers.core.hookenv import (
     related_units,
     DEBUG,
     INFO,
-    WARNING,
-    ERROR,
-    is_leader,
 )
 
 from charmhelpers.fetch import (
@@ -111,13 +96,11 @@ from charmhelpers.fetch import (
 )
 
 from charmhelpers.core.host import (
-    mkdir,
+    service_restart,
     service_stop,
     service_start,
-    service_restart,
     pwgen,
     lsb_release,
-    write_file,
     CompareHostReleases,
 )
 
@@ -125,11 +108,9 @@ from charmhelpers.contrib.peerstorage import (
     peer_store_and_set,
     peer_store,
     peer_retrieve,
-    relation_set as relation_set_and_migrate_to_leader,
 )
 
 import keystone_context
-import keystone_ssl as ssl
 
 
 TEMPLATES = 'templates/'
@@ -145,7 +126,6 @@ BASE_PACKAGES = [
     'python-psycopg2',
     'python-six',
     'pwgen',
-    'unison',
     'uuid',
 ]
 
@@ -154,13 +134,11 @@ BASE_PACKAGES_SNAP = [
     'openssl',
     'python-six',
     'pwgen',
-    'unison',
     'uuid',
 ]
 
 VERSION_PACKAGE = 'keystone'
 
-SSH_USER = 'juju_keystone'
 if snap_install_requested():
     SNAP_BASE_DIR = "/snap/keystone/current"
     SNAP_COMMON_DIR = "/var/snap/keystone/common"
@@ -182,17 +160,9 @@ if snap_install_requested():
     STORED_DEFAULT_DOMAIN_ID = ("{}/keystone.default_domain_id"
                                 "".format(SNAP_LIB_DIR))
     SERVICE_PASSWD_PATH = '{}/services.passwd'.format(SNAP_LIB_DIR)
-
-    SSH_USER_HOME = '/home/{}'.format(SSH_USER)
-    SYNC_FLAGS_DIR = '{}/juju_sync_flags/'.format(SSH_USER_HOME)
-    SYNC_DIR = '{}/juju_sync/'.format(SSH_USER_HOME)
-    SSL_SYNC_ARCHIVE = os.path.join(SYNC_DIR, 'juju-ssl-sync.tar')
-    SSL_DIR = '{}/juju_ssl/'.format(SNAP_LIB_DIR)
-    PKI_CERTS_DIR = os.path.join(SSL_DIR, 'pki')
     POLICY_JSON = ('{}/keystone.conf.d/policy.json'
                    ''.format(SNAP_COMMON_KEYSTONE_DIR))
     BASE_SERVICES = ['snap.keystone.uwsgi', 'snap.keystone.nginx']
-    APACHE_SSL_DIR = '{}/keystone'.format(SSL_DIR)
 else:
     APACHE_SSL_DIR = '/etc/apache2/ssl/keystone'
     KEYSTONE_USER = 'keystone'
@@ -206,12 +176,6 @@ else:
     STORED_ADMIN_DOMAIN_ID = "/var/lib/keystone/keystone.admin_domain_id"
     STORED_DEFAULT_DOMAIN_ID = "/var/lib/keystone/keystone.default_domain_id"
     SERVICE_PASSWD_PATH = '/var/lib/keystone/services.passwd'
-
-    SYNC_FLAGS_DIR = '/var/lib/keystone/juju_sync_flags/'
-    SYNC_DIR = '/var/lib/keystone/juju_sync/'
-    SSL_SYNC_ARCHIVE = os.path.join(SYNC_DIR, 'juju-ssl-sync.tar')
-    SSL_DIR = '/var/lib/keystone/juju_ssl/'
-    PKI_CERTS_DIR = os.path.join(SSL_DIR, 'pki')
     POLICY_JSON = '/etc/keystone/policy.json'
     BASE_SERVICES = [
         'keystone',
@@ -223,11 +187,7 @@ APACHE_CONF = '/etc/apache2/sites-available/openstack_https_frontend'
 APACHE_24_CONF = '/etc/apache2/sites-available/openstack_https_frontend.conf'
 MEMCACHED_CONF = '/etc/memcached.conf'
 
-SSL_CA_NAME = 'Ubuntu Cloud'
 CLUSTER_RES = 'grp_ks_vips'
-CA_CERT_PATH = '/usr/local/share/ca-certificates/keystone_juju_ca_cert.crt'
-SSL_SYNC_SEMAPHORE = threading.Semaphore()
-SSL_DIRS = [SSL_DIR, APACHE_SSL_DIR, CA_CERT_PATH]
 ADMIN_DOMAIN = 'admin_domain'
 ADMIN_PROJECT = 'admin'
 DEFAULT_DOMAIN = 'default'
@@ -1311,594 +1271,6 @@ def is_password_changed(username, passwd):
     return (_passwd is None or passwd != _passwd)
 
 
-def ensure_ssl_dirs():
-    """Ensure unison has access to these dirs."""
-    for path in [SYNC_FLAGS_DIR, SYNC_DIR]:
-        if not os.path.isdir(path):
-            mkdir(path, SSH_USER, KEYSTONE_USER, 0o775)
-        else:
-            ensure_permissions(path, user=SSH_USER, group=KEYSTONE_USER,
-                               perms=0o775)
-
-
-def ensure_permissions(path, user=None, group=None, perms=None, recurse=False,
-                       maxdepth=50):
-    """Set chownand chmod for path
-
-    Note that -1 for uid or gid result in no change.
-    """
-    if user:
-        uid = pwd.getpwnam(user).pw_uid
-    else:
-        uid = -1
-
-    if group:
-        gid = grp.getgrnam(group).gr_gid
-    else:
-        gid = -1
-
-    os.chown(path, uid, gid)
-
-    if perms:
-        os.chmod(path, perms)
-
-    if recurse:
-        if not maxdepth:
-            log("Max recursion depth reached - skipping further recursion")
-            return
-
-        paths = glob.glob("%s/*" % (path))
-        for path in paths:
-            ensure_permissions(path, user=user, group=group, perms=perms,
-                               recurse=recurse, maxdepth=maxdepth - 1)
-
-
-def check_peer_actions():
-    """Honour service action requests from sync master.
-
-    Check for service action request flags, perform the action then delete the
-    flag.
-    """
-    restart = relation_get(attribute='restart-services-trigger')
-    if restart and os.path.isdir(SYNC_FLAGS_DIR):
-        for flagfile in glob.glob(os.path.join(SYNC_FLAGS_DIR, '*')):
-            flag = os.path.basename(flagfile)
-            key = re.compile("^(.+)?\.(.+)?\.(.+)")
-            res = re.search(key, flag)
-            if res:
-                source = res.group(1)
-                service = res.group(2)
-                action = res.group(3)
-            else:
-                key = re.compile("^(.+)?\.(.+)?")
-                res = re.search(key, flag)
-                source = res.group(1)
-                action = res.group(2)
-
-            # Don't execute actions requested by this unit.
-            if local_unit().replace('.', '-') != source:
-                if action == 'restart':
-                    log("Running action='%s' on service '%s'" %
-                        (action, service), level=DEBUG)
-                    service_restart(service)
-                elif action == 'start':
-                    log("Running action='%s' on service '%s'" %
-                        (action, service), level=DEBUG)
-                    service_start(service)
-                elif action == 'stop':
-                    log("Running action='%s' on service '%s'" %
-                        (action, service), level=DEBUG)
-                    service_stop(service)
-                elif action == 'update-ca-certificates':
-                    log("Running %s" % (action), level=DEBUG)
-                    subprocess.check_call(['update-ca-certificates'])
-                elif action == 'ensure-pki-permissions':
-                    log("Running %s" % (action), level=DEBUG)
-                    ensure_pki_dir_permissions()
-                else:
-                    log("Unknown action flag=%s" % (flag), level=WARNING)
-
-            try:
-                os.remove(flagfile)
-            except:
-                pass
-
-
-def create_peer_service_actions(action, services):
-    """Mark remote services for action.
-
-    Default action is restart. These action will be picked up by peer units
-    e.g. we may need to restart services on peer units after certs have been
-    synced.
-    """
-    for service in services:
-        flagfile = os.path.join(SYNC_FLAGS_DIR, '%s.%s.%s' %
-                                (local_unit().replace('/', '-'),
-                                 service.strip(), action))
-        log("Creating action %s" % (flagfile), level=DEBUG)
-        write_file(flagfile, content='', owner=SSH_USER, group=KEYSTONE_USER,
-                   perms=0o744)
-
-
-def create_peer_actions(actions):
-    for action in actions:
-        action = "%s.%s" % (local_unit().replace('/', '-'), action)
-        flagfile = os.path.join(SYNC_FLAGS_DIR, action)
-        log("Creating action %s" % (flagfile), level=DEBUG)
-        write_file(flagfile, content='', owner=SSH_USER, group=KEYSTONE_USER,
-                   perms=0o744)
-
-
-@retry_on_exception(3, base_delay=2, exc_type=subprocess.CalledProcessError)
-def unison_sync(paths_to_sync):
-    """Do unison sync and retry a few times if it fails since peers may not be
-    ready for sync.
-
-    Returns list of synced units or None if one or more peers was not synced.
-    """
-    log('Synchronizing CA (%s) to all peers.' % (', '.join(paths_to_sync)),
-        level=INFO)
-    keystone_gid = grp.getgrnam(KEYSTONE_USER).gr_gid
-
-    # NOTE(dosaboy): This will sync to all peers who have already provided
-    # their ssh keys. If any existing peers have not provided their keys yet,
-    # they will be silently ignored.
-    unison.sync_to_peers(peer_interface='cluster', paths=paths_to_sync,
-                         user=SSH_USER, verbose=True, gid=keystone_gid,
-                         fatal=True)
-
-    synced_units = peer_units()
-    if len(unison.collect_authed_hosts('cluster')) != len(synced_units):
-        log("Not all peer units synced due to missing public keys", level=INFO)
-        return None
-    else:
-        return synced_units
-
-
-def get_ssl_sync_request_units():
-    """Get list of units that have requested to be synced.
-
-    NOTE: this must be called from cluster relation context.
-    """
-    units = []
-    for unit in related_units():
-        settings = relation_get(unit=unit) or {}
-        rkeys = settings.keys()
-        key = re.compile("^ssl-sync-required-(.+)")
-        for rkey in rkeys:
-            res = re.search(key, rkey)
-            if res:
-                units.append(res.group(1))
-
-    return units
-
-
-def is_ssl_cert_master(votes=None):
-    """Return True if this unit is ssl cert master."""
-
-    votes = votes or get_ssl_cert_master_votes()
-    set_votes = set(votes)
-    # Discard unknown votes
-    if 'unknown' in set_votes:
-        set_votes.remove('unknown')
-
-    # This is the elected ssl-cert-master leader
-    if len(set_votes) == 1 and set_votes == set([local_unit()]):
-        log("This unit is the elected ssl-cert-master "
-            "{}".format(votes), level=DEBUG)
-        return True
-
-    # Contested election
-    if len(set_votes) > 1:
-        log("Did not get consensus from peers on who is ssl-cert-master "
-            "{}".format(votes), level=DEBUG)
-        return False
-
-    # Neither the elected ssl-cert-master leader nor the juju leader
-    if not is_leader():
-        return False
-    # Only the juju elected leader continues
-
-    # Singleton
-    if not peer_units():
-        log("This unit is a singleton and thefore ssl-cert-master",
-            level=DEBUG)
-        return True
-
-    # Early in the process and juju leader
-    if not set_votes:
-        log("This unit is the juju leader and there are no votes yet, "
-            "becoming the ssl-cert-master",
-            level=DEBUG)
-        return True
-    elif (len(set_votes) == 1 and set_votes != set([local_unit()]) and
-            is_leader()):
-        log("This unit is the juju leader but not yet ssl-cert-master "
-            "(current votes = {})".format(set_votes), level=DEBUG)
-        return False
-
-    # Should never reach here
-    log("Could not determine the ssl-cert-master. Missing edge case. "
-        "(current votes = {})".format(set_votes),
-        level=ERROR)
-    return False
-
-
-def get_ssl_cert_master_votes():
-    """Returns a list of unique votes."""
-    votes = []
-    # Gather election results from peers. These will need to be consistent.
-    for rid in relation_ids('cluster'):
-        for unit in related_units(rid):
-            m = relation_get(rid=rid, unit=unit,
-                             attribute='ssl-cert-master')
-            if m is not None:
-                votes.append(m)
-
-    return list(set(votes))
-
-
-def ensure_ssl_cert_master():
-    """Ensure that an ssl cert master has been elected.
-
-    Normally the cluster leader will take control but we allow for this to be
-    ignored since this could be called before the cluster is ready.
-    """
-    master_override = False
-    elect = is_elected_leader(CLUSTER_RES)
-
-    # If no peers we allow this unit to elect itsef as master and do
-    # sync immediately.
-    if not peer_units():
-        elect = True
-        master_override = True
-
-    if elect:
-        votes = get_ssl_cert_master_votes()
-        # We expect all peers to echo this setting
-        if not votes or 'unknown' in votes:
-            log("Notifying peers this unit is ssl-cert-master", level=INFO)
-            for rid in relation_ids('cluster'):
-                settings = {'ssl-cert-master': local_unit()}
-                relation_set(relation_id=rid, relation_settings=settings)
-
-            # Return now and wait for cluster-relation-changed (peer_echo) for
-            # sync.
-            return master_override
-        elif not is_ssl_cert_master(votes):
-            if not master_override:
-                log("Conscensus not reached - current master will need to "
-                    "release", level=INFO)
-
-            return master_override
-
-    if not is_ssl_cert_master():
-        log("Not ssl cert master - skipping sync", level=INFO)
-        return False
-
-    return True
-
-
-def stage_paths_for_sync(paths):
-    shutil.rmtree(SYNC_DIR)
-    ensure_ssl_dirs()
-    with tarfile.open(SSL_SYNC_ARCHIVE, 'w') as fd:
-        for path in paths:
-            if os.path.exists(path):
-                log("Adding path '%s' sync tarball" % (path), level=DEBUG)
-                fd.add(path)
-            else:
-                log("Path '%s' does not exist - not adding to sync "
-                    "tarball" % (path), level=INFO)
-
-    ensure_permissions(SYNC_DIR, user=SSH_USER, group=KEYSTONE_USER,
-                       perms=0o775, recurse=True)
-
-
-def is_pki_enabled():
-    enable_pki = config('enable-pki')
-    if enable_pki and bool_from_string(enable_pki):
-        return True
-
-    return False
-
-
-def ensure_pki_cert_paths():
-    certs = os.path.join(PKI_CERTS_DIR, 'certs')
-    privates = os.path.join(PKI_CERTS_DIR, 'privates')
-    not_exists = [p for p in [PKI_CERTS_DIR, certs, privates]
-                  if not os.path.exists(p)]
-    if not_exists:
-        log("Configuring token signing cert paths", level=DEBUG)
-        perms = 0o775
-        for path in not_exists:
-            if not os.path.isdir(path):
-                mkdir(path=path, owner=SSH_USER, group=KEYSTONE_USER,
-                      perms=perms)
-            else:
-                # Ensure accessible by ssh user and group (for sync).
-                ensure_permissions(path, user=SSH_USER, group=KEYSTONE_USER,
-                                   perms=perms)
-
-
-def ensure_pki_dir_permissions():
-    # Ensure accessible by unison user and group (for sync).
-    ensure_permissions(PKI_CERTS_DIR, user=SSH_USER, group=KEYSTONE_USER,
-                       perms=0o775, recurse=True)
-
-
-def update_certs_if_available(f):
-    def _inner_update_certs_if_available(*args, **kwargs):
-        path = None
-        for rid in relation_ids('cluster'):
-            path = relation_get(attribute='ssl-cert-available-updates',
-                                rid=rid, unit=local_unit())
-
-        if path and os.path.exists(path):
-            log("Updating certs from '%s'" % (path), level=DEBUG)
-            with tarfile.open(path) as fd:
-                files = ["/%s" % m.name for m in fd.getmembers()]
-                fd.extractall(path='/')
-
-            for syncfile in files:
-                ensure_permissions(syncfile, user=KEYSTONE_USER,
-                                   group=KEYSTONE_USER,
-                                   perms=0o744, recurse=True)
-
-            # Mark as complete
-            os.rename(path, "%s.complete" % (path))
-        else:
-            log("No cert updates available", level=DEBUG)
-
-        return f(*args, **kwargs)
-
-    return _inner_update_certs_if_available
-
-
-def synchronize_ca(fatal=False):
-    """Broadcast service credentials to peers.
-
-    By default a failure to sync is fatal and will result in a raised
-    exception.
-
-    This function uses a relation setting 'ssl-cert-master' to get some
-    leader stickiness while synchronisation is being carried out. This ensures
-    that the last host to create and broadcast cetificates has the option to
-    complete actions before electing the new leader as sync master.
-
-    Returns a dictionary of settings to be set on the cluster relation.
-    """
-    paths_to_sync = []
-    peer_service_actions = {'restart': []}
-    peer_actions = []
-
-    if bool_from_string(config('https-service-endpoints')):
-        log("Syncing all endpoint certs since https-service-endpoints=True",
-            level=DEBUG)
-        paths_to_sync.append(SSL_DIR)
-        paths_to_sync.append(CA_CERT_PATH)
-        # We need to restart peer apache services to ensure they have picked up
-        # new ssl keys.
-        peer_service_actions['restart'].append('apache2')
-        peer_actions.append('update-ca-certificates')
-
-    if bool_from_string(config('use-https')):
-        log("Syncing keystone-endpoint certs since use-https=True",
-            level=DEBUG)
-        paths_to_sync.append(SSL_DIR)
-        paths_to_sync.append(APACHE_SSL_DIR)
-        paths_to_sync.append(CA_CERT_PATH)
-        # We need to restart peer apache services to ensure they have picked up
-        # new ssl keys.
-        peer_service_actions['restart'].append('apache2')
-        peer_actions.append('update-ca-certificates')
-
-    # NOTE: certs needed for token signing e.g. pki and revocation list query.
-    log("Syncing token certs", level=DEBUG)
-    # pike dropped support for PKI token; only run on releases <= pike
-    if CompareOpenStackReleases(os_release('keystone-common')) <= 'pike':
-        paths_to_sync.append(PKI_CERTS_DIR)
-        peer_actions.append('ensure-pki-permissions')
-
-    if not paths_to_sync:
-        log("Nothing to sync - skipping", level=DEBUG)
-        return {}
-
-    if not os.path.isdir(SYNC_FLAGS_DIR):
-        mkdir(SYNC_FLAGS_DIR, SSH_USER, KEYSTONE_USER, 0o775)
-
-    restart_trigger = None
-    for action, services in peer_service_actions.iteritems():
-        services = set(services)
-        if services:
-            restart_trigger = str(uuid.uuid4())
-            create_peer_service_actions(action, services)
-
-    create_peer_actions(peer_actions)
-
-    paths_to_sync = list(set(paths_to_sync))
-    stage_paths_for_sync(paths_to_sync)
-
-    hash1 = hashlib.sha256()
-    for path in paths_to_sync:
-        update_hash_from_path(hash1, path)
-
-    cluster_rel_settings = {'ssl-cert-available-updates': SSL_SYNC_ARCHIVE,
-                            'sync-hash': hash1.hexdigest()}
-
-    synced_units = unison_sync([SSL_SYNC_ARCHIVE, SYNC_FLAGS_DIR])
-    if synced_units:
-        # Format here needs to match that used when peers request sync
-        synced_units = [u.replace('/', '-') for u in synced_units]
-        ssl_synced_units = \
-            json.dumps(synced_units)
-        # NOTE(hopem): we pull this onto the leader settings to avoid
-        # unnecessary cluster relation noise. This is possible because the
-        # setting is only needed by the cert master.
-        if 'ssl-synced-units' not in leader_get():
-            rid = relation_ids('cluster')[0]
-            relation_set_and_migrate_to_leader(relation_id=rid,
-                                               **{'ssl-synced-units':
-                                                  ssl_synced_units})
-        else:
-            leader_set({'ssl-synced-units': ssl_synced_units})
-
-    if restart_trigger:
-        log("Sending restart-services-trigger=%s to all peers" %
-            (restart_trigger), level=DEBUG)
-        cluster_rel_settings['restart-services-trigger'] = restart_trigger
-
-    log("Sync complete", level=DEBUG)
-    return cluster_rel_settings
-
-
-def clear_ssl_synced_units():
-    """Clear the 'synced' units record on the cluster relation.
-
-    If new unit sync reauests are set this will ensure that a sync occurs when
-    the sync master receives the requests.
-    """
-    log("Clearing ssl sync units", level=DEBUG)
-    for rid in relation_ids('cluster'):
-        if 'ssl-synced-units' not in leader_get():
-            relation_set_and_migrate_to_leader(relation_id=rid,
-                                               **{'ssl-synced-units': None})
-        else:
-            leader_set({'ssl-synced-units': None})
-
-
-def update_hash_from_path(hash, path, recurse_depth=10):
-    """Recurse through path and update the provided hash for every file found.
-    """
-    if not recurse_depth:
-        log("Max recursion depth (%s) reached for update_hash_from_path() at "
-            "path='%s' - not going any deeper" % (recurse_depth, path),
-            level=WARNING)
-        return
-
-    for p in glob.glob("%s/*" % path):
-        if os.path.isdir(p):
-            update_hash_from_path(hash, p, recurse_depth=recurse_depth - 1)
-        else:
-            with open(p, 'r') as fd:
-                hash.update(fd.read())
-
-
-def synchronize_ca_if_changed(force=False, fatal=False):
-    """Decorator to perform ssl cert sync if decorated function modifies them
-    in any way.
-
-    If force is True a sync is done regardless.
-    """
-    def inner_synchronize_ca_if_changed1(f):
-        def inner_synchronize_ca_if_changed2(*args, **kwargs):
-            # Only sync master can do sync. Ensure (a) we are not nested and
-            # (b) a master is elected and we are it.
-            acquired = SSL_SYNC_SEMAPHORE.acquire(blocking=0)
-            try:
-                if not acquired:
-                    log("Nested sync - ignoring", level=DEBUG)
-                    return f(*args, **kwargs)
-
-                if not ensure_ssl_cert_master():
-                    log("Not ssl-cert-master - ignoring sync", level=DEBUG)
-                    return f(*args, **kwargs)
-
-                peer_settings = {}
-                if not force:
-                    hash1 = hashlib.sha256()
-                    for path in SSL_DIRS:
-                        update_hash_from_path(hash1, path)
-
-                    ret = f(*args, **kwargs)
-
-                    hash2 = hashlib.sha256()
-                    for path in SSL_DIRS:
-                        update_hash_from_path(hash2, path)
-
-                    if hash1.hexdigest() != hash2.hexdigest():
-                        log("SSL certs have changed - syncing peers",
-                            level=DEBUG)
-                        peer_settings = synchronize_ca(fatal=fatal)
-                    else:
-                        log("SSL certs have not changed - skipping sync",
-                            level=DEBUG)
-                else:
-                    ret = f(*args, **kwargs)
-                    log("Doing forced ssl cert sync", level=DEBUG)
-                    peer_settings = synchronize_ca(fatal=fatal)
-
-                # If we are the sync master but not leader, ensure we have
-                # relinquished master status.
-                cluster_rids = relation_ids('cluster')
-                if cluster_rids:
-                    master = relation_get('ssl-cert-master',
-                                          rid=cluster_rids[0],
-                                          unit=local_unit())
-                    if not is_leader() and master == local_unit():
-                        log("Re-electing ssl cert master.", level=INFO)
-                        peer_settings['ssl-cert-master'] = 'unknown'
-
-                    if peer_settings:
-                        relation_set(relation_id=cluster_rids[0],
-                                     relation_settings=peer_settings)
-
-                return ret
-            finally:
-                SSL_SYNC_SEMAPHORE.release()
-
-        return inner_synchronize_ca_if_changed2
-
-    return inner_synchronize_ca_if_changed1
-
-
-@synchronize_ca_if_changed(force=True, fatal=True)
-def force_ssl_sync():
-    """Force SSL sync to all peers.
-
-    This is useful if we need to relinquish ssl-cert-master status while
-    making sure that the new master has up-to-date certs.
-    """
-    return
-
-
-def ensure_ssl_dir():
-    """Ensure juju ssl dir exists and is unsion read/writable."""
-    # NOTE(thedac) Snap service restarts will override permissions
-    # in SNAP_LIB_DIR including SSL_DIR
-    perms = 0o775
-    if not os.path.isdir(SSL_DIR):
-        mkdir(SSL_DIR, SSH_USER, KEYSTONE_USER, perms)
-    else:
-        ensure_permissions(SSL_DIR, user=SSH_USER, group=KEYSTONE_USER,
-                           perms=perms)
-
-
-def get_ca(user=KEYSTONE_USER, group=KEYSTONE_USER):
-    """Initialize a new CA object if one hasn't already been loaded.
-
-    This will create a new CA or load an existing one.
-    """
-    if not ssl.CA_SINGLETON:
-        ensure_ssl_dir()
-        d_name = '_'.join(SSL_CA_NAME.lower().split(' '))
-        ca = ssl.JujuCA(name=SSL_CA_NAME, user=user, group=group,
-                        ca_dir=os.path.join(SSL_DIR,
-                                            '%s_intermediate_ca' % d_name),
-                        root_ca_dir=os.path.join(SSL_DIR,
-                                                 '%s_root_ca' % d_name))
-
-        # Ensure a master is elected. This should cover the following cases:
-        # * single unit == 'oldest' unit is elected as master
-        # * multi unit + not clustered == 'oldest' unit is elcted as master
-        # * multi unit + clustered == cluster leader is elected as master
-        ensure_ssl_cert_master()
-
-        ssl.CA_SINGLETON.append(ca)
-
-    return ssl.CA_SINGLETON[0]
-
-
 def relation_list(rid):
     cmd = [
         'relation-list',
@@ -2017,8 +1389,6 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
             relation_data["api_version"] = get_api_version()
             relation_data["admin_domain_id"] = leader_get(
                 attribute='admin_domain_id')
-            # Get and pass CA bundle settings
-            relation_data.update(get_ssl_ca_settings())
 
             # Allow the remote service to request creation of any additional
             # roles. Currently used by Horizon
@@ -2075,7 +1445,6 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
             endpoints[ep][x] = v
 
         services = []
-        https_cn = None
         for ep in endpoints:
             # weed out any unrelated relation stuff Juju might have added
             # by ensuring each possible endpiont has appropriate fields
@@ -2145,25 +1514,6 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         "admin_domain_id": leader_get(attribute='admin_domain_id'),
     }
 
-    # generate or get a new cert/key for service if set to manage certs.
-    https_service_endpoints = config('https-service-endpoints')
-    if https_service_endpoints and bool_from_string(https_service_endpoints):
-        ca = get_ca(user=SSH_USER)
-        # NOTE(jamespage) may have multiple cns to deal with to iterate
-        https_cns = set(https_cns)
-        for https_cn in https_cns:
-            cert, key = ca.get_cert_and_key(common_name=https_cn)
-            relation_data['ssl_cert_{}'.format(https_cn)] = b64encode(cert)
-            relation_data['ssl_key_{}'.format(https_cn)] = b64encode(key)
-
-        # NOTE(jamespage) for backwards compatibility
-        cert, key = ca.get_cert_and_key(common_name=internal_cn)
-        relation_data['ssl_cert'] = b64encode(cert)
-        relation_data['ssl_key'] = b64encode(key)
-
-        # Get and pass CA bundle settings
-        relation_data.update(get_ssl_ca_settings())
-
     peer_store_and_set(relation_id=relation_id, **relation_data)
     # NOTE(dosaboy): '__null__' settings are for peer relation only so that
     # settings can flushed so we filter them out for non-peer relation.
@@ -2229,28 +1579,8 @@ def add_credentials_to_keystone(relation_id=None, remote_unit=None):
     }
     if domain:
         relation_data['domain'] = domain
-    # Get and pass CA bundle settings
-    relation_data.update(get_ssl_ca_settings())
 
     peer_store_and_set(relation_id=relation_id, **relation_data)
-
-
-def get_ssl_ca_settings():
-    """ Get the Certificate Authority settings required to use the CA
-
-    :returns: Dictionary with https_keystone and ca_cert set
-    """
-    ca_data = {}
-    https_service_endpoints = config('https-service-endpoints')
-    if (https_service_endpoints and
-            bool_from_string(https_service_endpoints)):
-        # Pass CA cert as client will need it to
-        # verify https connections
-        ca = get_ca(user=SSH_USER)
-        ca_bundle = ca.get_ca_bundle()
-        ca_data['https_keystone'] = 'True'
-        ca_data['ca_cert'] = b64encode(ca_bundle)
-    return ca_data
 
 
 def get_protocol():

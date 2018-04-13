@@ -422,6 +422,7 @@ def db_changed():
         if CompareOpenStackReleases(
                 os_release('keystone-common')) >= 'liberty':
             CONFIGS.write(POLICY_JSON)
+        update_all_identity_relation_units()
 
 
 @hooks.hook('identity-service-relation-changed')

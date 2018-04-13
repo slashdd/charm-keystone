@@ -905,6 +905,7 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
                 amulet.raise_status(amulet.FAIL, msg=msg)
 
         self.d.configure(juju_service, set_default)
+        self._auto_wait_for_status(exclude_services=self.exclude_services)
 
         u.log.debug('OK')
 

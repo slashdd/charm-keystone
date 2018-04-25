@@ -72,6 +72,7 @@ from charmhelpers.contrib.openstack.utils import (
     install_os_snaps,
     get_snaps_install_info_from_origin,
     enable_memcache,
+    is_unit_paused_set,
 )
 
 from charmhelpers.core.strutils import (
@@ -245,7 +246,9 @@ BASE_RESOURCE_MAP = OrderedDict([
                      keystone_context.HAProxyContext(),
                      context.BindHostContext(),
                      context.WorkerConfigContext(),
-                     context.MemcacheContext(package='keystone')],
+                     context.MemcacheContext(package='keystone'),
+                     keystone_context.KeystoneFIDServiceProviderContext(),
+                     keystone_context.WebSSOTrustedDashboardContext()],
     }),
     (KEYSTONE_LOGGER_CONF, {
         'contexts': [keystone_context.KeystoneLoggingContext()],
@@ -2574,3 +2577,11 @@ def post_snap_install():
     if os.path.exists(PASTE_SRC):
         log("Perfoming post snap install tasks", INFO)
         shutil.copy(PASTE_SRC, PASTE_DST)
+
+
+def restart_keystone():
+    if not is_unit_paused_set():
+        if snap_install_requested():
+            service_restart('snap.keystone.*')
+        else:
+            service_restart(keystone_service())

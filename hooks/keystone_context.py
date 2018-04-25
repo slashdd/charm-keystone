@@ -14,6 +14,7 @@
 
 import hashlib
 import os
+import json
 
 from base64 import b64decode
 
@@ -39,6 +40,9 @@ from charmhelpers.core.hookenv import (
     leader_get,
     DEBUG,
     INFO,
+    related_units,
+    relation_ids,
+    relation_get,
 )
 
 from charmhelpers.core.strutils import (
@@ -404,4 +408,47 @@ class TokenFlushContext(context.OSContextGenerator):
         ctxt = {
             'token_flush': is_elected_leader(DC_RESOURCE_NAME)
         }
+        return ctxt
+
+
+class KeystoneFIDServiceProviderContext(context.OSContextGenerator):
+    interfaces = ['keystone-fid-service-provider']
+
+    def __call__(self):
+        fid_sp_keys = ['protocol-name', 'remote-id-attribute']
+        fid_sps = []
+        for rid in relation_ids("keystone-fid-service-provider"):
+            for unit in related_units(rid):
+                rdata = relation_get(unit=unit, rid=rid)
+                if set(rdata).issuperset(set(fid_sp_keys)):
+                    fid_sps.append({
+                        k: json.loads(v) for k, v in rdata.items()
+                        if k in fid_sp_keys
+                    })
+        # populate the context with data from one or more
+        # service providers
+        ctxt = ({'fid_sps': fid_sps}
+                if fid_sps else {})
+        return ctxt
+
+
+class WebSSOTrustedDashboardContext(context.OSContextGenerator):
+    interfaces = ['websso-trusted-dashboard']
+
+    def __call__(self):
+        trusted_dashboard_keys = ['scheme', 'hostname', 'path']
+        trusted_dashboards = set()
+        for rid in relation_ids("websso-trusted-dashboard"):
+            for unit in related_units(rid):
+                rdata = relation_get(unit=unit, rid=rid)
+                if set(rdata).issuperset(set(trusted_dashboard_keys)):
+                    scheme = rdata.get('scheme')
+                    hostname = rdata.get('hostname')
+                    path = rdata.get('path')
+                    url = '{}{}{}'.format(scheme, hostname, path)
+                    trusted_dashboards.add(url)
+        # populate the context with data from one or more
+        # service providers
+        ctxt = ({'trusted_dashboards': trusted_dashboards}
+                if trusted_dashboards else {})
         return ctxt

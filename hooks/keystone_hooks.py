@@ -40,6 +40,7 @@ from charmhelpers.core.hookenv import (
     status_set,
     open_port,
     is_leader,
+    relation_id,
 )
 
 from charmhelpers.core.host import (
@@ -121,7 +122,7 @@ from keystone_utils import (
     ADMIN_DOMAIN,
     ADMIN_PROJECT,
     create_or_show_domain,
-    keystone_service,
+    restart_keystone,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -272,6 +273,7 @@ def config_changed_postupgrade():
 
     update_all_identity_relation_units()
     update_all_domain_backends()
+    update_all_fid_backends()
 
     # Ensure sync request is sent out (needed for any/all ssl change)
     send_ssl_sync_request()
@@ -379,6 +381,17 @@ def update_all_domain_backends():
     for rid in relation_ids('domain-backend'):
         for unit in related_units(rid):
             domain_backend_changed(relation_id=rid, unit=unit)
+
+
+def update_all_fid_backends():
+    if CompareOpenStackReleases(os_release('keystone-common')) < 'ocata':
+        log('Ignoring keystone-fid-service-provider relation as it is'
+            ' not supported on releases older than Ocata')
+        return
+    """If there are any config changes, e.g. for domain or service port
+    make sure to update those for all relation-level buckets"""
+    for rid in relation_ids('keystone-fid-service-provider'):
+        update_keystone_fid_service_provider(relation_id=rid)
 
 
 def leader_init_db_if_ready(use_current_context=False):
@@ -784,11 +797,7 @@ def domain_backend_changed(relation_id=None, unit=None):
         domain_nonce_key = 'domain-restart-nonce-{}'.format(domain_name)
         db = unitdata.kv()
         if restart_nonce != db.get(domain_nonce_key):
-            if not is_unit_paused_set():
-                if snap_install_requested():
-                    service_restart('snap.keystone.*')
-                else:
-                    service_restart(keystone_service())
+            restart_keystone()
             db.set(domain_nonce_key, restart_nonce)
             db.flush()
 
@@ -867,6 +876,80 @@ def update_nrpe_config():
     nrpe.add_init_service_checks(nrpe_setup, _services, current_unit)
     nrpe.add_haproxy_checks(nrpe_setup, current_unit)
     nrpe_setup.write()
+
+
+@hooks.hook('keystone-fid-service-provider-relation-joined',
+            'keystone-fid-service-provider-relation-changed')
+def keystone_fid_service_provider_changed():
+    if get_api_version() < 3:
+        log('Identity federation is only supported with keystone v3')
+        return
+    if CompareOpenStackReleases(os_release('keystone-common')) < 'ocata':
+        log('Ignoring keystone-fid-service-provider relation as it is'
+            ' not supported on releases older than Ocata')
+        return
+    # for the join case a keystone public-facing hostname and service
+    # port need to be set
+    update_keystone_fid_service_provider(relation_id=relation_id())
+
+    # handle relation data updates (if any), e.g. remote_id_attribute
+    # and a restart will be handled via a nonce, not restart_on_change
+    CONFIGS.write(KEYSTONE_CONF)
+
+    # The relation is container-scoped so this keystone unit's unitdata
+    # will only contain a nonce of a single fid subordinate for a given
+    # fid backend (relation id)
+    restart_nonce = relation_get('restart-nonce')
+    if restart_nonce:
+        nonce = json.loads(restart_nonce)
+        # multiplex by relation id for multiple federated identity
+        # provider charms
+        fid_nonce_key = 'fid-restart-nonce-{}'.format(relation_id())
+        db = unitdata.kv()
+        if restart_nonce != db.get(fid_nonce_key):
+            restart_keystone()
+            db.set(fid_nonce_key, nonce)
+            db.flush()
+
+
+@hooks.hook('keystone-fid-service-provider-relation-broken')
+def keystone_fid_service_provider_broken():
+    if CompareOpenStackReleases(os_release('keystone-common')) < 'ocata':
+        log('Ignoring keystone-fid-service-provider relation as it is'
+            ' not supported on releases older than Ocata')
+        return
+
+    restart_keystone()
+
+
+@hooks.hook('websso-trusted-dashboard-relation-joined',
+            'websso-trusted-dashboard-relation-changed',
+            'websso-trusted-dashboard-relation-broken')
+@restart_on_change(restart_map(), restart_functions=restart_function_map())
+def websso_trusted_dashboard_changed():
+    if get_api_version() < 3:
+        log('WebSSO is only supported with keystone v3')
+        return
+    if CompareOpenStackReleases(os_release('keystone-common')) < 'ocata':
+        log('Ignoring WebSSO relation as it is not supported on'
+            ' releases older than Ocata')
+        return
+    CONFIGS.write(KEYSTONE_CONF)
+
+
+def update_keystone_fid_service_provider(relation_id=None):
+    tls_enabled = (config('ssl_cert') is not None and
+                   config('ssl_key') is not None)
+    # reactive endpoints implementation on the other side, hence
+    # json-encoded values
+    fid_settings = {
+        'hostname': json.dumps(config('os-public-hostname')),
+        'port': json.dumps(config('service-port')),
+        'tls-enabled': json.dumps(tls_enabled),
+    }
+
+    relation_set(relation_id=relation_id,
+                 relation_settings=fid_settings)
 
 
 def main():

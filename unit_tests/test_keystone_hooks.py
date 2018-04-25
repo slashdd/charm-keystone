@@ -93,7 +93,6 @@ TO_PATCH = [
     'update_nrpe_config',
     'ensure_ssl_dirs',
     'is_db_ready',
-    'keystone_service',
     'create_or_show_domain',
     'get_api_version',
     # other
@@ -441,6 +440,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertTrue(update.called)
         self.assertTrue(mock_update_domains.called)
 
+    @patch.object(hooks, 'os_release')
     @patch.object(hooks, 'run_in_apache')
     @patch.object(hooks, 'initialise_pki')
     @patch.object(hooks, 'is_db_initialised')
@@ -460,7 +460,9 @@ class KeystoneRelationTests(CharmTestCase):
                                                           ensure_ssl_dir,
                                                           mock_db_init,
                                                           mock_initialise_pki,
-                                                          mock_run_in_apache):
+                                                          mock_run_in_apache,
+                                                          os_release):
+        os_release.return_value = 'ocata'
         self.enable_memcache.return_value = False
         mock_run_in_apache.return_value = False
         ensure_ssl_cert.return_value = False
@@ -1087,9 +1089,14 @@ class KeystoneRelationTests(CharmTestCase):
 
     @patch.object(hooks, 'is_unit_paused_set')
     @patch.object(hooks, 'is_db_initialised')
+    @patch.object(utils, 'run_in_apache')
+    @patch.object(utils, 'service_restart')
     def test_domain_backend_changed_complete(self,
+                                             service_restart,
+                                             run_in_apache,
                                              is_db_initialised,
                                              is_unit_paused_set):
+        run_in_apache.return_value = True
         self.get_api_version.return_value = 3
         self.relation_get.side_effect = ['mydomain', 'nonce2']
         self.is_leader.return_value = True
@@ -1099,7 +1106,6 @@ class KeystoneRelationTests(CharmTestCase):
         mock_kv.get.return_value = None
         self.unitdata.kv.return_value = mock_kv
         is_unit_paused_set.return_value = False
-        self.keystone_service.return_value = 'apache2'
 
         hooks.domain_backend_changed()
 
@@ -1113,16 +1119,21 @@ class KeystoneRelationTests(CharmTestCase):
                  rid=None),
         ])
         self.create_or_show_domain.assert_called_with('mydomain')
-        self.service_restart.assert_called_with('apache2')
+        service_restart.assert_called_with('apache2')
         mock_kv.set.assert_called_with('domain-restart-nonce-mydomain',
                                        'nonce2')
         self.assertTrue(mock_kv.flush.called)
 
     @patch.object(hooks, 'is_unit_paused_set')
     @patch.object(hooks, 'is_db_initialised')
+    @patch.object(utils, 'run_in_apache')
+    @patch.object(utils, 'service_restart')
     def test_domain_backend_changed_complete_follower(self,
+                                                      service_restart,
+                                                      run_in_apache,
                                                       is_db_initialised,
                                                       is_unit_paused_set):
+        run_in_apache.return_value = True
         self.get_api_version.return_value = 3
         self.relation_get.side_effect = ['mydomain', 'nonce2']
         self.is_leader.return_value = False
@@ -1132,7 +1143,6 @@ class KeystoneRelationTests(CharmTestCase):
         mock_kv.get.return_value = None
         self.unitdata.kv.return_value = mock_kv
         is_unit_paused_set.return_value = False
-        self.keystone_service.return_value = 'apache2'
 
         hooks.domain_backend_changed()
 
@@ -1147,7 +1157,84 @@ class KeystoneRelationTests(CharmTestCase):
         ])
         # Only lead unit will create the domain
         self.assertFalse(self.create_or_show_domain.called)
-        self.service_restart.assert_called_with('apache2')
+        service_restart.assert_called_with('apache2')
         mock_kv.set.assert_called_with('domain-restart-nonce-mydomain',
                                        'nonce2')
+        self.assertTrue(mock_kv.flush.called)
+
+    @patch.object(hooks, 'os_release')
+    @patch.object(hooks, 'relation_id')
+    @patch.object(hooks, 'is_unit_paused_set')
+    @patch.object(hooks, 'is_db_initialised')
+    @patch.object(utils, 'run_in_apache')
+    @patch.object(utils, 'service_restart')
+    def test_fid_service_provider_changed_complete(
+            self,
+            service_restart,
+            run_in_apache,
+            is_db_initialised,
+            is_unit_paused_set,
+            relation_id, os_release):
+        os_release.return_value = 'ocata'
+        rel = 'keystone-fid-service-provider:0'
+        relation_id.return_value = rel
+        run_in_apache.return_value = True
+        self.get_api_version.return_value = 3
+        self.relation_get.side_effect = ['"nonce2"']
+        self.is_leader.return_value = True
+        self.is_db_ready.return_value = True
+        is_db_initialised.return_value = True
+        mock_kv = MagicMock()
+        mock_kv.get.return_value = None
+        self.unitdata.kv.return_value = mock_kv
+        is_unit_paused_set.return_value = False
+
+        hooks.keystone_fid_service_provider_changed()
+
+        self.assertTrue(self.get_api_version.called)
+        self.relation_get.assert_has_calls([
+            call('restart-nonce'),
+        ])
+        service_restart.assert_called_with('apache2')
+        mock_kv.set.assert_called_with(
+            'fid-restart-nonce-{}'.format(rel), 'nonce2')
+        self.assertTrue(mock_kv.flush.called)
+
+    @patch.object(hooks, 'os_release')
+    @patch.object(hooks, 'relation_id')
+    @patch.object(hooks, 'is_unit_paused_set')
+    @patch.object(hooks, 'is_db_initialised')
+    @patch.object(utils, 'run_in_apache')
+    @patch.object(utils, 'service_restart')
+    def test_fid_service_provider_changed_complete_follower(
+            self,
+            service_restart,
+            run_in_apache,
+            is_db_initialised,
+            is_unit_paused_set,
+            relation_id, os_release):
+        os_release.return_value = 'ocata'
+        rel = 'keystone-fid-service-provider:0'
+        relation_id.return_value = rel
+        run_in_apache.return_value = True
+        self.get_api_version.return_value = 3
+        self.relation_get.side_effect = ['"nonce2"']
+        self.is_leader.return_value = False
+        self.is_db_ready.return_value = True
+        is_db_initialised.return_value = True
+        mock_kv = MagicMock()
+        mock_kv.get.return_value = None
+        self.unitdata.kv.return_value = mock_kv
+        is_unit_paused_set.return_value = False
+
+        hooks.keystone_fid_service_provider_changed()
+
+        self.assertTrue(self.get_api_version.called)
+        self.relation_get.assert_has_calls([
+            call('restart-nonce'),
+        ])
+        service_restart.assert_called_with('apache2')
+        mock_kv.set.assert_called_with(
+            'fid-restart-nonce-{}'.format(rel),
+            'nonce2')
         self.assertTrue(mock_kv.flush.called)

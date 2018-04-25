@@ -217,3 +217,204 @@ class TestKeystoneContexts(CharmTestCase):
 
         mock_is_elected_leader.return_value = True
         self.assertEqual({'token_flush': True}, ctxt())
+
+    @patch.object(context, 'relation_ids')
+    @patch.object(context, 'related_units')
+    @patch.object(context, 'relation_get')
+    def test_keystone_fid_service_provider_rdata(
+            self, mock_relation_get, mock_related_units,
+            mock_relation_ids):
+        os.environ['JUJU_UNIT_NAME'] = 'keystone'
+
+        def relation_ids_side_effect(rname):
+            return {
+                'keystone-fid-service-provider': {
+                    'keystone-fid-service-provider:0',
+                    'keystone-fid-service-provider:1',
+                    'keystone-fid-service-provider:2'
+                }
+            }[rname]
+
+        mock_relation_ids.side_effect = relation_ids_side_effect
+
+        def related_units_side_effect(rid):
+            return {
+                'keystone-fid-service-provider:0': ['sp-mellon/0'],
+                'keystone-fid-service-provider:1': ['sp-shib/0'],
+                'keystone-fid-service-provider:2': ['sp-oidc/0'],
+            }[rid]
+        mock_related_units.side_effect = related_units_side_effect
+
+        def relation_get_side_effect(unit, rid):
+            # one unit only as the relation is container-scoped
+            return {
+                "keystone-fid-service-provider:0": {
+                    "sp-mellon/0": {
+                        "ingress-address": '10.0.0.10',
+                        "protocol-name": '"saml2"',
+                        "remote-id-attribute": '"MELLON_IDP"',
+                    },
+                },
+                "keystone-fid-service-provider:1": {
+                    "sp-shib/0": {
+                        "ingress-address": '10.0.0.10',
+                        "protocol-name": '"mapped"',
+                        "remote-id-attribute": '"Shib-Identity-Provider"',
+                    },
+                },
+                "keystone-fid-service-provider:2": {
+                    "sp-oidc/0": {
+                        "ingress-address": '10.0.0.10',
+                        "protocol-name": '"oidc"',
+                        "remote-id-attribute": '"HTTP_OIDC_ISS"',
+                    },
+                },
+            }[rid][unit]
+
+        mock_relation_get.side_effect = relation_get_side_effect
+        ctxt = context.KeystoneFIDServiceProviderContext()
+
+        self.maxDiff = None
+        self.assertItemsEqual(
+            ctxt(),
+            {
+                "fid_sps": [
+                    {
+                        "protocol-name": "saml2",
+                        "remote-id-attribute": "MELLON_IDP",
+                    },
+                    {
+                        "protocol-name": "mapped",
+                        "remote-id-attribute": "Shib-Identity-Provider",
+                    },
+                    {
+                        "protocol-name": "oidc",
+                        "remote-id-attribute": "HTTP_OIDC_ISS",
+                    },
+                ]
+            }
+        )
+
+    @patch.object(context, 'relation_ids')
+    def test_keystone_fid_service_provider_empty(
+            self, mock_relation_ids):
+        os.environ['JUJU_UNIT_NAME'] = 'keystone'
+
+        def relation_ids_side_effect(rname):
+            return {
+                'keystone-fid-service-provider': {}
+            }[rname]
+
+        mock_relation_ids.side_effect = relation_ids_side_effect
+        ctxt = context.KeystoneFIDServiceProviderContext()
+
+        self.maxDiff = None
+        self.assertItemsEqual(ctxt(), {})
+
+    @patch.object(context, 'relation_ids')
+    @patch.object(context, 'related_units')
+    @patch.object(context, 'relation_get')
+    def test_websso_trusted_dashboard_urls_generated(
+            self, mock_relation_get, mock_related_units,
+            mock_relation_ids):
+        os.environ['JUJU_UNIT_NAME'] = 'keystone'
+
+        def relation_ids_side_effect(rname):
+            return {
+                'websso-trusted-dashboard': {
+                    'websso-trusted-dashboard:0',
+                    'websso-trusted-dashboard:1',
+                    'websso-trusted-dashboard:2'
+                }
+            }[rname]
+
+        mock_relation_ids.side_effect = relation_ids_side_effect
+
+        def related_units_side_effect(rid):
+            return {
+                'websso-trusted-dashboard:0': ['dashboard-blue/0',
+                                               'dashboard-blue/1'],
+                'websso-trusted-dashboard:1': ['dashboard-red/0',
+                                               'dashboard-red/1'],
+                'websso-trusted-dashboard:2': ['dashboard-green/0',
+                                               'dashboard-green/1']
+            }[rid]
+        mock_related_units.side_effect = related_units_side_effect
+
+        def relation_get_side_effect(unit, rid):
+            return {
+                "websso-trusted-dashboard:0": {
+                    "dashboard-blue/0": {  # dns-ha
+                        "ingress-address": '10.0.0.10',
+                        "scheme": "https://",
+                        "hostname": "horizon.intranet.test",
+                        "path": "/auth/websso/",
+                    },
+                    "dashboard-blue/1": {  # dns-ha
+                        "ingress-address": '10.0.0.11',
+                        "scheme": "https://",
+                        "hostname": "horizon.intranet.test",
+                        "path": "/auth/websso/",
+                    },
+                },
+                "websso-trusted-dashboard:1": {
+                    "dashboard-red/0": {  # vip
+                        "ingress-address": '10.0.0.12',
+                        "scheme": "https://",
+                        "hostname": "10.0.0.100",
+                        "path": "/auth/websso/",
+                    },
+                    "dashboard-red/1": {  # vip
+                        "ingress-address": '10.0.0.13',
+                        "scheme": "https://",
+                        "hostname": "10.0.0.100",
+                        "path": "/auth/websso/",
+                    },
+                },
+                "websso-trusted-dashboard:2": {
+                    "dashboard-green/0": {  # vip-less, dns-ha-less
+                        "ingress-address": '10.0.0.14',
+                        "scheme": "http://",
+                        "hostname": "10.0.0.14",
+                        "path": "/auth/websso/",
+                    },
+                    "dashboard-green/1": {
+                        "ingress-address": '10.0.0.15',
+                        "scheme": "http://",
+                        "hostname": "10.0.0.15",
+                        "path": "/auth/websso/",
+                    },
+                },
+            }[rid][unit]
+
+        mock_relation_get.side_effect = relation_get_side_effect
+        ctxt = context.WebSSOTrustedDashboardContext()
+
+        self.maxDiff = None
+        self.assertEqual(
+            ctxt(),
+            {
+                'trusted_dashboards': set([
+                    'https://horizon.intranet.test/auth/websso/',
+                    'https://10.0.0.100/auth/websso/',
+                    'http://10.0.0.14/auth/websso/',
+                    'http://10.0.0.15/auth/websso/',
+                ])
+            }
+        )
+
+    @patch.object(context, 'relation_ids')
+    def test_websso_trusted_dashboard_empty(
+            self, mock_relation_ids):
+        os.environ['JUJU_UNIT_NAME'] = 'keystone'
+
+        def relation_ids_side_effect(rname):
+            return {
+                'websso-trusted-dashboard': {}
+            }[rname]
+
+        mock_relation_ids.side_effect = relation_ids_side_effect
+        ctxt = context.WebSSOTrustedDashboardContext()
+
+        self.maxDiff = None
+        self.assertItemsEqual(ctxt(), {})

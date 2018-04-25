@@ -39,6 +39,11 @@ requires:
   domain-backend:
     interface: keystone-domain-backend
     scope: container
+  keystone-fid-service-provider:
+    interface: keystone-fid-service-provider
+    scope: container
+  websso-trusted-dashboard:
+    interface: websso-trusted-dashboard
 peers:
   cluster:
     interface: keystone-ha

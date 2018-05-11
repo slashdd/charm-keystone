@@ -35,6 +35,10 @@ options:
       NOTE: updating this setting to a source that is known to provide
       a later version of OpenStack will trigger a software upgrade unless
       action-managed-upgrade is set to True.
+      NOTE: a corresponding public key from keyserver.ubuntu.com can be used
+      when specifying a repository by appending the key separated by a | when
+      entering the deb url sources entry, i.e.
+      openstack-origin="deb <DEB URL>|<PUB KEY>"
   action-managed-upgrade:
     type: boolean
     default: False

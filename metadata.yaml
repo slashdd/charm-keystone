@@ -44,6 +44,8 @@ requires:
     scope: container
   websso-trusted-dashboard:
     interface: websso-trusted-dashboard
+  certificates:
+    interface: tls-certificates
 peers:
   cluster:
     interface: keystone-ha

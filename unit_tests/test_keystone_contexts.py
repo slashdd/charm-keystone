@@ -104,8 +104,10 @@ class TestKeystoneContexts(CharmTestCase):
     @patch('charmhelpers.contrib.openstack.context.determine_apache_port')
     @patch('charmhelpers.contrib.openstack.context.determine_api_port')
     @patch('charmhelpers.contrib.openstack.context.unit_get')
+    @patch('charmhelpers.contrib.openstack.context.relation_ids')
     @patch('charmhelpers.contrib.openstack.context.https')
     def test_apache_ssl_context_service_enabled(self, mock_https,
+                                                mock_relation_ids,
                                                 mock_unit_get,
                                                 mock_determine_api_port,
                                                 mock_determine_apache_port,
@@ -118,6 +120,7 @@ class TestKeystoneContexts(CharmTestCase):
                                                 mock_ip_unit_get,
                                                 mock_rel_ids,
                                                 ):
+        mock_relation_ids.return_value = []
         mock_is_ssl_cert_master.return_value = True
         mock_https.return_value = True
         mock_unit_get.return_value = '1.2.3.4'

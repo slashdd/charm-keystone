@@ -148,6 +148,7 @@ from charmhelpers.contrib.openstack.ip import (
     ADMIN,
     resolve_address,
 )
+
 from charmhelpers.contrib.network.ip import (
     get_iface_for_address,
     get_netmask_for_address,
@@ -159,6 +160,11 @@ from charmhelpers.contrib.openstack.context import ADDRESS_TYPES
 from charmhelpers.contrib.charmsupport import nrpe
 
 from charmhelpers.contrib.hardening.harden import harden
+
+from charmhelpers.contrib.openstack.cert_utils import (
+    get_certificate_request,
+    process_certificates,
+)
 
 hooks = Hooks()
 CONFIGS = register_configs()
@@ -950,6 +956,28 @@ def update_keystone_fid_service_provider(relation_id=None):
 
     relation_set(relation_id=relation_id,
                  relation_settings=fid_settings)
+
+
+@hooks.hook('certificates-relation-joined')
+def certs_joined(relation_id=None):
+    relation_set(
+        relation_id=relation_id,
+        relation_settings=get_certificate_request())
+
+
+@hooks.hook('certificates-relation-changed')
+@restart_on_change(restart_map(), stopstart=True)
+def certs_changed(relation_id=None, unit=None):
+    # update_all_identity_relation_units calls the keystone API
+    # so configs need to be written and services restarted
+    # before
+    @restart_on_change(restart_map(), stopstart=True)
+    def write_certs_and_config():
+        process_certificates('keystone', relation_id, unit)
+        configure_https()
+    write_certs_and_config()
+    update_all_identity_relation_units()
+    update_all_domain_backends()
 
 
 def main():

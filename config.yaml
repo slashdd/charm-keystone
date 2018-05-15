@@ -123,7 +123,11 @@ options:
   enable-pki:
     type: string
     default: "false"
-    description: Enable PKI token signing.
+    description: |
+      Enable PKI token signing.
+      .
+      [DEPRECATED] This option should no longer be used.
+      This option will be removed in a future release.
   preferred-api-version:
     type: int
     default:
@@ -355,14 +359,24 @@ options:
   https-service-endpoints:
     type: string
     default: "False"
-    description: Manage SSL certificates for all service endpoints. This option
+    description: |
+      Manage SSL certificates for all service endpoints. This option
       should be False when specifying ssl\_\* options.
+      .
+      [DEPRECATED] This option should no longer be used.
+      Provide SSL certificate data through the ssl\_\* options.
+      This option will be removed in a future release.
   use-https:
     type: string
     default: "no"
-    description: Use SSL for Keystone itself using a charm-generated CA. Set to
+    description: |
+      Use SSL for Keystone itself using a charm-generated CA. Set to
       'yes' to enable it. This option should be 'no' when specifying ssl\_\*
       options.
+      .
+      [DEPRECATED] This option should no longer be used.
+      Provide SSL certificate data through the ssl\_\* options.
+      This option will be removed in a future release.
   ssl_cert:
     type: string
     default:

@@ -12,17 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import hashlib
 import os
 import json
-
-from base64 import b64decode
-
-from charmhelpers.core.host import (
-    mkdir,
-    write_file,
-    service_restart,
-)
 
 from charmhelpers.contrib.openstack import context
 
@@ -38,116 +29,13 @@ from charmhelpers.core.hookenv import (
     config,
     log,
     leader_get,
-    DEBUG,
-    INFO,
     related_units,
     relation_ids,
     relation_get,
 )
 
-from charmhelpers.core.strutils import (
-    bool_from_string,
-)
 
-from charmhelpers.contrib.hahelpers.apache import install_ca_cert
-
-CA_CERT_PATH = '/usr/local/share/ca-certificates/keystone_juju_ca_cert.crt'
-
-
-def is_cert_provided_in_config():
-    cert = config('ssl_cert')
-    key = config('ssl_key')
-    return bool(cert and key)
-
-
-class SSLContext(context.ApacheSSLContext):
-
-    def configure_cert(self, cn):
-        from keystone_utils import (
-            SSH_USER,
-            get_ca,
-            ensure_permissions,
-            is_ssl_cert_master,
-            KEYSTONE_USER,
-        )
-
-        # Ensure ssl dir exists whether master or not
-        perms = 0o775
-        mkdir(path=self.ssl_dir, owner=SSH_USER, group=KEYSTONE_USER,
-              perms=perms)
-        # Ensure accessible by keystone ssh user and group (for sync)
-        ensure_permissions(self.ssl_dir, user=SSH_USER, group=KEYSTONE_USER,
-                           perms=perms)
-
-        if not is_cert_provided_in_config() and not is_ssl_cert_master():
-            log("Not ssl-cert-master - skipping apache cert config until "
-                "master is elected", level=INFO)
-            return
-
-        log("Creating apache ssl certs in %s" % (self.ssl_dir), level=INFO)
-
-        cert = config('ssl_cert')
-        key = config('ssl_key')
-
-        if not (cert and key):
-            ca = get_ca(user=SSH_USER)
-            cert, key = ca.get_cert_and_key(common_name=cn)
-        else:
-            cert = b64decode(cert)
-            key = b64decode(key)
-
-        write_file(path=os.path.join(self.ssl_dir, 'cert_{}'.format(cn)),
-                   content=cert, owner=SSH_USER, group=KEYSTONE_USER,
-                   perms=0o640)
-        write_file(path=os.path.join(self.ssl_dir, 'key_{}'.format(cn)),
-                   content=key, owner=SSH_USER, group=KEYSTONE_USER,
-                   perms=0o640)
-
-    def configure_ca(self):
-        from keystone_utils import (
-            SSH_USER,
-            get_ca,
-            ensure_permissions,
-            is_ssl_cert_master,
-            KEYSTONE_USER,
-        )
-
-        if not is_cert_provided_in_config() and not is_ssl_cert_master():
-            log("Not ssl-cert-master - skipping apache ca config until "
-                "master is elected", level=INFO)
-            return
-
-        cert = config('ssl_cert')
-        key = config('ssl_key')
-
-        ca_cert = config('ssl_ca')
-        if ca_cert:
-            ca_cert = b64decode(ca_cert)
-        elif not (cert and key):
-            # NOTE(hopem): if a cert and key are provided as config we don't
-            # mandate that a CA is also provided since it isn't necessarily
-            # needed. As a result we only generate a custom CA if we are also
-            # generating cert and key.
-            ca = get_ca(user=SSH_USER)
-            ca_cert = ca.get_ca_bundle()
-
-        if ca_cert:
-            # Ensure accessible by keystone ssh user and group (unison)
-            install_ca_cert(ca_cert)
-            ensure_permissions(CA_CERT_PATH, user=SSH_USER,
-                               group=KEYSTONE_USER, perms=0o0644)
-
-    def canonical_names(self):
-        addresses = self.get_network_addresses()
-        addrs = []
-        for address, endpoint in addresses:
-            addrs.append(endpoint)
-
-        return list(set(addrs))
-
-
-class ApacheSSLContext(SSLContext):
-
+class ApacheSSLContext(context.ApacheSSLContext):
     interfaces = ['https']
     external_ports = []
     service_namespace = 'keystone'
@@ -157,31 +45,13 @@ class ApacheSSLContext(SSLContext):
         # late import to work around circular dependency
         from keystone_utils import (
             determine_ports,
-            update_hash_from_path,
         )
 
-        ssl_paths = [CA_CERT_PATH, self.ssl_dir]
-
         self.external_ports = determine_ports()
-        before = hashlib.sha256()
-        for path in ssl_paths:
-            update_hash_from_path(before, path)
-
-        ret = super(ApacheSSLContext, self).__call__()
-
-        after = hashlib.sha256()
-        for path in ssl_paths:
-            update_hash_from_path(after, path)
-
-        # Ensure that apache2 is restarted if these change
-        if before.hexdigest() != after.hexdigest():
-            service_restart('apache2')
-
-        return ret
+        return super(ApacheSSLContext, self).__call__()
 
 
-class NginxSSLContext(SSLContext):
-
+class NginxSSLContext(context.ApacheSSLContext):
     interfaces = ['https']
     external_ports = []
     service_namespace = 'keystone'
@@ -192,29 +62,13 @@ class NginxSSLContext(SSLContext):
         # late import to work around circular dependency
         from keystone_utils import (
             determine_ports,
-            update_hash_from_path,
-            APACHE_SSL_DIR
         )
 
-        ssl_paths = [CA_CERT_PATH, APACHE_SSL_DIR]
-
         self.external_ports = determine_ports()
-        before = hashlib.sha256()
-        for path in ssl_paths:
-            update_hash_from_path(before, path)
-
         ret = super(NginxSSLContext, self).__call__()
         if not ret:
             log("SSL not used", level='DEBUG')
             return {}
-
-        after = hashlib.sha256()
-        for path in ssl_paths:
-            update_hash_from_path(after, path)
-
-        # Ensure that Nginx is restarted if these change
-        if before.hexdigest() != after.hexdigest():
-            service_restart('snap.keystone.nginx')
 
         # Transform for use by Nginx
         """
@@ -294,7 +148,7 @@ class KeystoneContext(context.OSContextGenerator):
     def __call__(self):
         from keystone_utils import (
             api_port, set_admin_token, endpoint_url, resolve_address,
-            PUBLIC, ADMIN, PKI_CERTS_DIR, ensure_pki_cert_paths, ADMIN_DOMAIN,
+            PUBLIC, ADMIN, ADMIN_DOMAIN,
             snap_install_requested, get_api_version,
         )
         ctxt = {}
@@ -330,25 +184,6 @@ class KeystoneContext(context.OSContextGenerator):
             if ldap_flags:
                 flags = context.config_flags_parser(ldap_flags)
                 ctxt['ldap_config_flags'] = flags
-
-        enable_pki = config('enable-pki')
-        if enable_pki and bool_from_string(enable_pki):
-            log("Enabling PKI", level=DEBUG)
-            ctxt['token_provider'] = 'pki'
-
-            # NOTE(jamespage): Only check PKI configuration if the PKI
-            #                  token format is in use, which has been
-            #                  removed as of OpenStack Ocata.
-            ensure_pki_cert_paths()
-            certs = os.path.join(PKI_CERTS_DIR, 'certs')
-            privates = os.path.join(PKI_CERTS_DIR, 'privates')
-            ctxt['enable_signing'] = True
-            ctxt.update({'certfile': os.path.join(certs, 'signing_cert.pem'),
-                         'keyfile': os.path.join(privates, 'signing_key.pem'),
-                         'ca_certs': os.path.join(certs, 'ca.pem'),
-                         'ca_key': os.path.join(certs, 'ca_key.pem')})
-        else:
-            ctxt['enable_signing'] = False
 
         # Base endpoint URL's which are used in keystone responses
         # to unauthenticated requests to redirect clients to the

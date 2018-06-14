@@ -37,68 +37,11 @@ class TestKeystoneContexts(CharmTestCase):
     def setUp(self):
         super(TestKeystoneContexts, self).setUp(context, TO_PATCH)
 
-    def test_is_cert_provided_in_config(self):
-        config = {'ssl_cert': 'somecert', 'ssl_key': 'greatkey'}
-
-        def fake_config(key):
-            return config.get(key)
-
-        self.config.side_effect = fake_config
-        self.assertTrue(context.is_cert_provided_in_config())
-
-        del config['ssl_cert']
-        self.assertFalse(context.is_cert_provided_in_config())
-
-    @patch.object(context, 'mkdir')
-    @patch('keystone_utils.get_ca')
-    @patch('keystone_utils.ensure_permissions')
-    @patch('keystone_utils.determine_ports', lambda: None)
-    @patch('keystone_utils.is_ssl_cert_master', lambda: False)
-    @patch.object(context, 'is_cert_provided_in_config', lambda: False)
-    @patch.object(context, 'log', lambda *args, **kwargs: None)
-    def test_apache_ssl_context_ssl_not_master(self, mock_ensure_permissions,
-                                               mock_get_ca, mock_mkdir):
-        context.ApacheSSLContext().configure_cert('foo')
-        context.ApacheSSLContext().configure_ca()
-        self.assertTrue(mock_mkdir.called)
-        self.assertTrue(mock_ensure_permissions.called)
-        self.assertFalse(mock_get_ca.called)
-
-    @patch('keystone_utils.ensure_permissions')
-    @patch.object(context, 'install_ca_cert')
-    @patch.object(context, 'b64decode')
-    @patch.object(context, 'mkdir', lambda *args: None)
-    @patch('keystone_utils.get_ca', lambda: None)
-    @patch('keystone_utils.determine_ports', lambda: None)
-    @patch('keystone_utils.is_ssl_cert_master', lambda: True)
-    @patch.object(context, 'log', lambda *args, **kwargs: None)
-    def test_apache_ssl_context_ssl_configure_ca(self, mock_b64decode,
-                                                 mock_install_ca_cert,
-                                                 mock_ensure_permissions):
-        config = {'ssl_cert': 'somecert', 'ssl_key': 'greatkey'}
-
-        def fake_config(key):
-            return config.get(key)
-
-        self.config.side_effect = fake_config
-
-        context.ApacheSSLContext().configure_ca()
-        self.assertFalse(mock_b64decode.called)
-        self.assertFalse(mock_install_ca_cert.called)
-        self.assertFalse(mock_ensure_permissions.called)
-
-        config['ssl_ca'] = 'foofoofalalala'
-        context.ApacheSSLContext().configure_ca()
-        self.assertTrue(mock_b64decode.called)
-        self.assertTrue(mock_install_ca_cert.called)
-        self.assertTrue(mock_ensure_permissions.called)
-
     @patch('charmhelpers.contrib.hahelpers.cluster.relation_ids')
     @patch('charmhelpers.contrib.openstack.ip.unit_get')
     @patch('charmhelpers.contrib.openstack.ip.service_name')
     @patch('charmhelpers.contrib.openstack.ip.config')
     @patch('keystone_utils.determine_ports')
-    @patch('keystone_utils.is_ssl_cert_master')
     @patch('charmhelpers.contrib.openstack.context.config')
     @patch('charmhelpers.contrib.openstack.context.is_clustered')
     @patch('charmhelpers.contrib.openstack.context.determine_apache_port')
@@ -113,15 +56,12 @@ class TestKeystoneContexts(CharmTestCase):
                                                 mock_determine_apache_port,
                                                 mock_is_clustered,
                                                 mock_config,
-                                                mock_is_ssl_cert_master,
                                                 mock_determine_ports,
                                                 mock_ip_config,
                                                 mock_service_name,
                                                 mock_ip_unit_get,
                                                 mock_rel_ids,
                                                 ):
-        mock_relation_ids.return_value = []
-        mock_is_ssl_cert_master.return_value = True
         mock_https.return_value = True
         mock_unit_get.return_value = '1.2.3.4'
         mock_ip_unit_get.return_value = '1.2.3.4'

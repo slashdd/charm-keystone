@@ -256,6 +256,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertTrue(update.called)
         self.assertTrue(mock_update_domains.called)
 
+    @patch.object(hooks, 'is_db_initialised')
     @patch.object(hooks, 'update_all_domain_backends')
     @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(hooks, 'run_in_apache')
@@ -270,7 +271,8 @@ class KeystoneRelationTests(CharmTestCase):
                                                   mock_cluster_joined,
                                                   mock_log,
                                                   mock_run_in_apache, update,
-                                                  mock_update_domains):
+                                                  mock_update_domains,
+                                                  mock_is_db_initialised):
 
         def fake_relation_ids(relation):
             rids = {}
@@ -282,6 +284,7 @@ class KeystoneRelationTests(CharmTestCase):
 
         mock_run_in_apache.return_value = False
         self.openstack_upgrade_available.return_value = False
+        mock_is_db_initialised.return_value = True
 
         hooks.config_changed()
 
@@ -817,7 +820,6 @@ class KeystoneRelationTests(CharmTestCase):
         self.is_elected_leader.return_value = True
         is_db_initialized.return_value = True
         hooks.update_all_identity_relation_units(check_db_ready=False)
-        self.assertTrue(self.ensure_initial_admin.called)
         # Still updates relations
         self.assertTrue(self.relation_ids.called)
 

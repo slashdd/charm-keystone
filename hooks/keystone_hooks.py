@@ -232,6 +232,10 @@ def config_changed_postupgrade():
     if snap_install_requested() and not is_unit_paused_set():
         service_restart('snap.keystone.*')
 
+    if (is_db_initialised() and is_elected_leader(CLUSTER_RES) and not
+            is_unit_paused_set()):
+        ensure_initial_admin(config)
+
     update_all_identity_relation_units()
     update_all_domain_backends()
     update_all_fid_backends()
@@ -272,9 +276,6 @@ def update_all_identity_relation_units(check_db_ready=True):
         log("Database not yet initialised - deferring identity-relation "
             "updates", level=INFO)
         return
-
-    if is_elected_leader(CLUSTER_RES):
-        ensure_initial_admin(config)
 
     log('Firing identity_changed hook for all related services.')
     for rid in relation_ids('identity-service'):
@@ -330,6 +331,7 @@ def leader_init_db_if_ready(use_current_context=False):
         return
 
     migrate_database()
+    ensure_initial_admin(config)
     # Ensure any existing service entries are updated in the
     # new database backend. Also avoid duplicate db ready check.
     update_all_identity_relation_units(check_db_ready=False)

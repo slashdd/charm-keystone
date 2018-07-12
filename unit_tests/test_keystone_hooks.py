@@ -770,7 +770,6 @@ class KeystoneRelationTests(CharmTestCase):
                      call('Firing identity_credentials_changed hook for all '
                           'related services.')]
         hooks.update_all_identity_relation_units(check_db_ready=False)
-        self.assertTrue(configs.write_all.called)
         identity_changed.assert_called_with(
             relation_id='identity-relation:0',
             remote_unit='unit/0')
@@ -786,7 +785,6 @@ class KeystoneRelationTests(CharmTestCase):
         """ Verify update identity relations when DB is not ready """
         self.is_db_ready.return_value = False
         hooks.update_all_identity_relation_units(check_db_ready=True)
-        self.assertTrue(configs.write_all.called)
         self.assertTrue(self.is_db_ready.called)
         self.log.assert_called_with('Allowed_units list provided and this '
                                     'unit not present', level='INFO')
@@ -800,7 +798,6 @@ class KeystoneRelationTests(CharmTestCase):
         """ Verify update identity relations when DB is not initialized """
         is_db_initialized.return_value = False
         hooks.update_all_identity_relation_units(check_db_ready=False)
-        self.assertTrue(configs.write_all.called)
         self.assertFalse(self.is_db_ready.called)
         self.log.assert_called_with('Database not yet initialised - '
                                     'deferring identity-relation updates',
@@ -816,7 +813,6 @@ class KeystoneRelationTests(CharmTestCase):
         self.is_elected_leader.return_value = True
         is_db_initialized.return_value = True
         hooks.update_all_identity_relation_units(check_db_ready=False)
-        self.assertTrue(configs.write_all.called)
         self.assertTrue(self.ensure_initial_admin.called)
         # Still updates relations
         self.assertTrue(self.relation_ids.called)
@@ -830,7 +826,6 @@ class KeystoneRelationTests(CharmTestCase):
         self.is_elected_leader.return_value = False
         is_db_initialized.return_value = True
         hooks.update_all_identity_relation_units(check_db_ready=False)
-        self.assertTrue(configs.write_all.called)
         self.assertFalse(self.ensure_initial_admin.called)
         # Still updates relations
         self.assertTrue(self.relation_ids.called)

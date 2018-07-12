@@ -353,8 +353,6 @@ def db_changed():
 @hooks.hook('identity-service-relation-changed')
 @restart_on_change(restart_map(), restart_functions=restart_function_map())
 def identity_changed(relation_id=None, remote_unit=None):
-    CONFIGS.write_all()
-
     notifications = {}
     if is_elected_leader(CLUSTER_RES):
         if not is_db_ready():

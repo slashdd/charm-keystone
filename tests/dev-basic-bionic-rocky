@@ -14,13 +14,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Amulet tests on a basic keystone deployment on xenial-ocata."""
+"""Amulet tests on a basic keystone deployment on bionic-rocky."""
 
-from basic_deployment import KeystoneBasicDeployment
+from basic_deployment import KeystoneV3Deployment
 
 if __name__ == '__main__':
-    deployment = KeystoneBasicDeployment(series='xenial',
-                                         openstack='cloud:xenial-ocata',
-                                         snap_source='snap:ocata/edge',
-                                         source='cloud:xenial-updates/ocata')
+    deployment = KeystoneV3Deployment(series='bionic',
+                                      openstack='cloud:bionic-rocky',
+                                      source='cloud:bionic-updates/rocky')
     deployment.run_tests()

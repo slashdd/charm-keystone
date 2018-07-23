@@ -480,6 +480,9 @@ def leader_settings_changed():
     # sure only the leader is running the cron job.
     CONFIGS.write(TOKEN_FLUSH_CRON_FILE)
 
+    # Make sure we keep domain and/or project ids used in templates up to date
+    CONFIGS.write(POLICY_JSON)
+
     update_all_identity_relation_units()
 
 

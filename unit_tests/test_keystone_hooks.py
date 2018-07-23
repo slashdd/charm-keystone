@@ -455,7 +455,11 @@ class KeystoneRelationTests(CharmTestCase):
         self.relation_ids.return_value = ['identity:1']
         self.related_units.return_value = ['keystone/1']
         hooks.leader_settings_changed()
-        mock_write.assert_has_calls([call(utils.TOKEN_FLUSH_CRON_FILE)])
+        mock_write.assert_has_calls(
+            [
+                call(utils.TOKEN_FLUSH_CRON_FILE),
+                call(utils.POLICY_JSON),
+            ])
         self.assertTrue(update.called)
 
     def test_ha_joined(self):

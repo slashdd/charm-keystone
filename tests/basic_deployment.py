@@ -143,6 +143,10 @@ class KeystoneBasicDeployment(OpenStackAmuletDeployment):
             'admin-password': 'openstack',
             'admin-token': 'ubuntutesting',
             'preferred-api-version': self.keystone_api_version,
+            # NOTE(fnordahl): honoured on OpenStack versions Ocata
+            # through Queens, default and not configurable for Rocky,
+            # ignored for all other versions.
+            'token-provider': 'fernet',
         })
 
         pxc_config = {

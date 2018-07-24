@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import json
 import os
 import shutil
 import subprocess
@@ -96,12 +97,14 @@ from charmhelpers.fetch import (
 )
 
 from charmhelpers.core.host import (
+    mkdir,
     service_restart,
     service_stop,
     service_start,
     pwgen,
     lsb_release,
     CompareHostReleases,
+    write_file,
 )
 
 from charmhelpers.contrib.peerstorage import (
@@ -1915,3 +1918,56 @@ def restart_keystone():
             service_restart('snap.keystone.*')
         else:
             service_restart(keystone_service())
+
+
+def fernet_enabled():
+    """Helper function for determinining whether Fernet tokens are enabled"""
+    cmp_release = CompareOpenStackReleases(os_release('keystone'))
+    if cmp_release < 'ocata':
+        return False
+    elif 'ocata' >= cmp_release < 'rocky':
+        return config('token-provider') == 'fernet'
+    else:
+        return True
+
+
+def fernet_setup():
+    """Initialize Fernet key repositories"""
+    base_cmd = ['sudo', '-u', 'keystone', 'keystone-manage']
+    subprocess.check_output(base_cmd + ['fernet_setup'])
+    subprocess.check_output(base_cmd + ['credential_setup'])
+
+
+def fernet_rotate():
+    """Rotate Fernet keys"""
+    cmd = ['sudo', '-u', 'keystone', 'keystone-manage', 'fernet_rotate']
+    subprocess.check_output(cmd)
+
+
+def fernet_leader_set():
+    """Read current key set and update leader storage if necessary"""
+    key_repository = '/etc/keystone/fernet-keys/'
+    disk_keys = []
+    for key in os.listdir(key_repository):
+        with open(os.path.join(key_repository, str(key)), 'r') as f:
+            disk_keys.append(f.read())
+    leader_set({'fernet_keys': json.dumps(disk_keys)})
+
+
+def fernet_write_keys():
+    """Get keys from leader storage and write out to disk"""
+    key_repository = '/etc/keystone/fernet-keys/'
+    leader_keys = leader_get('fernet_keys')
+    if not leader_keys:
+        log('"fernet_keys" not in leader settings yet...', level=DEBUG)
+        return
+    mkdir(key_repository, owner=KEYSTONE_USER, group=KEYSTONE_USER,
+          perms=0o700)
+    for idx, key in enumerate(json.loads(leader_keys)):
+        tmp_filename = os.path.join(key_repository, "."+str(idx))
+        key_filename = os.path.join(key_repository, str(idx))
+        # write to tmp file first, move the key into place in an atomic
+        # operation avoiding any races with consumers of the key files
+        write_file(tmp_filename, key, owner=KEYSTONE_USER, group=KEYSTONE_USER,
+                   perms=0o600)
+        os.rename(tmp_filename, key_filename)

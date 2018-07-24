@@ -12,10 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from mock import patch, call, MagicMock
-from test_utils import CharmTestCase
+import json
 import os
 import subprocess
+import sys
+
+from mock import MagicMock, call, mock_open, patch
+from test_utils import CharmTestCase
+
+if sys.version_info.major == 2:
+    import __builtin__ as builtins
+else:
+    import builtins
 
 os.environ['JUJU_UNIT_NAME'] = 'keystone'
 with patch('charmhelpers.core.hookenv.config') as config, \
@@ -53,6 +61,8 @@ TO_PATCH = [
     'related_units',
     'https',
     'peer_store',
+    'mkdir',
+    'write_file',
     # generic
     'apt_update',
     'apt_upgrade',
@@ -756,12 +766,6 @@ class TestKeystoneUtils(CharmTestCase):
         isfile_mock.return_value = False
         x = utils.get_file_stored_domain_id('/a/file')
         assert x is None
-        from sys import version_info
-        if version_info.major == 2:
-            import __builtin__ as builtins
-        else:
-            import builtins
-        from mock import mock_open
         with patch.object(builtins, 'open', mock_open(
                 read_data="some_data\n")):
             isfile_mock.return_value = True
@@ -1124,3 +1128,80 @@ class TestKeystoneUtils(CharmTestCase):
         self.get_os_codename_install_source.return_value = 'queens'
         with self.assertRaises(ValueError):
             utils.get_api_version()
+
+    def test_fernet_enabled_no_config(self):
+        self.os_release.return_value = 'ocata'
+        self.test_config.set('token-provider', 'uuid')
+        result = utils.fernet_enabled()
+        self.assertFalse(result)
+
+    def test_fernet_enabled_yes_config(self):
+        self.os_release.return_value = 'ocata'
+        self.test_config.set('token-provider', 'fernet')
+        result = utils.fernet_enabled()
+        self.assertTrue(result)
+
+    def test_fernet_enabled_no_release_override_config(self):
+        self.os_release.return_value = 'mitaka'
+        self.test_config.set('token-provider', 'fernet')
+        result = utils.fernet_enabled()
+        self.assertFalse(result)
+
+    def test_fernet_enabled_yes_release(self):
+        self.os_release.return_value = 'rocky'
+        result = utils.fernet_enabled()
+        self.assertTrue(result)
+
+    def test_fernet_enabled_yes_release_override_config(self):
+        self.os_release.return_value = 'rocky'
+        self.test_config.set('token-provider', 'uuid')
+        result = utils.fernet_enabled()
+        self.assertTrue(result)
+
+    def test_fernet_setup(self):
+        base_cmd = ['sudo', '-u', 'keystone', 'keystone-manage']
+        utils.fernet_setup()
+        self.subprocess.check_output.has_calls(
+            [
+                base_cmd + ['fernet_setup'],
+                base_cmd + ['credential_setup'],
+            ])
+
+    def test_fernet_rotate(self):
+        cmd = ['sudo', '-u', 'keystone', 'keystone-manage', 'fernet_rotate']
+        utils.fernet_rotate()
+        self.subprocess.check_output.called_with(cmd)
+
+    @patch.object(utils, 'leader_set')
+    @patch('os.listdir')
+    def test_fernet_leader_set(self, listdir, leader_set):
+        listdir.return_value = [0, 1]
+        with patch.object(builtins, 'open', mock_open(
+                read_data="some_data")):
+            utils.fernet_leader_set()
+        listdir.assert_called_with('/etc/keystone/fernet-keys/')
+        leader_set.assert_called_with(
+            {'fernet_keys': json.dumps(['some_data', 'some_data'])})
+
+    @patch('os.rename')
+    @patch.object(utils, 'leader_get')
+    def test_fernet_write_keys(self, leader_get, rename):
+        key_repository = '/etc/keystone/fernet-keys/'
+        leader_get.return_value = json.dumps(['key0', 'key1'])
+        utils.fernet_write_keys()
+        self.mkdir.assert_called_with(key_repository, owner='keystone',
+                                      group='keystone', perms=0o700)
+        self.write_file.assert_has_calls(
+            [
+                call(os.path.join(key_repository, '.0'), u'key0',
+                     owner='keystone', group='keystone', perms=0o600),
+                call(os.path.join(key_repository, '.1'), u'key1',
+                     owner='keystone', group='keystone', perms=0o600),
+            ])
+        rename.assert_has_calls(
+            [
+                call(os.path.join(key_repository, '.0'),
+                     os.path.join(key_repository, '0')),
+                call(os.path.join(key_repository, '.1'),
+                     os.path.join(key_repository, '1')),
+            ])

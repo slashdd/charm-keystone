@@ -96,6 +96,18 @@ options:
     type: string
     default: 'Admin'
     description: Admin role to be associated with admin and service users.
+  token-provider:
+    type: string
+    default: 'uuid'
+    description: |
+      Transitional configuration option to enable migration to Fernet tokens
+      prior to upgrade to OpenStack Rocky.
+      .
+      Supported values are 'uuid' and 'fernet'.
+      .
+      NOTE: This configuration option is honoured on OpenStack versions Ocata
+            through Queens. For OpenStack Rocky it is a unconfigurable default.
+            Silently ignored for all other versions.
   token-expiration:
     type: int
     default: 3600

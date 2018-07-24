@@ -101,6 +101,10 @@ from keystone_utils import (
     ADMIN_PROJECT,
     create_or_show_domain,
     restart_keystone,
+    fernet_enabled,
+    fernet_leader_set,
+    fernet_setup,
+    fernet_write_keys,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -222,6 +226,10 @@ def config_changed_postupgrade():
         # packages may have changed so ensure they are installed.
         apt_install(filter_installed_packages(determine_packages()))
 
+    if is_leader() and fernet_enabled():
+        fernet_setup()
+        fernet_leader_set()
+
     configure_https()
     open_port(config('service-port'))
 
@@ -235,6 +243,9 @@ def config_changed_postupgrade():
     if (is_db_initialised() and is_elected_leader(CLUSTER_RES) and not
             is_unit_paused_set()):
         ensure_initial_admin(config)
+        if CompareOpenStackReleases(
+                os_release('keystone')) >= 'liberty':
+            CONFIGS.write(POLICY_JSON)
 
     update_all_identity_relation_units()
     update_all_domain_backends()
@@ -332,6 +343,9 @@ def leader_init_db_if_ready(use_current_context=False):
 
     migrate_database()
     ensure_initial_admin(config)
+    if CompareOpenStackReleases(
+            os_release('keystone')) >= 'liberty':
+        CONFIGS.write(POLICY_JSON)
     # Ensure any existing service entries are updated in the
     # new database backend. Also avoid duplicate db ready check.
     update_all_identity_relation_units(check_db_ready=False)
@@ -483,7 +497,12 @@ def leader_settings_changed():
     CONFIGS.write(TOKEN_FLUSH_CRON_FILE)
 
     # Make sure we keep domain and/or project ids used in templates up to date
-    CONFIGS.write(POLICY_JSON)
+    if CompareOpenStackReleases(
+            os_release('keystone')) >= 'liberty':
+        CONFIGS.write(POLICY_JSON)
+
+    if fernet_enabled():
+        fernet_write_keys()
 
     update_all_identity_relation_units()
 

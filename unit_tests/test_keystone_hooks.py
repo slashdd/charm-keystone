@@ -89,6 +89,10 @@ TO_PATCH = [
     'is_db_ready',
     'create_or_show_domain',
     'get_api_version',
+    'fernet_enabled',
+    'fernet_leader_set',
+    'fernet_setup',
+    'fernet_write_keys',
     # other
     'check_call',
     'execd_preinstall',
@@ -455,6 +459,7 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(hooks.CONFIGS, 'write')
     def test_leader_settings_changed(self, mock_write, update):
+        self.os_release.return_value = 'mitaka'
         self.relation_ids.return_value = ['identity:1']
         self.related_units.return_value = ['keystone/1']
         hooks.leader_settings_changed()
@@ -712,6 +717,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.is_elected_leader.return_value = True
         is_db_initialized.return_value = False
         self.is_db_ready.return_value = True
+        self.os_release.return_value = 'mitaka'
         hooks.leader_init_db_if_ready()
         self.is_db_ready.assert_called_with(use_current_context=False)
         self.migrate_database.assert_called_with()

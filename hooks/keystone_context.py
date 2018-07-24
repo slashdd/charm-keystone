@@ -174,6 +174,7 @@ class KeystoneContext(context.OSContextGenerator):
 
         ctxt['identity_backend'] = config('identity-backend')
         ctxt['assignment_backend'] = config('assignment-backend')
+        ctxt['token_provider'] = config('token-provider')
         if config('identity-backend') == 'ldap':
             ctxt['ldap_server'] = config('ldap-server')
             ctxt['ldap_user'] = config('ldap-user')

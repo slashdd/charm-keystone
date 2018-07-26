@@ -66,10 +66,6 @@ from charmhelpers.contrib.openstack.utils import (
     is_unit_paused_set,
 )
 
-from charmhelpers.core.strutils import (
-    bool_from_string,
-)
-
 from charmhelpers.core.decorators import (
     retry_on_exception,
 )
@@ -651,11 +647,9 @@ def do_openstack_upgrade(configs):
 
 
 def is_db_initialised():
-    if relation_ids('cluster'):
-        inited = peer_retrieve('db-initialised')
-        if inited and bool_from_string(inited):
-            log("Database is initialised", level=DEBUG)
-            return True
+    if leader_get('db-initialised'):
+        log("Database is initialised", level=DEBUG)
+        return True
 
     log("Database is NOT initialised", level=DEBUG)
     return False
@@ -692,7 +686,7 @@ def migrate_database():
     else:
         service_start(keystone_service())
     time.sleep(10)
-    peer_store('db-initialised', 'True')
+    leader_set({'db-initialised': True})
 
 # OLD
 

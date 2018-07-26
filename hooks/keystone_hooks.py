@@ -467,7 +467,7 @@ def cluster_joined(rid=None):
 @restart_on_change(restart_map(), stopstart=True)
 def cluster_changed():
     # NOTE(jamespage) re-echo passwords for peer storage
-    echo_whitelist = ['_passwd', 'identity-service:', 'db-initialised']
+    echo_whitelist = ['_passwd', 'identity-service:']
 
     log("Peer echo whitelist: %s" % (echo_whitelist), level=DEBUG)
     peer_echo(includes=echo_whitelist, force=True)

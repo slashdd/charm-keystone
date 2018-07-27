@@ -631,12 +631,10 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertTrue(self.update_dns_ha_resource_params.called)
         self.relation_set.assert_called_with(**args)
 
-    @patch.object(utils, 'peer_retrieve')
     @patch('keystone_utils.log')
     @patch.object(hooks, 'CONFIGS')
     def test_ha_relation_changed_not_clustered_not_leader(self, configs,
-                                                          mock_log,
-                                                          mock_peer_retrieve):
+                                                          mock_log):
         self.relation_get.return_value = False
 
         hooks.ha_changed()
@@ -842,7 +840,6 @@ class KeystoneRelationTests(CharmTestCase):
         # Still updates relations
         self.assertTrue(self.relation_ids.called)
 
-    @patch.object(utils, 'peer_retrieve')
     @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(utils, 'os_release')
     @patch('keystone_utils.log')
@@ -850,11 +847,10 @@ class KeystoneRelationTests(CharmTestCase):
     def test_upgrade_charm_not_leader(self,
                                       mock_relation_ids,
                                       mock_log,
-                                      os_release, update, mock_peer_retrieve):
+                                      os_release, update):
         os_release.return_value = 'havana'
 
         self.filter_installed_packages.return_value = []
-        mock_peer_retrieve.return_value = 'true'
         self.is_elected_leader.return_value = False
         hooks.upgrade_charm()
         self.assertTrue(self.apt_install.called)

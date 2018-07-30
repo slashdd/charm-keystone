@@ -60,7 +60,6 @@ TO_PATCH = [
     'local_unit',
     'related_units',
     'https',
-    'peer_store',
     'mkdir',
     'write_file',
     # generic
@@ -291,6 +290,7 @@ class TestKeystoneUtils(CharmTestCase):
         self.peer_store_and_set.assert_called_with(relation_id=relation_id,
                                                    **relation_data)
 
+    @patch.object(utils, 'leader_set')
     @patch.object(utils, 'leader_get')
     @patch.object(utils, 'get_api_version')
     @patch.object(utils, 'create_user')
@@ -301,7 +301,7 @@ class TestKeystoneUtils(CharmTestCase):
     def test_add_service_to_keystone_no_clustered_no_https_complete_values(
             self, KeystoneManager, add_endpoint, ensure_valid_service,
             _resolve_address, create_user, get_api_version, leader_get,
-            test_api_version=2):
+            leader_set, test_api_version=2):
         get_api_version.return_value = test_api_version
         leader_get.return_value = None
         relation_id = 'identity-service:0'
@@ -395,6 +395,8 @@ class TestKeystoneUtils(CharmTestCase):
             test_add_service_to_keystone_no_clustered_no_https_complete_values(
                 test_api_version=3)
 
+    @patch.object(utils, 'leader_set')
+    @patch.object(utils, 'is_leader')
     @patch.object(utils, 'leader_get')
     @patch('charmhelpers.contrib.openstack.ip.config')
     @patch.object(utils, 'ensure_valid_service')
@@ -402,7 +404,7 @@ class TestKeystoneUtils(CharmTestCase):
     @patch.object(utils, 'get_manager')
     def test_add_service_to_keystone_nosubset(
             self, KeystoneManager, add_endpoint, ensure_valid_service,
-            ip_config, leader_get):
+            ip_config, leader_get, is_leader, leader_set):
         relation_id = 'identity-service:0'
         remote_unit = 'unit/0'
 
@@ -666,22 +668,16 @@ class TestKeystoneUtils(CharmTestCase):
         mock_relation_set.assert_called_once_with(relation_id=relation_id,
                                                   relation_settings=settings)
 
-    @patch.object(utils, 'is_elected_leader')
-    @patch.object(utils, 'peer_retrieve')
-    @patch.object(utils, 'peer_store')
-    def test_get_admin_passwd_pwd_set(self, mock_peer_store,
-                                      mock_peer_retrieve,
-                                      mock_is_elected_leader):
-        mock_peer_retrieve.return_value = None
+    def test_get_admin_passwd_pwd_set(self):
         self.test_config.set('admin-password', 'supersecret')
-        mock_is_elected_leader.return_value = True
         self.assertEqual(utils.get_admin_passwd(), 'supersecret')
-        mock_peer_store.assert_called_once_with('admin_passwd', 'supersecret')
 
-    @patch.object(utils, 'peer_retrieve')
+    @patch.object(utils, 'is_leader')
+    @patch.object(utils, 'leader_get')
     @patch('os.path.isfile')
-    def test_get_admin_passwd_genpass(self, isfile, peer_retrieve):
-        peer_retrieve.return_value = 'supersecretgen'
+    def test_get_admin_passwd_genpass(self, isfile, leader_get, is_leader):
+        is_leader.return_value = True
+        leader_get.return_value = 'supersecretgen'
         self.test_config.set('admin-password', '')
         isfile.return_value = False
         self.subprocess.check_output.return_value = 'supersecretgen'

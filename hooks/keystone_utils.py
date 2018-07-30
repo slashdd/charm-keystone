@@ -72,6 +72,7 @@ from charmhelpers.core.decorators import (
 
 from charmhelpers.core.hookenv import (
     config,
+    is_leader,
     leader_get,
     leader_set,
     log,
@@ -105,8 +106,6 @@ from charmhelpers.core.host import (
 
 from charmhelpers.contrib.peerstorage import (
     peer_store_and_set,
-    peer_store,
-    peer_retrieve,
 )
 
 import keystone_context
@@ -1035,18 +1034,12 @@ def store_data(backing_file, data):
 def get_admin_passwd(user=None):
     passwd = config("admin-password")
     if passwd and passwd.lower() != "none":
-        # Previous charm versions did not always store on leader setting so do
-        # this now to avoid an initial update on install/upgrade
-        if (is_elected_leader(CLUSTER_RES) and
-                peer_retrieve('{}_passwd'.format(user)) is None):
-            set_admin_passwd(passwd, user=user)
-
         return passwd
 
     _migrate_admin_password()
-    passwd = peer_retrieve('{}_passwd'.format(user))
+    passwd = leader_get('{}_passwd'.format(user))
 
-    if not passwd and is_elected_leader(CLUSTER_RES):
+    if not passwd and is_leader():
         log("Generating new passwd for user: %s" %
             config("admin-user"))
         cmd = ['pwgen', '-c', '16', '1']
@@ -1059,7 +1052,7 @@ def set_admin_passwd(passwd, user=None):
     if user is None:
         user = 'admin'
 
-    peer_store('{}_passwd'.format(user), passwd)
+    leader_set({'{}_passwd'.format(user): passwd})
 
 
 def get_api_version():
@@ -1228,29 +1221,28 @@ def load_stored_passwords(path=SERVICE_PASSWD_PATH):
 
 
 def _migrate_admin_password():
-    """Migrate on-disk admin passwords to peer storage"""
-    if os.path.exists(STORED_PASSWD):
-        log('Migrating on-disk stored passwords to peer storage')
+    """Migrate on-disk admin passwords to leader storage"""
+    if is_leader() and os.path.exists(STORED_PASSWD):
+        log('Migrating on-disk stored passwords to leader storage')
         with open(STORED_PASSWD) as fd:
-            peer_store("admin_passwd", fd.readline().strip('\n'))
+            leader_set({"admin_passwd": fd.readline().strip('\n')})
 
         os.unlink(STORED_PASSWD)
 
 
 def _migrate_service_passwords():
-    """Migrate on-disk service passwords to peer storage"""
-    if os.path.exists(SERVICE_PASSWD_PATH):
-        log('Migrating on-disk stored passwords to peer storage')
+    """Migrate on-disk service passwords to leader storage"""
+    if is_leader() and os.path.exists(SERVICE_PASSWD_PATH):
+        log('Migrating on-disk stored passwords to leader storage')
         creds = load_stored_passwords()
         for k, v in creds.iteritems():
-            peer_store(key="{}_passwd".format(k), value=v)
+            leader_set({"{}_passwd".format(k): v})
         os.unlink(SERVICE_PASSWD_PATH)
 
 
 def get_service_password(service_username):
     _migrate_service_passwords()
-    peer_key = "{}_passwd".format(service_username)
-    passwd = peer_retrieve(peer_key)
+    passwd = leader_get("{}_passwd".format(service_username))
     if passwd is None:
         passwd = pwgen(length=64)
 
@@ -1258,13 +1250,11 @@ def get_service_password(service_username):
 
 
 def set_service_password(passwd, user):
-    peer_key = "{}_passwd".format(user)
-    peer_store(key=peer_key, value=passwd)
+    leader_set({"{}_passwd".format(user): passwd})
 
 
 def is_password_changed(username, passwd):
-    peer_key = "{}_passwd".format(username)
-    _passwd = peer_retrieve(peer_key)
+    _passwd = leader_get("{}_passwd".format(username))
     return (_passwd is None or passwd != _passwd)
 
 

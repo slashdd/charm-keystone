@@ -446,7 +446,7 @@ class KeystoneRelationTests(CharmTestCase):
         mock_config.return_value = None
 
         hooks.cluster_changed()
-        whitelist = ['_passwd', 'identity-service:', 'db-initialised']
+        whitelist = ['_passwd', 'identity-service:']
         self.peer_echo.assert_called_with(force=True, includes=whitelist)
         self.assertTrue(configs.write_all.called)
 

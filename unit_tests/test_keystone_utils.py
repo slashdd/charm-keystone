@@ -223,7 +223,23 @@ class TestKeystoneUtils(CharmTestCase):
         disable_unused_apache_sites.assert_called_with()
         self.reset_os_release.assert_called()
 
-    def test_migrate_database(self):
+    @patch.object(utils, 'leader_get')
+    def test_is_db_initialised_true_string(self, _leader_get):
+        _leader_get.return_value = "True"
+        self.assertTrue(utils.is_db_initialised())
+
+    @patch.object(utils, 'leader_get')
+    def test_is_db_initialised_true_bool(self, _leader_get):
+        _leader_get.return_value = True
+        self.assertTrue(utils.is_db_initialised())
+
+    @patch.object(utils, 'leader_get')
+    def test_is_db_initialised_not_set(self, _leader_get):
+        _leader_get.return_value = None
+        self.assertFalse(utils.is_db_initialised())
+
+    @patch.object(utils, 'leader_set')
+    def test_migrate_database(self, _leader_set):
         self.os_release.return_value = 'havana'
         utils.migrate_database()
 
@@ -231,6 +247,7 @@ class TestKeystoneUtils(CharmTestCase):
         cmd = ['sudo', '-u', 'keystone', 'keystone-manage', 'db_sync']
         self.subprocess.check_output.assert_called_with(cmd)
         self.service_start.assert_called_with('keystone')
+        _leader_set.assert_called_with({'db-initialised': True})
 
     @patch.object(utils, 'leader_get')
     @patch.object(utils, 'get_api_version')

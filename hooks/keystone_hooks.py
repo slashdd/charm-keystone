@@ -309,7 +309,7 @@ def update_all_domain_backends():
 
 
 def update_all_fid_backends():
-    if CompareOpenStackReleases(os_release('keystone-common')) < 'ocata':
+    if CompareOpenStackReleases(os_release('keystone')) < 'ocata':
         log('Ignoring keystone-fid-service-provider relation as it is'
             ' not supported on releases older than Ocata')
         return
@@ -361,7 +361,7 @@ def db_changed():
         CONFIGS.write(KEYSTONE_CONF)
         leader_init_db_if_ready(use_current_context=True)
         if CompareOpenStackReleases(
-                os_release('keystone-common')) >= 'liberty':
+                os_release('keystone')) >= 'liberty':
             CONFIGS.write(POLICY_JSON)
         update_all_identity_relation_units()
 
@@ -716,7 +716,7 @@ def keystone_fid_service_provider_changed():
     if get_api_version() < 3:
         log('Identity federation is only supported with keystone v3')
         return
-    if CompareOpenStackReleases(os_release('keystone-common')) < 'ocata':
+    if CompareOpenStackReleases(os_release('keystone')) < 'ocata':
         log('Ignoring keystone-fid-service-provider relation as it is'
             ' not supported on releases older than Ocata')
         return
@@ -746,7 +746,7 @@ def keystone_fid_service_provider_changed():
 
 @hooks.hook('keystone-fid-service-provider-relation-broken')
 def keystone_fid_service_provider_broken():
-    if CompareOpenStackReleases(os_release('keystone-common')) < 'ocata':
+    if CompareOpenStackReleases(os_release('keystone')) < 'ocata':
         log('Ignoring keystone-fid-service-provider relation as it is'
             ' not supported on releases older than Ocata')
         return
@@ -762,7 +762,7 @@ def websso_trusted_dashboard_changed():
     if get_api_version() < 3:
         log('WebSSO is only supported with keystone v3')
         return
-    if CompareOpenStackReleases(os_release('keystone-common')) < 'ocata':
+    if CompareOpenStackReleases(os_release('keystone')) < 'ocata':
         log('Ignoring WebSSO relation as it is not supported on'
             ' releases older than Ocata')
         return

@@ -315,7 +315,6 @@ class TestKeystoneUtils(CharmTestCase):
         self.test_config.set('admin-port', 80)
         self.test_config.set('service-port', 81)
         self.https.return_value = False
-        self.test_config.set('https-service-endpoints', 'False')
         self.get_local_endpoint.return_value = 'http://localhost:80/v2.0/'
         self.relation_ids.return_value = ['cluster/0']
 

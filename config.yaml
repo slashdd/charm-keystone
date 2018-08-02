@@ -55,10 +55,6 @@ options:
     description: |
       Apply system hardening. Supports a space-delimited list of modules
       to run. Supported modules currently include os, ssh, apache and mysql.
-  config-file:
-    type: string
-    default: "/etc/keystone/keystone.conf"
-    description: "Location of keystone configuration file"
   service-port:
     type: int
     default: 5000
@@ -133,14 +129,6 @@ options:
       twice the number of CPU cores a service unit has. When deployed in
       a LXD container, this default value will be capped to 4 workers
       unless this configuration option is set.
-  enable-pki:
-    type: string
-    default: "false"
-    description: |
-      Enable PKI token signing.
-      .
-      [DEPRECATED] This option should no longer be used.
-      This option will be removed in a future release.
   preferred-api-version:
     type: int
     default:
@@ -369,27 +357,6 @@ options:
       order for this charm to function correctly, the privacy extension must be
       disabled and a non-temporary address must be configured/available on
       your network interface.
-  https-service-endpoints:
-    type: string
-    default: "False"
-    description: |
-      Manage SSL certificates for all service endpoints. This option
-      should be False when specifying ssl\_\* options.
-      .
-      [DEPRECATED] This option should no longer be used.
-      Provide SSL certificate data through the ssl\_\* options.
-      This option will be removed in a future release.
-  use-https:
-    type: string
-    default: "no"
-    description: |
-      Use SSL for Keystone itself using a charm-generated CA. Set to
-      'yes' to enable it. This option should be 'no' when specifying ssl\_\*
-      options.
-      .
-      [DEPRECATED] This option should no longer be used.
-      Provide SSL certificate data through the ssl\_\* options.
-      This option will be removed in a future release.
   ssl_cert:
     type: string
     default:

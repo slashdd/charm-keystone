@@ -16,6 +16,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 
 from mock import MagicMock, call, mock_open, patch
 from test_utils import CharmTestCase
@@ -1142,43 +1143,23 @@ class TestKeystoneUtils(CharmTestCase):
         with self.assertRaises(ValueError):
             utils.get_api_version()
 
-    def test_fernet_enabled_no_config(self):
-        self.os_release.return_value = 'ocata'
-        self.test_config.set('token-provider', 'uuid')
-        result = utils.fernet_enabled()
-        self.assertFalse(result)
-
-    def test_fernet_enabled_yes_config(self):
-        self.os_release.return_value = 'ocata'
-        self.test_config.set('token-provider', 'fernet')
-        result = utils.fernet_enabled()
-        self.assertTrue(result)
-
-    def test_fernet_enabled_no_release_override_config(self):
-        self.os_release.return_value = 'mitaka'
-        self.test_config.set('token-provider', 'fernet')
-        result = utils.fernet_enabled()
-        self.assertFalse(result)
-
-    def test_fernet_enabled_yes_release(self):
-        self.os_release.return_value = 'rocky'
-        result = utils.fernet_enabled()
-        self.assertTrue(result)
-
-    def test_fernet_enabled_yes_release_override_config(self):
-        self.os_release.return_value = 'rocky'
-        self.test_config.set('token-provider', 'uuid')
-        result = utils.fernet_enabled()
-        self.assertTrue(result)
-
-    def test_fernet_setup(self):
+    @patch.object(utils, 'is_leader')
+    @patch('os.path.exists')
+    def test_key_setup(self, mock_path_exists, mock_is_leader):
         base_cmd = ['sudo', '-u', 'keystone', 'keystone-manage']
-        utils.fernet_setup()
+        mock_is_leader.return_value = True
+        mock_path_exists.return_value = False
+        with patch.object(builtins, 'open', mock_open()) as m:
+            utils.key_setup()
+            m.assert_called_once_with(utils.KEY_SETUP_FILE, "w")
         self.subprocess.check_output.has_calls(
             [
                 base_cmd + ['fernet_setup'],
                 base_cmd + ['credential_setup'],
+                base_cmd + ['credential_migrate'],
             ])
+        mock_path_exists.assert_called_once_with(utils.KEY_SETUP_FILE)
+        mock_is_leader.assert_called_once_with()
 
     def test_fernet_rotate(self):
         cmd = ['sudo', '-u', 'keystone', 'keystone-manage', 'fernet_rotate']
@@ -1187,34 +1168,109 @@ class TestKeystoneUtils(CharmTestCase):
 
     @patch.object(utils, 'leader_set')
     @patch('os.listdir')
-    def test_fernet_leader_set(self, listdir, leader_set):
-        listdir.return_value = [0, 1]
+    def test_key_leader_set(self, listdir, leader_set):
+        listdir.return_value = ['0', '1']
+        self.time.time.return_value = "the-time"
         with patch.object(builtins, 'open', mock_open(
                 read_data="some_data")):
-            utils.fernet_leader_set()
-        listdir.assert_called_with('/etc/keystone/fernet-keys/')
+            utils.key_leader_set()
+        listdir.has_calls([
+            call(utils.FERNET_KEY_REPOSITORY),
+            call(utils.CREDENTIAL_KEY_REPOSITORY)])
         leader_set.assert_called_with(
-            {'fernet_keys': json.dumps(['some_data', 'some_data'])})
+            {'key_repository': json.dumps(
+                {utils.FERNET_KEY_REPOSITORY:
+                    {'0': 'some_data', '1': 'some_data'},
+                 utils.CREDENTIAL_KEY_REPOSITORY:
+                    {'0': 'some_data', '1': 'some_data'}})
+             })
 
     @patch('os.rename')
     @patch.object(utils, 'leader_get')
-    def test_fernet_write_keys(self, leader_get, rename):
-        key_repository = '/etc/keystone/fernet-keys/'
-        leader_get.return_value = json.dumps(['key0', 'key1'])
-        utils.fernet_write_keys()
-        self.mkdir.assert_called_with(key_repository, owner='keystone',
-                                      group='keystone', perms=0o700)
+    @patch('os.listdir')
+    @patch('os.remove')
+    def test_key_write(self, remove, listdir, leader_get, rename):
+        leader_get.return_value = json.dumps(
+            {utils.FERNET_KEY_REPOSITORY:
+                {'0': 'key0', '1': 'key1'},
+             utils.CREDENTIAL_KEY_REPOSITORY:
+                {'0': 'key0', '1': 'key1'}})
+        listdir.return_value = ['0', '1', '2']
+        with patch.object(builtins, 'open', mock_open()) as m:
+            utils.key_write()
+            m.assert_called_with(utils.KEY_SETUP_FILE, "w")
+        self.mkdir.has_calls([call(utils.CREDENTIAL_KEY_REPOSITORY,
+                                   owner='keystone', group='keystone',
+                                   perms=0o700),
+                              call(utils.FERNET_KEY_REPOSITORY,
+                                   owner='keystone', group='keystone',
+                                   perms=0o700)])
+        # note 'any_order=True' as we are dealing with dictionaries in Py27
         self.write_file.assert_has_calls(
             [
-                call(os.path.join(key_repository, '.0'), u'key0',
+                call(os.path.join(utils.CREDENTIAL_KEY_REPOSITORY, '.0'),
+                     u'key0', owner='keystone', group='keystone', perms=0o600),
+                call(os.path.join(utils.CREDENTIAL_KEY_REPOSITORY, '.1'),
+                     u'key1', owner='keystone', group='keystone', perms=0o600),
+                call(os.path.join(utils.FERNET_KEY_REPOSITORY, '.0'), u'key0',
                      owner='keystone', group='keystone', perms=0o600),
-                call(os.path.join(key_repository, '.1'), u'key1',
+                call(os.path.join(utils.FERNET_KEY_REPOSITORY, '.1'), u'key1',
                      owner='keystone', group='keystone', perms=0o600),
-            ])
+            ], any_order=True)
         rename.assert_has_calls(
             [
-                call(os.path.join(key_repository, '.0'),
-                     os.path.join(key_repository, '0')),
-                call(os.path.join(key_repository, '.1'),
-                     os.path.join(key_repository, '1')),
-            ])
+                call(os.path.join(utils.CREDENTIAL_KEY_REPOSITORY, '.0'),
+                     os.path.join(utils.CREDENTIAL_KEY_REPOSITORY, '0')),
+                call(os.path.join(utils.CREDENTIAL_KEY_REPOSITORY, '.1'),
+                     os.path.join(utils.CREDENTIAL_KEY_REPOSITORY, '1')),
+                call(os.path.join(utils.FERNET_KEY_REPOSITORY, '.0'),
+                     os.path.join(utils.FERNET_KEY_REPOSITORY, '0')),
+                call(os.path.join(utils.FERNET_KEY_REPOSITORY, '.1'),
+                     os.path.join(utils.FERNET_KEY_REPOSITORY, '1')),
+            ], any_order=True)
+
+    @patch.object(utils, 'keystone_context')
+    @patch.object(utils, 'fernet_rotate')
+    @patch.object(utils, 'key_leader_set')
+    @patch.object(utils, 'os')
+    @patch.object(utils, 'is_leader')
+    def test_fernet_keys_rotate_and_sync(self, mock_is_leader, mock_os,
+                                         mock_key_leader_set,
+                                         mock_fernet_rotate,
+                                         mock_keystone_context):
+        self.test_config.set('fernet-max-active-keys', 3)
+        self.test_config.set('token-expiration', 60)
+        self.time.time.return_value = 0
+
+        # if not leader shouldn't do anything
+        mock_is_leader.return_value = False
+        utils.fernet_keys_rotate_and_sync()
+        mock_os.stat.assert_not_called()
+        # shouldn't do anything as the token provider is wrong
+        mock_keystone_context.fernet_enabled.return_value = False
+        mock_is_leader.return_value = True
+        utils.fernet_keys_rotate_and_sync()
+        mock_os.stat.assert_not_called()
+        # fail gracefully if key repository is not initialized
+        mock_keystone_context.fernet_enabled.return_value = True
+        mock_os.stat.side_effect = Exception()
+        with self.assertRaises(Exception):
+            utils.fernet_keys_rotate_and_sync()
+        self.time.time.assert_not_called()
+        mock_os.stat.side_effect = None
+        # now set up the times, so that it still shouldn't be called.
+        self.time.time.return_value = 30
+        self.time.ctime = time.ctime
+        _stat = MagicMock()
+        _stat.st_mtime = 10
+        mock_os.stat.return_value = _stat
+        utils.fernet_keys_rotate_and_sync(log_func=self.log)
+        self.log.assert_called_once_with(
+            'No rotation until at least Thu Jan  1 00:01:10 1970',
+            level='DEBUG')
+        mock_key_leader_set.assert_not_called()
+        # finally, set it up so that the rotation and sync occur
+        self.time.time.return_value = 71
+        utils.fernet_keys_rotate_and_sync()
+        mock_fernet_rotate.assert_called_once_with()
+        mock_key_leader_set.assert_called_once_with()

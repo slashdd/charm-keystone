@@ -84,6 +84,8 @@ from charmhelpers.core.hookenv import (
     related_units,
     DEBUG,
     INFO,
+    ERROR,
+    WARNING,
 )
 
 from charmhelpers.fetch import (
@@ -191,6 +193,10 @@ ADMIN_PROJECT = 'admin'
 DEFAULT_DOMAIN = 'default'
 SERVICE_DOMAIN = 'service_domain'
 TOKEN_FLUSH_CRON_FILE = '/etc/cron.d/keystone-token-flush'
+KEY_SETUP_FILE = '/etc/keystone/key-setup'
+CREDENTIAL_KEY_REPOSITORY = '/etc/keystone/credential-keys/'
+FERNET_KEY_REPOSITORY = '/etc/keystone/fernet-keys/'
+FERNET_KEY_ROTATE_SYNC_CRON_FILE = '/etc/cron.d/keystone-fernet-rotate-sync'
 WSGI_KEYSTONE_API_CONF = '/etc/apache2/sites-enabled/wsgi-openstack-api.conf'
 UNUSED_APACHE_SITE_FILES = ['/etc/apache2/sites-enabled/keystone.conf',
                             '/etc/apache2/sites-enabled/wsgi-keystone.conf']
@@ -251,6 +257,11 @@ BASE_RESOURCE_MAP = OrderedDict([
     }),
     (TOKEN_FLUSH_CRON_FILE, {
         'contexts': [keystone_context.TokenFlushContext(),
+                     context.SyslogContext()],
+        'services': [],
+    }),
+    (FERNET_KEY_ROTATE_SYNC_CRON_FILE, {
+        'contexts': [keystone_context.FernetCronContext(),
                      context.SyslogContext()],
         'services': [],
     }),
@@ -1904,54 +1915,161 @@ def restart_keystone():
             service_restart(keystone_service())
 
 
-def fernet_enabled():
-    """Helper function for determinining whether Fernet tokens are enabled"""
-    cmp_release = CompareOpenStackReleases(os_release('keystone'))
-    if cmp_release < 'ocata':
-        return False
-    elif 'ocata' >= cmp_release < 'rocky':
-        return config('token-provider') == 'fernet'
-    else:
-        return True
+def key_setup():
+    """Initialize Fernet and Credential encryption key repositories
 
+    To setup the key repositories, calls (as user "keystone"):
 
-def fernet_setup():
-    """Initialize Fernet key repositories"""
+        keystone-manage fernet_setup
+        keystone-manage credential_setup
+
+    In addition we migrate any credentials currently stored in database using
+    the null key to be encrypted by the new credential key:
+
+        keystone-manage credential_migrate
+
+    Note that we only want to do this once, so we store success in the leader
+    settings (which we should be).
+
+    :raises: `:class:subprocess.CallProcessError` if either of the commands
+        fails.
+    """
+    if os.path.exists(KEY_SETUP_FILE) or not is_leader():
+        return
     base_cmd = ['sudo', '-u', 'keystone', 'keystone-manage']
-    subprocess.check_output(base_cmd + ['fernet_setup'])
-    subprocess.check_output(base_cmd + ['credential_setup'])
+    try:
+        log("Setting up key repositories for Fernet tokens and Credential "
+            "encryption", level=DEBUG)
+        subprocess.check_call(base_cmd + ['fernet_setup'])
+        subprocess.check_call(base_cmd + ['credential_setup'])
+        subprocess.check_call(base_cmd + ['credential_migrate'])
+        # touch the file to create
+        open(KEY_SETUP_FILE, "w").close()
+    except subprocess.CalledProcessError as e:
+        log("Key repository setup failed, will retry in config-changed hook: "
+            "{}".format(e), level=ERROR)
 
 
 def fernet_rotate():
-    """Rotate Fernet keys"""
+    """Rotate Fernet keys
+
+    To rotate the Fernet tokens, and create a new staging key, it calls (as the
+    "keystone" user):
+
+        keystone-manage fernet_rotate
+
+    Note that we do not rotate the Credential encryption keys.
+
+    Note that this does NOT synchronise the keys between the units.  This is
+    performed in `:function:`hooks.keystone_utils.fernet_leader_set`
+
+    :raises: `:class:subprocess.CallProcessError` if the command fails.
+    """
+    log("Rotating Fernet tokens", level=DEBUG)
     cmd = ['sudo', '-u', 'keystone', 'keystone-manage', 'fernet_rotate']
-    subprocess.check_output(cmd)
+    subprocess.check_call(cmd)
 
 
-def fernet_leader_set():
-    """Read current key set and update leader storage if necessary"""
-    key_repository = '/etc/keystone/fernet-keys/'
-    disk_keys = []
-    for key in os.listdir(key_repository):
-        with open(os.path.join(key_repository, str(key)), 'r') as f:
-            disk_keys.append(f.read())
-    leader_set({'fernet_keys': json.dumps(disk_keys)})
+def key_leader_set():
+    """Read current key sets and update leader storage
+
+    The keys are read from the `FERNET_KEY_REPOSITORY` and
+    `CREDENTIAL_KEY_REPOSITORY` directories.  Note that this function will fail
+    if it is called on the unit that is not the leader.
+
+    :raises: :class:`subprocess.CalledProcessError` if the leader_set fails.
+    """
+    disk_keys = {}
+    for key_repository in [FERNET_KEY_REPOSITORY, CREDENTIAL_KEY_REPOSITORY]:
+        disk_keys[key_repository] = {}
+        for key_number in os.listdir(key_repository):
+            with open(os.path.join(key_repository, key_number),
+                      'r') as f:
+                disk_keys[key_repository][key_number] = f.read()
+    leader_set({'key_repository': json.dumps(disk_keys)})
 
 
-def fernet_write_keys():
-    """Get keys from leader storage and write out to disk"""
-    key_repository = '/etc/keystone/fernet-keys/'
-    leader_keys = leader_get('fernet_keys')
+def key_write():
+    """Get keys from leader storage and write out to disk
+
+    The keys are written to the `FERNET_KEY_REPOSITORY` and
+    `CREDENTIAL_KEY_REPOSITORY` directories.  Note that the keys are first
+    written to a tmp file and then moved to the key to avoid any races.  Any
+    'excess' keys are deleted, which may occur if the "number of keys" has been
+    reduced on the leader.
+    """
+    leader_keys = leader_get('key_repository')
     if not leader_keys:
-        log('"fernet_keys" not in leader settings yet...', level=DEBUG)
+        log('"key_repository" not in leader settings yet...', level=DEBUG)
         return
-    mkdir(key_repository, owner=KEYSTONE_USER, group=KEYSTONE_USER,
-          perms=0o700)
-    for idx, key in enumerate(json.loads(leader_keys)):
-        tmp_filename = os.path.join(key_repository, "."+str(idx))
-        key_filename = os.path.join(key_repository, str(idx))
-        # write to tmp file first, move the key into place in an atomic
-        # operation avoiding any races with consumers of the key files
-        write_file(tmp_filename, key, owner=KEYSTONE_USER, group=KEYSTONE_USER,
-                   perms=0o600)
-        os.rename(tmp_filename, key_filename)
+    leader_keys = json.loads(leader_keys)
+    for key_repository in [FERNET_KEY_REPOSITORY, CREDENTIAL_KEY_REPOSITORY]:
+        mkdir(key_repository,
+              owner=KEYSTONE_USER,
+              group=KEYSTONE_USER,
+              perms=0o700)
+        for key_number, key in leader_keys[key_repository].items():
+            tmp_filename = os.path.join(key_repository,
+                                        ".{}".format(key_number))
+            key_filename = os.path.join(key_repository, key_number)
+            # write to tmp file first, move the key into place in an atomic
+            # operation avoiding any races with consumers of the key files
+            write_file(tmp_filename,
+                       key,
+                       owner=KEYSTONE_USER,
+                       group=KEYSTONE_USER,
+                       perms=0o600)
+            os.rename(tmp_filename, key_filename)
+        # now delete any keys that shouldn't be there
+        for key_number in os.listdir(key_repository):
+            if key_number not in leader_keys[key_repository].keys():
+                os.remove(os.path.join(key_repository, key_number))
+        # also say that keys have been setup for this system.
+        open(KEY_SETUP_FILE, "w").close()
+
+
+def fernet_keys_rotate_and_sync(log_func=log):
+    """Rotate and sync the keys if the unit is the leader and the primary key
+    has expired.
+
+    The modification time of the staging key (key with index '0') is used,
+    along with the config setting "token_expiration" to determine whether to
+    rotate the keys, along with the function `fernet_enabled()` to test
+    whether to do it at all.
+
+    Note that the reason for using modification time and not change time is
+    that the former can be set by the operator as part of restoring the key
+    from backup.
+
+    The rotation time = token-expiration / (max-active-keys - 2)
+
+    where max-active-keys has a minumum of 3.
+
+    :param log_func: Function to use for logging
+    :type log_func: func
+    """
+    if not keystone_context.fernet_enabled() or not is_leader():
+        return
+    # now see if the keys need to be rotated
+    try:
+        last_rotation = os.stat(
+            os.path.join(FERNET_KEY_REPOSITORY, '0')).st_mtime
+    except OSError:
+        log_func("Fernet key rotation requested but key repository not "
+                 "initialized yet", level=WARNING)
+        return
+    max_keys = max(config('fernet-max-active-keys'), 3)
+    expiration = config('token-expiration')
+    rotation_time = expiration // (max_keys - 2)
+    now = time.time()
+    if last_rotation + rotation_time > now:
+        # Nothing to do as not reached rotation time
+        log_func("No rotation until at least {}"
+                 .format(time.ctime(last_rotation + rotation_time)),
+                 level=DEBUG)
+        return
+    # now rotate the keys and sync them
+    fernet_rotate()
+    key_leader_set()
+    log_func("Rotated and started sync (via leader settings) of fernet keys",
+             level=INFO)

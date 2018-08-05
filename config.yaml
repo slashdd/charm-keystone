@@ -98,7 +98,7 @@ options:
     description: Admin role to be associated with admin and service users.
   token-provider:
     type: string
-    default: 'uuid'
+    default:
     description: |
       Transitional configuration option to enable migration to Fernet tokens
       prior to upgrade to OpenStack Rocky.
@@ -112,6 +112,21 @@ options:
     type: int
     default: 3600
     description: Amount of time (in seconds) a token should remain valid.
+  fernet-max-active-keys:
+    type: int
+    default: 3
+    description: |
+      This is the maximum number of active keys when `token-provider` is set to
+      "fernet".  If has a minimum of 3, which includes the spare and staging
+      keys.  When set to 3, the rotation time for the keys is the same as the
+      token expiration time.  When set to a higher value, the rotation time is
+      less than the `token-expiration` time as calculated by:
+      .
+      rotation-time = token-expiration / (fernet-max-active-keys - 2)
+      .
+      Please see the charm documentation for further details about how to use
+      the Fernet token parameters to achieve a key strategy appropriate for the
+      system in question.
   service-tenant:
     type: string
     default: "services"

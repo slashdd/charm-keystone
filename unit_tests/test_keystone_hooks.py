@@ -90,9 +90,9 @@ TO_PATCH = [
     'create_or_show_domain',
     'get_api_version',
     'fernet_enabled',
-    'fernet_leader_set',
-    'fernet_setup',
-    'fernet_write_keys',
+    'key_leader_set',
+    'key_setup',
+    'key_write',
     # other
     'check_call',
     'execd_preinstall',

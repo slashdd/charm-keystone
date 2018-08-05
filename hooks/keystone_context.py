@@ -26,12 +26,19 @@ from charmhelpers.contrib.hahelpers.cluster import (
 )
 
 from charmhelpers.core.hookenv import (
+    charm_dir,
     config,
     log,
     leader_get,
+    local_unit,
     related_units,
     relation_ids,
     relation_get,
+)
+
+from charmhelpers.contrib.openstack.utils import (
+    CompareOpenStackReleases,
+    os_release,
 )
 
 
@@ -175,6 +182,7 @@ class KeystoneContext(context.OSContextGenerator):
         ctxt['identity_backend'] = config('identity-backend')
         ctxt['assignment_backend'] = config('assignment-backend')
         ctxt['token_provider'] = config('token-provider')
+        ctxt['fernet_max_active_keys'] = config('fernet-max-active-keys')
         if config('identity-backend') == 'ldap':
             ctxt['ldap_server'] = config('ldap-server')
             ctxt['ldap_user'] = config('ldap-user')
@@ -242,9 +250,39 @@ class TokenFlushContext(context.OSContextGenerator):
 
     def __call__(self):
         ctxt = {
-            'token_flush': is_elected_leader(DC_RESOURCE_NAME)
+            'token_flush': (not fernet_enabled() and
+                            is_elected_leader(DC_RESOURCE_NAME))
         }
         return ctxt
+
+
+class FernetCronContext(context.OSContextGenerator):
+
+    def __call__(self):
+        token_expiration = int(config('token-expiration'))
+        ctxt = {
+            'enabled': (fernet_enabled() and
+                        is_elected_leader(DC_RESOURCE_NAME)),
+            'unit_name': local_unit(),
+            'charm_dir': charm_dir(),
+            'minute': ('*/5' if token_expiration > 300 else '*')
+        }
+        return ctxt
+
+
+def fernet_enabled():
+    """Helper function for determinining whether Fernet tokens are enabled.
+
+    :returns: True if the fernet keys should be configured.
+    :rtype: bool
+    """
+    cmp_release = CompareOpenStackReleases(os_release('keystone'))
+    if cmp_release < 'ocata':
+        return False
+    elif 'ocata' >= cmp_release < 'rocky':
+        return config('token-provider') == 'fernet'
+    else:
+        return True
 
 
 class KeystoneFIDServiceProviderContext(context.OSContextGenerator):

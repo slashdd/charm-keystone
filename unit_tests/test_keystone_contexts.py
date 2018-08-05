@@ -29,6 +29,7 @@ TO_PATCH = [
     'config',
     'determine_apache_port',
     'determine_api_port',
+    'os_release',
 ]
 
 
@@ -36,6 +37,7 @@ class TestKeystoneContexts(CharmTestCase):
 
     def setUp(self):
         super(TestKeystoneContexts, self).setUp(context, TO_PATCH)
+        self.config.side_effect = self.test_config.get
 
     @patch('charmhelpers.contrib.hahelpers.cluster.relation_ids')
     @patch('charmhelpers.contrib.openstack.ip.unit_get')
@@ -152,14 +154,79 @@ class TestKeystoneContexts(CharmTestCase):
                          ctxt())
 
     @patch.object(context, 'is_elected_leader')
-    def test_token_flush_context(self, mock_is_elected_leader):
+    @patch.object(context, 'fernet_enabled')
+    def test_token_flush_context(
+            self, mock_fernet_enabled, mock_is_elected_leader):
         ctxt = context.TokenFlushContext()
 
+        mock_fernet_enabled.return_value = False
         mock_is_elected_leader.return_value = False
         self.assertEqual({'token_flush': False}, ctxt())
 
         mock_is_elected_leader.return_value = True
         self.assertEqual({'token_flush': True}, ctxt())
+
+        mock_fernet_enabled.return_value = True
+        self.assertEqual({'token_flush': False}, ctxt())
+
+    @patch.object(context, 'charm_dir')
+    @patch.object(context, 'local_unit')
+    @patch.object(context, 'is_elected_leader')
+    @patch.object(context, 'fernet_enabled')
+    def test_fernet_cron_context(
+            self, mock_fernet_enabled, mock_is_elected_leader, mock_local_unit,
+            mock_charm_dir):
+        ctxt = context.FernetCronContext()
+
+        mock_charm_dir.return_value = "my-dir"
+        mock_local_unit.return_value = "the-local-unit"
+
+        expected = {
+            'enabled': False,
+            'unit_name': 'the-local-unit',
+            'charm_dir': 'my-dir',
+            'minute': '*/5',
+        }
+
+        mock_fernet_enabled.return_value = False
+        mock_is_elected_leader.return_value = False
+        self.assertEqual(expected, ctxt())
+
+        mock_is_elected_leader.return_value = True
+        self.assertEqual(expected, ctxt())
+
+        mock_fernet_enabled.return_value = True
+        expected['enabled'] = True
+        self.assertEqual(expected, ctxt())
+
+    def test_fernet_enabled_no_config(self):
+        self.os_release.return_value = 'ocata'
+        self.test_config.set('token-provider', 'uuid')
+        result = context.fernet_enabled()
+        self.assertFalse(result)
+
+    def test_fernet_enabled_yes_config(self):
+        self.os_release.return_value = 'ocata'
+        self.test_config.set('token-provider', 'fernet')
+        result = context.fernet_enabled()
+        self.assertTrue(result)
+
+    def test_fernet_enabled_no_release_override_config(self):
+        self.os_release.return_value = 'mitaka'
+        self.test_config.set('token-provider', 'fernet')
+        result = context.fernet_enabled()
+        self.assertFalse(result)
+
+    def test_fernet_enabled_yes_release(self):
+        self.os_release.return_value = 'rocky'
+        result = context.fernet_enabled()
+        self.assertTrue(result)
+
+    def test_fernet_enabled_yes_release_override_config(self):
+        self.os_release.return_value = 'rocky'
+        self.test_config.set('token-provider', 'uuid')
+        result = context.fernet_enabled()
+        self.assertTrue(result)
 
     @patch.object(context, 'relation_ids')
     @patch.object(context, 'related_units')

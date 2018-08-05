@@ -66,6 +66,8 @@ from charmhelpers.contrib.openstack.utils import (
     enable_memcache,
 )
 
+from keystone_context import fernet_enabled
+
 from keystone_utils import (
     add_service_to_keystone,
     add_credentials_to_keystone,
@@ -101,10 +103,9 @@ from keystone_utils import (
     ADMIN_PROJECT,
     create_or_show_domain,
     restart_keystone,
-    fernet_enabled,
-    fernet_leader_set,
-    fernet_setup,
-    fernet_write_keys,
+    key_leader_set,
+    key_setup,
+    key_write,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -227,8 +228,8 @@ def config_changed_postupgrade():
         apt_install(filter_installed_packages(determine_packages()))
 
     if is_leader() and fernet_enabled():
-        fernet_setup()
-        fernet_leader_set()
+        key_setup()
+        key_leader_set()
 
     configure_https()
     open_port(config('service-port'))
@@ -502,7 +503,7 @@ def leader_settings_changed():
         CONFIGS.write(POLICY_JSON)
 
     if fernet_enabled():
-        fernet_write_keys()
+        key_write()
 
     update_all_identity_relation_units()
 

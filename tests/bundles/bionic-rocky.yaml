@@ -1,4 +1,13 @@
 series: bionic
+comment:
+- 'machines section to decide order of deployment. database sooner = faster'
+machines:
+  '0':
+    constraints: mem=3072M
+  '1':
+  '2':
+  '3':
+  '4':
 relations:
 - - keystone:shared-db
   - mysql:shared-db
@@ -10,6 +19,8 @@ applications:
   mysql:
     charm: cs:~openstack-charmers-next/percona-cluster
     num_units: 1
+    to:
+    - '0'
   keystone:
     series: bionic
     charm: ../../../keystone
@@ -17,8 +28,14 @@ applications:
     options:
       openstack-origin: cloud:bionic-rocky/proposed
       token-expiration: 60
+    to:
+    - '1'
+    - '2'
+    - '3'
   glance:
     charm: cs:~openstack-charmers-next/glance
     num_units: 1
     options:
       openstack-origin: cloud:bionic-rocky/proposed
+    to:
+    - '4'

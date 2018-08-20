@@ -2050,6 +2050,10 @@ def fernet_keys_rotate_and_sync(log_func=log):
     """
     if not keystone_context.fernet_enabled() or not is_leader():
         return
+    if is_unit_paused_set():
+        log_func("Fernet key rotation requested but unit is paused",
+                 level=INFO)
+        return
     # now see if the keys need to be rotated
     try:
         last_rotation = os.stat(

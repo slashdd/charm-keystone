@@ -2069,7 +2069,8 @@ def fernet_keys_rotate_and_sync(log_func=log):
     if last_rotation + rotation_time > now:
         # Nothing to do as not reached rotation time
         log_func("No rotation until at least {}"
-                 .format(time.ctime(last_rotation + rotation_time)),
+                 .format(
+                     time.asctime(time.gmtime(last_rotation + rotation_time))),
                  level=DEBUG)
         return
     # now rotate the keys and sync them

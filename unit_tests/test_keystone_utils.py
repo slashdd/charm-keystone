@@ -1259,7 +1259,8 @@ class TestKeystoneUtils(CharmTestCase):
         mock_os.stat.side_effect = None
         # now set up the times, so that it still shouldn't be called.
         self.time.time.return_value = 30
-        self.time.ctime = time.ctime
+        self.time.gmtime = time.gmtime
+        self.time.asctime = time.asctime
         _stat = MagicMock()
         _stat.st_mtime = 10
         mock_os.stat.return_value = _stat

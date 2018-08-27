@@ -9,8 +9,8 @@ gate_bundles:
 - xenial-pike
 - xenial-queens
 - bionic-queens
-dev_bundles:
 - bionic-rocky
+dev_bundles:
 - cosmic-rocky
 comment:
 - 'the glance configure job validates operation of identity-service relation'

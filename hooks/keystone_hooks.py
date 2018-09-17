@@ -64,6 +64,8 @@ from charmhelpers.contrib.openstack.utils import (
     install_os_snaps,
     get_snaps_install_info_from_origin,
     enable_memcache,
+    series_upgrade_prepare,
+    series_upgrade_complete,
 )
 
 from keystone_context import fernet_enabled
@@ -106,6 +108,8 @@ from keystone_utils import (
     key_leader_set,
     key_setup,
     key_write,
+    pause_unit_helper,
+    resume_unit_helper,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -185,6 +189,12 @@ def install():
 @restart_on_change(restart_map(), restart_functions=restart_function_map())
 @harden()
 def config_changed():
+    # if we are paused, delay doing any config changed hooks.
+    # It is forced on the resume.
+    if is_unit_paused_set():
+        log("Unit is pause or upgrading. Skipping config_changed", "WARN")
+        return
+
     if config('prefer-ipv6'):
         status_set('maintenance', 'configuring ipv6')
         setup_ipv6()
@@ -492,6 +502,13 @@ def leader_elected():
 @hooks.hook('leader-settings-changed')
 @restart_on_change(restart_map(), stopstart=True)
 def leader_settings_changed():
+
+    # if we are paused, delay doing any config changed hooks.
+    # It is forced on the resume.
+    if is_unit_paused_set():
+        log("Unit is pause or upgrading. Skipping config_changed", "WARN")
+        return
+
     # Since minions are notified of a regime change via the
     # leader-settings-changed hook, rewrite the token flush cron job to make
     # sure only the leader is running the cron job.
@@ -805,6 +822,20 @@ def certs_changed(relation_id=None, unit=None):
     write_certs_and_config()
     update_all_identity_relation_units()
     update_all_domain_backends()
+
+
+@hooks.hook('pre-series-upgrade')
+def pre_series_upgrade():
+    log("Running prepare series upgrade hook", "INFO")
+    series_upgrade_prepare(
+        pause_unit_helper, CONFIGS)
+
+
+@hooks.hook('post-series-upgrade')
+def post_series_upgrade():
+    log("Running complete series upgrade hook", "INFO")
+    series_upgrade_complete(
+        resume_unit_helper, CONFIGS)
 
 
 def main():

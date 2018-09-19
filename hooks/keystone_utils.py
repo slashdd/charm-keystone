@@ -93,7 +93,10 @@ from charmhelpers.fetch import (
     apt_install,
     apt_update,
     apt_upgrade,
+    apt_purge,
+    apt_autoremove,
     add_source,
+    filter_missing_packages,
 )
 
 from charmhelpers.core.host import (
@@ -129,6 +132,14 @@ BASE_PACKAGES = [
     'python3-six',
     'pwgen',
     'uuid',
+]
+
+PY3_PACKAGES = [
+    'python3-keystone',
+    'python3-keystoneclient',
+    'python3-memcache',
+    'python3-six',
+    'libapache2-mod-wsgi-py3',
 ]
 
 BASE_PACKAGES_SNAP = [
@@ -594,6 +605,8 @@ def api_port(service):
 
 
 def determine_packages():
+    release = CompareOpenStackReleases(os_release('keystone'))
+
     # currently all packages match service names
     if snap_install_requested():
         pkgs = deepcopy(BASE_PACKAGES_SNAP)
@@ -602,9 +615,27 @@ def determine_packages():
         return sorted(pkgs)
     else:
         packages = set(services()).union(BASE_PACKAGES)
-        if run_in_apache():
+        if release >= 'rocky':
+            packages = [p for p in packages if not p.startswith('python-')]
+            packages.extend(PY3_PACKAGES)
+        elif run_in_apache():
             packages.add('libapache2-mod-wsgi')
         return sorted(packages)
+
+
+def determine_purge_packages():
+    '''
+    Determine list of packages that where previously installed which are no
+    longer needed.
+
+    :returns: list of package names
+    '''
+    release = CompareOpenStackReleases(os_release('keystone'))
+    if release >= 'rocky':
+        pkgs = [p for p in BASE_PACKAGES if p.startswith('python-')]
+        pkgs.extend(['python-keystone', 'python-memcache'])
+        return pkgs
+    return []
 
 
 def save_script_rc():
@@ -639,6 +670,11 @@ def do_openstack_upgrade(configs):
         reset_os_release()
         apt_install(packages=determine_packages(),
                     options=dpkg_opts, fatal=True)
+
+        installed_pkgs = filter_missing_packages(determine_purge_packages())
+        if installed_pkgs:
+            apt_purge(installed_pkgs, fatal=True)
+            apt_autoremove(purge=True, fatal=True)
     else:
         # TODO: Add support for upgrade from deb->snap
         # NOTE(thedac): Setting devmode until LP#1719636 is fixed
@@ -1054,6 +1090,9 @@ class ManagerServer():
     def _launch_manager(self):
         script = os.path.abspath(os.path.join(os.path.dirname(__file__),
                                               'manager.py'))
+        release = CompareOpenStackReleases(
+            get_os_codename_install_source(config('openstack-origin'))
+        )
         # need to set the environment variable PYTHONPATH to include the
         # payload's directory for the manager.py to find the various keystone
         # clients
@@ -1072,8 +1111,13 @@ class ManagerServer():
                 env['PATH'] = ':'.join(
                     os.environ.get('PATH', '').split(':') +
                     [_bin_path])
+        # ensure python interpreter matches python version of OpenStack
+        if release >= 'rocky':
+            python = 'python3'
+        else:
+            python = 'python2'
         # launch the process and return immediately
-        self.pvar = subprocess.Popen([script, self.socket_file],
+        self.pvar = subprocess.Popen([python, script, self.socket_file],
                                      env=env, close_fds=True)
 
     def clean_up(self):

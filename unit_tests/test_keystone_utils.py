@@ -159,14 +159,26 @@ class TestKeystoneUtils(CharmTestCase):
         self.assertEqual(set(ex), set(result))
 
     @patch('charmhelpers.contrib.openstack.utils.config')
-    def test_determine_packages_mitaka(self, _config):
-        self.os_release.return_value = 'mitaka'
+    def test_determine_packages_queens(self, _config):
+        self.os_release.return_value = 'queens'
         self.snap_install_requested.return_value = False
         _config.return_value = None
         result = utils.determine_packages()
         ex = utils.BASE_PACKAGES + [
-            'keystone', 'python-keystoneclient', 'libapache2-mod-wsgi',
-            'memcached']
+            'keystone', 'python-keystoneclient', 'memcached',
+            'libapache2-mod-wsgi'
+        ]
+        self.assertEqual(set(ex), set(result))
+
+    @patch('charmhelpers.contrib.openstack.utils.config')
+    def test_determine_packages_rocky(self, _config):
+        self.os_release.return_value = 'rocky'
+        self.snap_install_requested.return_value = False
+        _config.return_value = None
+        result = utils.determine_packages()
+        ex = list(set(
+            [p for p in utils.BASE_PACKAGES if not p.startswith('python-')] +
+            ['memcached'] + utils.PY3_PACKAGES))
         self.assertEqual(set(ex), set(result))
 
     @patch('charmhelpers.contrib.openstack.utils.config')
@@ -177,6 +189,19 @@ class TestKeystoneUtils(CharmTestCase):
         result = utils.determine_packages()
         ex = utils.BASE_PACKAGES_SNAP + ['memcached']
         self.assertEqual(set(ex), set(result))
+
+    def test_determine_purge_packages(self):
+        'Ensure no packages are identified for purge prior to rocky'
+        self.os_release.return_value = 'queens'
+        self.assertEqual(utils.determine_purge_packages(), [])
+
+    def test_determine_purge_packages_rocky(self):
+        'Ensure python packages are identified for purge at rocky'
+        self.os_release.return_value = 'rocky'
+        self.assertEqual(utils.determine_purge_packages(),
+                         [p for p in utils.BASE_PACKAGES
+                          if p.startswith('python-')] +
+                         ['python-keystone', 'python-memcache'])
 
     @patch.object(utils, 'is_elected_leader')
     @patch.object(utils, 'disable_unused_apache_sites')
@@ -190,6 +215,7 @@ class TestKeystoneUtils(CharmTestCase):
             mock_is_elected_leader):
         configs = MagicMock()
         self.test_config.set('openstack-origin', 'cloud:xenial-newton')
+        self.os_release.return_value = 'ocata'
         determine_packages.return_value = []
         os_path_exists.return_value = True
         run_in_apache.return_value = True

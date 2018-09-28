@@ -1051,12 +1051,14 @@ def get_admin_passwd(user=None):
     if passwd and passwd.lower() != "none":
         return passwd
 
+    if user is None:
+        user = config('admin-user')
+
     _migrate_admin_password()
     passwd = leader_get('{}_passwd'.format(user))
 
     if not passwd and is_leader():
-        log("Generating new passwd for user: %s" %
-            config("admin-user"))
+        log("Generating new passwd for user: %s" % user)
         cmd = ['pwgen', '-c', '16', '1']
         passwd = str(subprocess.check_output(cmd)).strip()
 
@@ -1065,7 +1067,7 @@ def get_admin_passwd(user=None):
 
 def set_admin_passwd(passwd, user=None):
     if user is None:
-        user = 'admin'
+        user = config('admin-user')
 
     leader_set({'{}_passwd'.format(user): passwd})
 

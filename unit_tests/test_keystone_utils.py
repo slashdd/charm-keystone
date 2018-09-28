@@ -674,6 +674,49 @@ class TestKeystoneUtils(CharmTestCase):
 
     @patch.object(utils, 'is_leader')
     @patch.object(utils, 'leader_get')
+    def test_get_admin_passwd_leader_set(self, leader_get, is_leader):
+        is_leader.return_value = False
+        leader_get.return_value = 'admin'
+        self.assertEqual(utils.get_admin_passwd(), 'admin')
+        leader_get.assert_called_with('admin_passwd')
+
+    @patch.object(utils, 'is_leader')
+    @patch.object(utils, 'leader_get')
+    def test_get_admin_passwd_leader_set_user_specified(self, leader_get,
+                                                        is_leader):
+        is_leader.return_value = False
+        leader_get.return_value = 'admin'
+        self.assertEqual(utils.get_admin_passwd(user='test'), 'admin')
+        leader_get.assert_called_with('test_passwd')
+
+    @patch.object(utils, 'is_leader')
+    @patch.object(utils, 'leader_get')
+    def test_get_admin_passwd_leader_set_user_config(self, leader_get,
+                                                     is_leader):
+        is_leader.return_value = False
+        leader_get.return_value = 'admin'
+        self.test_config.set('admin-user', 'test')
+        self.assertEqual(utils.get_admin_passwd(), 'admin')
+        leader_get.assert_called_with('test_passwd')
+
+    @patch.object(utils, 'leader_set')
+    def test_set_admin_password(self, leader_set):
+        utils.set_admin_passwd('secret')
+        leader_set.assert_called_once_with({'admin_passwd': 'secret'})
+
+    @patch.object(utils, 'leader_set')
+    def test_set_admin_password_config_username(self, leader_set):
+        self.test_config.set('admin-user', 'username')
+        utils.set_admin_passwd('secret')
+        leader_set.assert_called_once_with({'username_passwd': 'secret'})
+
+    @patch.object(utils, 'leader_set')
+    def test_set_admin_password_username(self, leader_set):
+        utils.set_admin_passwd('secret', user='username')
+        leader_set.assert_called_once_with({'username_passwd': 'secret'})
+
+    @patch.object(utils, 'is_leader')
+    @patch.object(utils, 'leader_get')
     @patch('os.path.isfile')
     def test_get_admin_passwd_genpass(self, isfile, leader_get, is_leader):
         is_leader.return_value = True

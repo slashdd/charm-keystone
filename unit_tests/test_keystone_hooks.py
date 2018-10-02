@@ -342,6 +342,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertTrue(update.called)
         self.assertTrue(mock_update_domains.called)
 
+    @patch.object(hooks, 'is_expected_scale')
     @patch.object(hooks, 'os_release')
     @patch.object(hooks, 'run_in_apache')
     @patch.object(hooks, 'is_db_initialised')
@@ -350,10 +351,12 @@ class KeystoneRelationTests(CharmTestCase):
                                                           config_https,
                                                           mock_db_init,
                                                           mock_run_in_apache,
-                                                          os_release):
+                                                          os_release,
+                                                          is_expected_scale):
         os_release.return_value = 'ocata'
         self.enable_memcache.return_value = False
         mock_run_in_apache.return_value = False
+        is_expected_scale.return_value = True
 
         self.openstack_upgrade_available.return_value = True
         self.test_config.set('action-managed-upgrade', True)
@@ -754,6 +757,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertFalse(self.migrate_database.called)
         self.assertFalse(update.called)
 
+    @patch.object(hooks, 'is_expected_scale')
     @patch.object(hooks, 'configure_https')
     @patch.object(hooks, 'admin_relation_changed')
     @patch.object(hooks, 'identity_credentials_changed')
@@ -765,9 +769,11 @@ class KeystoneRelationTests(CharmTestCase):
                                                 identity_changed,
                                                 identity_credentials_changed,
                                                 admin_relation_changed,
-                                                configure_https):
+                                                configure_https,
+                                                is_expected_scale):
         """ Verify all identity relations are updated """
         is_db_initialized.return_value = True
+        is_expected_scale.return_value = True
         self.relation_ids.return_value = ['identity-relation:0']
         self.related_units.return_value = ['unit/0']
         log_calls = [call('Firing identity_changed hook for all related '
@@ -811,26 +817,30 @@ class KeystoneRelationTests(CharmTestCase):
                                     level='INFO')
         self.assertFalse(self.relation_ids.called)
 
+    @patch.object(hooks, 'is_expected_scale')
     @patch.object(hooks, 'configure_https')
     @patch.object(hooks, 'is_db_initialised')
     @patch.object(hooks, 'CONFIGS')
     def test_update_all_leader(self, configs, is_db_initialized,
-                               configure_https):
+                               configure_https, is_expected_scale):
         """ Verify update identity relations when the leader"""
         self.is_elected_leader.return_value = True
         is_db_initialized.return_value = True
+        is_expected_scale.return_value = True
         hooks.update_all_identity_relation_units(check_db_ready=False)
         # Still updates relations
         self.assertTrue(self.relation_ids.called)
 
+    @patch.object(hooks, 'is_expected_scale')
     @patch.object(hooks, 'configure_https')
     @patch.object(hooks, 'is_db_initialised')
     @patch.object(hooks, 'CONFIGS')
     def test_update_all_not_leader(self, configs, is_db_initialized,
-                                   configure_https):
+                                   configure_https, is_expected_scale):
         """ Verify update identity relations when not the leader"""
         self.is_elected_leader.return_value = False
         is_db_initialized.return_value = True
+        is_expected_scale.return_value = True
         hooks.update_all_identity_relation_units(check_db_ready=False)
         self.assertFalse(self.ensure_initial_admin.called)
         # Still updates relations

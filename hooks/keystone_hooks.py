@@ -104,6 +104,7 @@ from keystone_utils import (
     send_notifications,
     is_db_ready,
     is_db_initialised,
+    is_expected_scale,
     filter_null,
     is_service_present,
     delete_service_entry,
@@ -309,6 +310,10 @@ def update_all_identity_relation_units(check_db_ready=True):
     if not is_db_initialised():
         log("Database not yet initialised - deferring identity-relation "
             "updates", level=INFO)
+        return
+    if not is_expected_scale():
+        log("Keystone charm and it's dependencies not yet at expected scale "
+            "- deferring identity-relation updates", level=INFO)
         return
 
     log('Firing identity_changed hook for all related services.')

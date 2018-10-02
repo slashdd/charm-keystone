@@ -1283,3 +1283,75 @@ class TestKeystoneUtils(CharmTestCase):
         utils.fernet_keys_rotate_and_sync()
         mock_fernet_rotate.assert_called_once_with()
         mock_key_leader_set.assert_called_once_with()
+
+    @patch.object(utils, 'expected_related_units')
+    @patch.object(utils, 'expected_peer_units')
+    @patch.object(utils, 'related_units')
+    @patch.object(utils, 'expect_ha')
+    @patch.object(utils, 'relation_ids')
+    def test_is_expected_scale(self, relation_ids, expect_ha, related_units,
+                               expected_peer_units, expected_related_units):
+        relation_ids.return_value = ['FAKE_RID']
+        expect_ha.return_value = False
+        related_units.return_value = ['unit/0', 'unit/1', 'unit/2']
+        expected_peer_units.return_value = iter(related_units.return_value)
+        expected_related_units.return_value = iter(related_units.return_value)
+        self.assertTrue(utils.is_expected_scale())
+        relation_ids.assert_has_calls([
+            call(reltype='cluster'),
+            call(reltype='shared-db')])
+        related_units.assert_called_with(relid='FAKE_RID')
+
+    @patch.object(utils, 'expected_related_units')
+    @patch.object(utils, 'expected_peer_units')
+    @patch.object(utils, 'related_units')
+    @patch.object(utils, 'expect_ha')
+    @patch.object(utils, 'relation_ids')
+    def test_is_expected_scale_ha(self, relation_ids, expect_ha, related_units,
+                                  expected_peer_units, expected_related_units):
+        relation_ids.return_value = ['FAKE_RID']
+        expect_ha.return_value = True
+        related_units.return_value = ['unit/0', 'unit/1', 'unit/2']
+        expected_peer_units.return_value = iter(related_units.return_value)
+        expected_related_units.return_value = iter(related_units.return_value)
+        self.assertTrue(utils.is_expected_scale())
+        relation_ids.assert_has_calls([
+            call(reltype='cluster'),
+            call(reltype='shared-db'),
+            call(reltype='ha')])
+        related_units.assert_called_with(relid='FAKE_RID')
+
+    @patch.object(utils, 'expected_related_units')
+    @patch.object(utils, 'expected_peer_units')
+    @patch.object(utils, 'related_units')
+    @patch.object(utils, 'expect_ha')
+    @patch.object(utils, 'relation_ids')
+    def test_not_is_expected_scale(self, relation_ids, expect_ha,
+                                   related_units, expected_peer_units,
+                                   expected_related_units):
+        relation_ids.return_value = ['FAKE_RID']
+        expect_ha.return_value = False
+        related_units.return_value = ['unit/0', 'unit/1']
+        expected_peer_units.return_value = iter(['unit/0', 'unit/1', 'unit/2'])
+        expected_related_units.return_value = iter(
+            ['unit/0', 'unit/1', 'unit/2'])
+        self.assertFalse(utils.is_expected_scale())
+        relation_ids.assert_has_calls([
+            call(reltype='cluster'),
+            call(reltype='shared-db')])
+        related_units.assert_called_with(relid='FAKE_RID')
+
+    @patch.object(utils, 'expected_related_units')
+    @patch.object(utils, 'expected_peer_units')
+    @patch.object(utils, 'related_units')
+    @patch.object(utils, 'expect_ha')
+    @patch.object(utils, 'relation_ids')
+    def test_is_expected_scale_no_goal_state_support(self, relation_ids,
+                                                     expect_ha, related_units,
+                                                     expected_peer_units,
+                                                     expected_related_units):
+        relation_ids.return_value = ['FAKE_RID']
+        related_units.return_value = ['unit/0', 'unit/1', 'unit/2']
+        expected_peer_units.side_effect = NotImplementedError
+        self.assertTrue(utils.is_expected_scale())
+        expected_related_units.assert_not_called()

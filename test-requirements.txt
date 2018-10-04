@@ -1,3 +1,5 @@
+charm-tools>=2.4.4
+requests>=2.18.4
 mock>=1.2
 flake8>=2.2.4,<=2.4.1
 os-testr>=0.4.1

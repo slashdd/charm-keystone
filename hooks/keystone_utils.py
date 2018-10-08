@@ -414,6 +414,10 @@ valid_services = {
         "type": "placement",
         "desc": "Nova Placement Service"
     },
+    "octavia": {
+        "type": "load-balancer",
+        "desc": "Octavia Load Balancer as a Service for OpenStack",
+    },
 }
 
 # The interface is said to be satisfied if anyone of the interfaces in the

@@ -40,6 +40,10 @@ from charmhelpers.contrib.network.ip import (
     get_ipv6_addr
 )
 
+from charmhelpers.contrib.openstack.ha.utils import (
+    expect_ha,
+)
+
 from charmhelpers.contrib.openstack.ip import (
     resolve_address,
     PUBLIC,
@@ -73,6 +77,8 @@ from charmhelpers.core.decorators import (
 from charmhelpers.core.hookenv import (
     atexit,
     config,
+    expected_peer_units,
+    expected_related_units,
     is_leader,
     leader_get,
     leader_set,
@@ -2231,3 +2237,41 @@ def fernet_keys_rotate_and_sync(log_func=log):
     key_leader_set()
     log_func("Rotated and started sync (via leader settings) of fernet keys",
              level=INFO)
+
+
+def is_expected_scale():
+    """Query juju goal-state to determine whether our peer- and dependency-
+    relations are at the expected scale.
+
+    Useful for deferring per unit per relation housekeeping work until we are
+    ready to complete it successfully and without unnecessary repetiton.
+
+    Always returns True if version of juju used does not support goal-state.
+
+    :returns: True or False
+    :rtype: bool
+    """
+    peer_type = 'cluster'
+    peer_rid = next((rid for rid in relation_ids(reltype=peer_type)), None)
+    if not peer_rid:
+        return False
+    deps = [
+        ('shared-db',
+         next((rid for rid in relation_ids(reltype='shared-db')), None)),
+    ]
+    if expect_ha():
+        deps.append(('ha',
+                     next((rid for rid in relation_ids(reltype='ha')), None)))
+    try:
+        if (len(related_units(relid=peer_rid)) <
+                len(list(expected_peer_units()))):
+            return False
+        for dep in deps:
+            if not dep[1]:
+                return False
+            if (len(related_units(relid=dep[1])) <
+                    len(list(expected_related_units(reltype=dep[0])))):
+                return False
+    except NotImplementedError:
+        return True
+    return True

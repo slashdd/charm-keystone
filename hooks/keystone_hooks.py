@@ -838,6 +838,10 @@ def certs_changed(relation_id=None, unit=None):
         process_certificates('keystone', relation_id, unit)
         configure_https()
     write_certs_and_config()
+    # If enabling https the identity endpoints need updating.
+    if (is_db_initialised() and is_elected_leader(CLUSTER_RES) and not
+            is_unit_paused_set()):
+        ensure_initial_admin(config)
     update_all_identity_relation_units()
     update_all_domain_backends()
 

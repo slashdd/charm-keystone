@@ -1032,3 +1032,45 @@ class KeystoneRelationTests(CharmTestCase):
             'fid-restart-nonce-{}'.format(rel),
             'nonce2')
         self.assertTrue(mock_kv.flush.called)
+
+    @patch.object(hooks, 'relation_set')
+    @patch.object(hooks, 'get_certificate_request')
+    def test_certs_joined(self, get_certificate_request, relation_set):
+        get_certificate_request.return_value = {'cn': 'this-unit'}
+        hooks.certs_joined(relation_id='rid:23')
+        relation_set.assert_called_once_with(
+            relation_id='rid:23',
+            relation_settings={'cn': 'this-unit'})
+
+    @patch.object(hooks, 'config')
+    @patch.object(hooks, 'update_all_domain_backends')
+    @patch.object(hooks, 'update_all_identity_relation_units')
+    @patch.object(hooks, 'ensure_initial_admin')
+    @patch.object(hooks, 'is_unit_paused_set')
+    @patch.object(hooks, 'is_elected_leader')
+    @patch.object(hooks, 'is_db_initialised')
+    @patch.object(hooks, 'configure_https')
+    @patch.object(hooks, 'process_certificates')
+    def test_certs_changed(self, process_certificates, configure_https,
+                           is_db_initialised,
+                           is_elected_leader, is_unit_paused_set,
+                           ensure_initial_admin,
+                           update_all_identity_relation_units,
+                           update_all_domain_backends, config):
+        is_db_initialised.return_value = True
+        is_elected_leader.return_value = True
+        is_unit_paused_set.return_value = False
+        hooks.certs_changed()
+        process_certificates.assert_called_once_with('keystone', None, None)
+        configure_https.assert_called_once_with()
+        is_db_initialised.assert_called_once_with()
+        is_elected_leader.assert_called_once_with('grp_ks_vips')
+        is_unit_paused_set.assert_called_once_with()
+        ensure_initial_admin.assert_called_once_with(config)
+        update_all_identity_relation_units.assert_called_once_with()
+        update_all_domain_backends.assert_called_once_with()
+
+        ensure_initial_admin.reset_mock()
+        is_db_initialised.return_value = False
+        hooks.certs_changed()
+        self.assertFalse(ensure_initial_admin.called)

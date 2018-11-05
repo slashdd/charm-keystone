@@ -76,6 +76,7 @@ from charmhelpers.core.decorators import (
 
 from charmhelpers.core.hookenv import (
     atexit,
+    cached,
     config,
     expected_peer_units,
     expected_related_units,
@@ -84,6 +85,7 @@ from charmhelpers.core.hookenv import (
     leader_set,
     log,
     local_unit,
+    metadata,
     relation_get,
     relation_set,
     relation_id,
@@ -2239,6 +2241,18 @@ def fernet_keys_rotate_and_sync(log_func=log):
              level=INFO)
 
 
+@cached
+def container_scoped_relations():
+    '''Get all the container scoped relations'''
+    md = metadata()
+    relations = []
+    for relation_type in ('provides', 'requires', 'peers'):
+        for relation in md.get(relation_type, []):
+            if md[relation_type][relation].get('scope') == 'container':
+                relations.append(relation)
+    return relations
+
+
 def is_expected_scale():
     """Query juju goal-state to determine whether our peer- and dependency-
     relations are at the expected scale.
@@ -2269,8 +2283,15 @@ def is_expected_scale():
         for dep in deps:
             if not dep[1]:
                 return False
-            if (len(related_units(relid=dep[1])) <
-                    len(list(expected_related_units(reltype=dep[0])))):
+            # Goal state returns every unit even for container scoped
+            # relations but the charm only ever has a relation with
+            # the local unit.
+            if dep[0] in container_scoped_relations():
+                expected_count = 1
+            else:
+                expected_count = len(
+                    list(expected_related_units(reltype=dep[0])))
+            if len(related_units(relid=dep[1])) < expected_count:
                 return False
     except NotImplementedError:
         return True

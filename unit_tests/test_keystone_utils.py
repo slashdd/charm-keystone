@@ -1310,13 +1310,16 @@ class TestKeystoneUtils(CharmTestCase):
         mock_fernet_rotate.assert_called_once_with()
         mock_key_leader_set.assert_called_once_with()
 
+    @patch.object(utils, 'container_scoped_relations')
     @patch.object(utils, 'expected_related_units')
     @patch.object(utils, 'expected_peer_units')
     @patch.object(utils, 'related_units')
     @patch.object(utils, 'expect_ha')
     @patch.object(utils, 'relation_ids')
     def test_is_expected_scale(self, relation_ids, expect_ha, related_units,
-                               expected_peer_units, expected_related_units):
+                               expected_peer_units, expected_related_units,
+                               container_scoped_relations):
+        container_scoped_relations.return_value = ['ha']
         relation_ids.return_value = ['FAKE_RID']
         expect_ha.return_value = False
         related_units.return_value = ['unit/0', 'unit/1', 'unit/2']
@@ -1328,13 +1331,16 @@ class TestKeystoneUtils(CharmTestCase):
             call(reltype='shared-db')])
         related_units.assert_called_with(relid='FAKE_RID')
 
+    @patch.object(utils, 'container_scoped_relations')
     @patch.object(utils, 'expected_related_units')
     @patch.object(utils, 'expected_peer_units')
     @patch.object(utils, 'related_units')
     @patch.object(utils, 'expect_ha')
     @patch.object(utils, 'relation_ids')
     def test_is_expected_scale_ha(self, relation_ids, expect_ha, related_units,
-                                  expected_peer_units, expected_related_units):
+                                  expected_peer_units, expected_related_units,
+                                  container_scoped_relations):
+        container_scoped_relations.return_value = ['ha']
         relation_ids.return_value = ['FAKE_RID']
         expect_ha.return_value = True
         related_units.return_value = ['unit/0', 'unit/1', 'unit/2']
@@ -1381,3 +1387,17 @@ class TestKeystoneUtils(CharmTestCase):
         expected_peer_units.side_effect = NotImplementedError
         self.assertTrue(utils.is_expected_scale())
         expected_related_units.assert_not_called()
+
+    @patch.object(utils, 'metadata')
+    def test_container_scoped_relations(self, metadata):
+        _metadata = {
+            'provides': {
+                'amqp': {'interface': 'rabbitmq'},
+                'identity-service': {'interface': 'keystone'},
+                'ha': {
+                    'interface': 'hacluster',
+                    'scope': 'container'}},
+            'peers': {
+                'cluster': {'interface': 'openstack-ha'}}}
+        metadata.return_value = _metadata
+        self.assertEqual(utils.container_scoped_relations(), ['ha'])

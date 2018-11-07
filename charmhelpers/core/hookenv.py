@@ -525,7 +525,7 @@ def expected_peer_units():
     This function will raise NotImplementedError if used with juju versions
     without goal-state support.
 
-    :returns iterator
+    :returns: iterator
     :rtype: types.GeneratorType
     :raises: NotImplementedError
     """
@@ -550,7 +550,7 @@ def expected_related_units(reltype=None):
     support.
 
     Example usage:
-    log('consumer {} of {} joined relation {}'
+    log('participant {} of {} joined relation {}'
         .format(len(related_units()),
                 len(list(expected_related_units())),
                 relation_type()))

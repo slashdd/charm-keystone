@@ -891,14 +891,18 @@ class TestKeystoneUtils(CharmTestCase):
         utils.restart_pid_check('apache2')
         self.service_stop.assert_called_once_with('apache2')
         self.service_start.assert_called_once_with('apache2')
-        self.subprocess.call.assert_called_once_with(['pgrep', 'apache2'])
+        self.subprocess.call.assert_called_once_with(
+            ['pgrep', 'apache2', '--nslist', 'pid', '--ns', str(os.getpid())]
+        )
 
     def test_restart_pid_check_ptable_string(self):
         self.subprocess.call.return_value = 1
         utils.restart_pid_check('apache2', ptable_string='httpd')
         self.service_stop.assert_called_once_with('apache2')
         self.service_start.assert_called_once_with('apache2')
-        self.subprocess.call.assert_called_once_with(['pgrep', 'httpd'])
+        self.subprocess.call.assert_called_once_with(
+            ['pgrep', 'httpd', '--nslist', 'pid', '--ns', str(os.getpid())]
+        )
 
     # Do not sleep() to speed up manual runs.
     @patch('charmhelpers.core.decorators.time')
@@ -910,9 +914,12 @@ class TestKeystoneUtils(CharmTestCase):
         self.service_start.assert_called_once_with('apache2')
 #        self.subprocess.call.assert_called_once_with(['pgrep', 'httpd'])
         expected = [
-            call(['pgrep', 'httpd']),
-            call(['pgrep', 'httpd']),
-            call(['pgrep', 'httpd']),
+            call(['pgrep', 'httpd', '--nslist', 'pid', '--ns',
+                 str(os.getpid())]),
+            call(['pgrep', 'httpd', '--nslist', 'pid', '--ns',
+                 str(os.getpid())]),
+            call(['pgrep', 'httpd', '--nslist', 'pid', '--ns',
+                 str(os.getpid())])
         ]
         self.assertEqual(self.subprocess.call.call_args_list, expected)
 

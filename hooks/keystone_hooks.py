@@ -620,7 +620,10 @@ def ha_changed():
     if clustered:
         log('Cluster configured, notifying other services and updating '
             'keystone endpoint configuration')
-        update_all_identity_relation_units()
+        if (is_db_initialised() and is_elected_leader(CLUSTER_RES) and not
+                is_unit_paused_set()):
+            ensure_initial_admin(config)
+            update_all_identity_relation_units()
 
 
 @hooks.hook('identity-admin-relation-changed')

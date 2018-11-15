@@ -90,6 +90,8 @@ TO_PATCH = [
     'key_leader_set',
     'key_setup',
     'key_write',
+    'remove_old_packages',
+    'services',
     # other
     'check_call',
     'execd_preinstall',
@@ -700,11 +702,15 @@ class KeystoneRelationTests(CharmTestCase):
         mock_is_db_initialised.return_value = True
         mock_is_db_ready.return_value = True
         mock_relation_ids.return_value = []
+        self.remove_old_packages.return_value = True
+        self.services.return_value = ['apache2']
 
         self.filter_installed_packages.return_value = []
         hooks.upgrade_charm()
         self.assertTrue(self.apt_install.called)
         self.assertTrue(update.called)
+        self.remove_old_packages.assert_called_once_with()
+        self.service_restart.assert_called_with('apache2')
 
     @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(hooks, 'is_db_initialised')

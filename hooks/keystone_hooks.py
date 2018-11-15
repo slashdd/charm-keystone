@@ -123,6 +123,7 @@ from keystone_utils import (
     key_write,
     pause_unit_helper,
     resume_unit_helper,
+    remove_old_packages,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -707,6 +708,7 @@ def configure_https():
 def upgrade_charm():
     status_set('maintenance', 'Installing apt packages')
     apt_install(filter_installed_packages(determine_packages()))
+    packages_removed = remove_old_packages()
 
     if run_in_apache():
         disable_unused_apache_sites()
@@ -717,6 +719,11 @@ def upgrade_charm():
     leader_init_db_if_ready()
 
     update_nrpe_config()
+
+    if packages_removed:
+        log("Package purge detected, restarting services", "INFO")
+        for s in services():
+            service_restart(s)
 
     if is_elected_leader(CLUSTER_RES):
         log('Cluster leader - ensuring endpoint configuration is up to '

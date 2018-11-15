@@ -647,6 +647,18 @@ def determine_purge_packages():
     return []
 
 
+def remove_old_packages():
+    '''Purge any packages that need ot be removed.
+
+    :returns: bool Whether packages were removed.
+    '''
+    installed_packages = filter_missing_packages(determine_purge_packages())
+    if installed_packages:
+        apt_purge(installed_packages, fatal=True)
+        apt_autoremove(purge=True, fatal=True)
+    return bool(installed_packages)
+
+
 def save_script_rc():
     env_vars = {'OPENSTACK_SERVICE_KEYSTONE': 'keystone',
                 'OPENSTACK_PORT_ADMIN': determine_api_port(
@@ -680,10 +692,7 @@ def do_openstack_upgrade(configs):
         apt_install(packages=determine_packages(),
                     options=dpkg_opts, fatal=True)
 
-        installed_pkgs = filter_missing_packages(determine_purge_packages())
-        if installed_pkgs:
-            apt_purge(installed_pkgs, fatal=True)
-            apt_autoremove(purge=True, fatal=True)
+        remove_old_packages()
     else:
         # TODO: Add support for upgrade from deb->snap
         # NOTE(thedac): Setting devmode until LP#1719636 is fixed

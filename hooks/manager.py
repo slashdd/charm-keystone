@@ -106,7 +106,7 @@ def retry_on_exception(num_retries, base_delay=0, exc_type=Exception):
 
                 delay = base_delay * multiplier
                 multiplier += 1
-                print("Retrying '%s' %d more times (delay={})"
+                print("Retrying '{0}' {1} more times (delay={2})"
                       .format(f.__name__, retries, delay))
                 retries -= 1
                 if delay:

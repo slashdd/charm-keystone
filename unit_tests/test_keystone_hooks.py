@@ -66,11 +66,9 @@ TO_PATCH = [
     # charmhelpers.contrib.openstack.ip
     'resolve_address',
     # charmhelpers.contrib.openstack.ha.utils
-    'update_dns_ha_resource_params',
     'expect_ha',
     # charmhelpers.contrib.hahelpers.cluster_utils
     'is_elected_leader',
-    'get_hacluster_config',
     'is_clustered',
     'enable_memcache',
     # keystone_utils
@@ -95,9 +93,8 @@ TO_PATCH = [
     # other
     'check_call',
     'execd_preinstall',
+    'generate_ha_relation_data',
     # ip
-    'get_iface_for_address',
-    'get_netmask_for_address',
     'is_service_present',
     'delete_service_entry',
     'os_release',
@@ -472,165 +469,10 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertTrue(update.called)
 
     def test_ha_joined(self):
-        self.get_hacluster_config.return_value = {
-            'vip': '10.10.10.10',
-            'ha-bindiface': 'em0',
-            'ha-mcastport': '8080'
-        }
-        self.get_iface_for_address.return_value = 'em1'
-        self.get_netmask_for_address.return_value = '255.255.255.0'
-        hooks.ha_joined()
-        args = {
-            'relation_id': None,
-            'corosync_bindiface': 'em0',
-            'corosync_mcastport': '8080',
-            'init_services': {'res_ks_haproxy': 'haproxy'},
-            'resources': {'res_ks_em1_vip': 'ocf:heartbeat:IPaddr2',
-                          'res_ks_haproxy': 'lsb:haproxy'},
-            'resource_params': {
-                'res_ks_em1_vip': 'params ip="10.10.10.10"'
-                                  ' cidr_netmask="255.255.255.0" nic="em1"',
-                'res_ks_haproxy': 'op monitor interval="5s"'},
-            'clones': {'cl_ks_haproxy': 'res_ks_haproxy'}
-        }
-        self.relation_set.assert_called_with(**args)
-
-    def test_ha_joined_duplicate_vip_key(self):
-        self.get_hacluster_config.return_value = {
-            'vip': '10.10.10.10 10.10.10.10',
-            'ha-bindiface': 'em0',
-            'ha-mcastport': '8080'
-        }
-        self.get_iface_for_address.return_value = 'em1'
-        self.get_netmask_for_address.return_value = '255.255.255.0'
-        hooks.ha_joined()
-        args = {
-            'relation_id': None,
-            'corosync_bindiface': 'em0',
-            'corosync_mcastport': '8080',
-            'init_services': {'res_ks_haproxy': 'haproxy'},
-            'resources': {'res_ks_em1_vip': 'ocf:heartbeat:IPaddr2',
-                          'res_ks_haproxy': 'lsb:haproxy'},
-            'resource_params': {
-                'res_ks_em1_vip': 'params ip="10.10.10.10"'
-                                  ' cidr_netmask="255.255.255.0" nic="em1"',
-                'res_ks_haproxy': 'op monitor interval="5s"'},
-            'clones': {'cl_ks_haproxy': 'res_ks_haproxy'}
-        }
-        self.relation_set.assert_called_with(**args)
-
-    def test_ha_joined_dual_stack_vips(self):
-        self.get_hacluster_config.return_value = {
-            'vip': '10.10.10.10 2001:db8::abc',
-            'ha-bindiface': 'em0',
-            'ha-mcastport': '8080'
-        }
-        self.get_iface_for_address.return_value = 'em1'
-        self.get_netmask_for_address.return_value = '255.255.255.0'
-        hooks.ha_joined()
-        args = {
-            'relation_id': None,
-            'corosync_bindiface': 'em0',
-            'corosync_mcastport': '8080',
-            'init_services': {'res_ks_haproxy': 'haproxy'},
-            'resources': {'res_ks_em1_vip': 'ocf:heartbeat:IPaddr2',
-                          'res_ks_em1_vip_ipv6addr': 'ocf:heartbeat:IPv6addr',
-                          'res_ks_haproxy': 'lsb:haproxy'},
-            'resource_params': {
-                'res_ks_em1_vip': 'params ip="10.10.10.10"'
-                                  ' cidr_netmask="255.255.255.0" nic="em1"',
-                'res_ks_em1_vip_ipv6addr': 'params ipv6addr="2001:db8::abc"'
-                                  ' cidr_netmask="255.255.255.0" nic="em1"',
-                'res_ks_haproxy': 'op monitor interval="5s"'},
-            'clones': {'cl_ks_haproxy': 'res_ks_haproxy'}
-        }
-        self.relation_set.assert_called_with(**args)
-
-    def test_ha_joined_no_bound_ip(self):
-        self.get_hacluster_config.return_value = {
-            'vip': '10.10.10.10',
-            'ha-bindiface': 'em0',
-            'ha-mcastport': '8080'
-        }
-        self.test_config.set('vip_iface', 'eth120')
-        self.test_config.set('vip_cidr', '21')
-        self.get_iface_for_address.return_value = None
-        self.get_netmask_for_address.return_value = None
-        hooks.ha_joined()
-        args = {
-            'relation_id': None,
-            'corosync_bindiface': 'em0',
-            'corosync_mcastport': '8080',
-            'init_services': {'res_ks_haproxy': 'haproxy'},
-            'resources': {'res_ks_eth120_vip': 'ocf:heartbeat:IPaddr2',
-                          'res_ks_haproxy': 'lsb:haproxy'},
-            'resource_params': {
-                'res_ks_eth120_vip': 'params ip="10.10.10.10"'
-                                     ' cidr_netmask="21" nic="eth120"',
-                'res_ks_haproxy': 'op monitor interval="5s"'},
-            'clones': {'cl_ks_haproxy': 'res_ks_haproxy'}
-        }
-        self.relation_set.assert_called_with(**args)
-
-    def test_ha_joined_with_ipv6(self):
-        self.test_config.set('prefer-ipv6', True)
-        self.get_hacluster_config.return_value = {
-            'vip': '2001:db8:1::1',
-            'ha-bindiface': 'em0',
-            'ha-mcastport': '8080'
-        }
-        self.get_iface_for_address.return_value = 'em1'
-        self.get_netmask_for_address.return_value = '64'
-        hooks.ha_joined()
-        args = {
-            'relation_id': None,
-            'corosync_bindiface': 'em0',
-            'corosync_mcastport': '8080',
-            'init_services': {'res_ks_haproxy': 'haproxy'},
-            'resources': {'res_ks_em1_vip': 'ocf:heartbeat:IPv6addr',
-                          'res_ks_haproxy': 'lsb:haproxy'},
-            'resource_params': {
-                'res_ks_em1_vip': 'params ipv6addr="2001:db8:1::1"'
-                                  ' cidr_netmask="64" nic="em1"',
-                'res_ks_haproxy': 'op monitor interval="5s"'},
-            'clones': {'cl_ks_haproxy': 'res_ks_haproxy'}
-        }
-        self.relation_set.assert_called_with(**args)
-
-    def test_ha_joined_dns_ha(self):
-        def _fake_update(resources, resource_params, relation_id=None):
-            resources.update({'res_keystone_public_hostname': 'ocf:maas:dns'})
-            resource_params.update({'res_keystone_public_hostname':
-                                    'params fqdn="keystone.maas" '
-                                    'ip_address="10.0.0.1"'})
-
-        self.test_config.set('dns-ha', True)
-        self.get_hacluster_config.return_value = {
-            'vip': None,
-            'ha-bindiface': 'em0',
-            'ha-mcastport': '8080',
-            'os-admin-hostname': None,
-            'os-internal-hostname': None,
-            'os-public-hostname': 'keystone.maas',
-        }
-        args = {
-            'relation_id': None,
-            'corosync_bindiface': 'em0',
-            'corosync_mcastport': '8080',
-            'init_services': {'res_ks_haproxy': 'haproxy'},
-            'resources': {'res_keystone_public_hostname': 'ocf:maas:dns',
-                          'res_ks_haproxy': 'lsb:haproxy'},
-            'resource_params': {
-                'res_keystone_public_hostname': 'params fqdn="keystone.maas" '
-                                                'ip_address="10.0.0.1"',
-                'res_ks_haproxy': 'op monitor interval="5s"'},
-            'clones': {'cl_ks_haproxy': 'res_ks_haproxy'}
-        }
-        self.update_dns_ha_resource_params.side_effect = _fake_update
-
-        hooks.ha_joined()
-        self.assertTrue(self.update_dns_ha_resource_params.called)
-        self.relation_set.assert_called_with(**args)
+        self.generate_ha_relation_data.return_value = {'rel_data': 'data'}
+        hooks.ha_joined(relation_id='rid:23')
+        self.relation_set.assert_called_once_with(
+            relation_id='rid:23', rel_data='data')
 
     @patch('keystone_utils.log')
     @patch.object(hooks, 'CONFIGS')

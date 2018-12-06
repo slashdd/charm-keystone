@@ -128,13 +128,12 @@ from keystone_utils import (
 
 from charmhelpers.contrib.hahelpers.cluster import (
     is_elected_leader,
-    get_hacluster_config,
     https,
     is_clustered,
 )
 
 from charmhelpers.contrib.openstack.ha.utils import (
-    update_dns_ha_resource_params,
+    generate_ha_relation_data,
     expect_ha,
 )
 
@@ -149,9 +148,6 @@ from charmhelpers.contrib.openstack.ip import (
 )
 
 from charmhelpers.contrib.network.ip import (
-    get_iface_for_address,
-    get_netmask_for_address,
-    is_ipv6,
     get_relation_ip,
 )
 from charmhelpers.contrib.openstack.context import ADDRESS_TYPES
@@ -545,71 +541,8 @@ def leader_settings_changed():
 
 @hooks.hook('ha-relation-joined')
 def ha_joined(relation_id=None):
-    cluster_config = get_hacluster_config()
-    resources = {
-        'res_ks_haproxy': 'lsb:haproxy',
-    }
-    resource_params = {
-        'res_ks_haproxy': 'op monitor interval="5s"'
-    }
-
-    if config('dns-ha'):
-        update_dns_ha_resource_params(relation_id=relation_id,
-                                      resources=resources,
-                                      resource_params=resource_params)
-    else:
-        vip_group = []
-        for vip in cluster_config['vip'].split():
-            if is_ipv6(vip):
-                res_ks_vip = 'ocf:heartbeat:IPv6addr'
-                vip_params = 'ipv6addr'
-            else:
-                res_ks_vip = 'ocf:heartbeat:IPaddr2'
-                vip_params = 'ip'
-
-            iface = (get_iface_for_address(vip) or
-                     config('vip_iface'))
-            netmask = (get_netmask_for_address(vip) or
-                       config('vip_cidr'))
-
-            if iface is not None:
-                vip_key = 'res_ks_{}_vip'.format(iface)
-                if vip_key in vip_group:
-                    if vip not in resource_params[vip_key]:
-                        vip_key = '{}_{}'.format(vip_key, vip_params)
-                    else:
-                        log("Resource '{0}' (vip='{1}') already exists in "
-                            "vip group - skipping"
-                            .format(vip_key, vip), WARNING)
-                        continue
-
-                vip_group.append(vip_key)
-                resources[vip_key] = res_ks_vip
-                resource_params[vip_key] = (
-                    'params {ip}="{vip}" cidr_netmask="{netmask}"'
-                    ' nic="{iface}"'.format(ip=vip_params,
-                                            vip=vip,
-                                            iface=iface,
-                                            netmask=netmask)
-                )
-
-        if len(vip_group) >= 1:
-            relation_set(relation_id=relation_id,
-                         groups={CLUSTER_RES: ' '.join(vip_group)})
-
-    init_services = {
-        'res_ks_haproxy': 'haproxy'
-    }
-    clones = {
-        'cl_ks_haproxy': 'res_ks_haproxy'
-    }
-    relation_set(relation_id=relation_id,
-                 init_services=init_services,
-                 corosync_bindiface=cluster_config['ha-bindiface'],
-                 corosync_mcastport=cluster_config['ha-mcastport'],
-                 resources=resources,
-                 resource_params=resource_params,
-                 clones=clones)
+    settings = generate_ha_relation_data('ks')
+    relation_set(relation_id=relation_id, **settings)
 
 
 @hooks.hook('ha-relation-changed')

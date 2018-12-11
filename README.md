@@ -17,7 +17,7 @@ The following interfaces are provided:
   `admin_url` and `internal_url`. It first checks that the requested service is
   listed as a supported service. This list should stay updated to support
   current OpenStack core services. If the service is supported, an entry in the
-  service catalog is created, an endpoint template is created and a admin token
+  service catalog is created, an endpoint template is created and an admin token
   is generated. The other end of the relation receives the token as well as
   info on which ports Keystone is listening on.
 

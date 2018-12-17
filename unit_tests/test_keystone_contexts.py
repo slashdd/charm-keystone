@@ -439,3 +439,69 @@ class TestKeystoneContexts(CharmTestCase):
 
         self.maxDiff = None
         self.assertCountEqual(ctxt(), {})
+
+    @patch.object(context, 'relation_ids')
+    def test_middleware_no_related_units(self, mock_relation_ids):
+        os.environ['JUJU_UNIT_NAME'] = 'keystone'
+
+        def relation_ids_side_effect(rname):
+            return {
+                'keystone-middleware': {}
+            }[rname]
+
+        mock_relation_ids.side_effect = relation_ids_side_effect
+        ctxt = context.MiddlewareContext()
+
+        self.assertEqual(ctxt(), {'middlewares': ''})
+
+    @patch('charmhelpers.contrib.openstack.context.relation_ids')
+    @patch('charmhelpers.contrib.openstack.context.related_units')
+    @patch('charmhelpers.contrib.openstack.context.relation_get')
+    def test_middleware_related_units(
+            self, mock_relation_get, mock_related_units, mock_relation_ids):
+        mock_relation_ids.return_value = ['keystone-middleware:0']
+        mock_related_units.return_value = ['keystone-ico/0']
+        settings = \
+            {
+                'middleware_name': 'keystone-ico',
+                'subordinate_configuration':
+                    '{"keystone":'
+                    '{"/etc/keystone/keystone.conf":'
+                    '{"sections":'
+                    '{"authentication":'
+                    '[["simple_token_header", "SimpleToken"],'
+                    '["simple_token_secret", "foobar"]],'
+                    '"auth":'
+                    '[["methods", "external,password,token,oauth1"],'
+                    '["external", "keystone.auth.plugins.external.Domain"],'
+                    '["password", "keystone.auth.plugins.password.Password"],'
+                    '["token", "keystone.auth.plugins.token.Token"],'
+                    '["oauth1", "keystone.auth.plugins.oauth1.OAuth"]]'
+                    '}}}}'
+
+            }
+
+        def fake_rel_get(attribute=None, unit=None, rid=None):
+            return settings[attribute]
+
+        mock_relation_get.side_effect = fake_rel_get
+        ctxt = context.context.SubordinateConfigContext(
+            interface=['keystone-middleware'],
+            service='keystone',
+            config_file='/etc/keystone/keystone.conf')
+
+        exp = {'sections': {
+            u'auth': [[u'methods',
+                       u'external,password,token,oauth1'],
+                      [u'external',
+                       u'keystone.auth.plugins.external.Domain'],
+                      [u'password',
+                       u'keystone.auth.plugins.password.Password'],
+                      [u'token',
+                       u'keystone.auth.plugins.token.Token'],
+                      [u'oauth1',
+                       u'keystone.auth.plugins.oauth1.OAuth']],
+            u'authentication': [[u'simple_token_header', u'SimpleToken'],
+                                [u'simple_token_secret', u'foobar']]}}
+
+        self.assertEqual(ctxt(), exp)

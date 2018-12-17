@@ -42,6 +42,26 @@ from charmhelpers.contrib.openstack.utils import (
 )
 
 
+class MiddlewareContext(context.OSContextGenerator):
+    interfaces = ['keystone-middleware']
+
+    def __call__(self):
+
+        middlewares = []
+
+        for rid in relation_ids('keystone-middleware'):
+            if related_units(rid):
+                for unit in related_units(rid):
+                    middleware_name = relation_get('middleware_name',
+                                                   rid=rid,
+                                                   unit=unit)
+                    if middleware_name:
+                        middlewares.append(middleware_name)
+        return {
+            'middlewares': ",".join(middlewares)
+        }
+
+
 class ApacheSSLContext(context.ApacheSSLContext):
     interfaces = ['https']
     external_ports = []

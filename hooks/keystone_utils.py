@@ -233,7 +233,12 @@ BASE_RESOURCE_MAP = OrderedDict([
                      context.WorkerConfigContext(),
                      context.MemcacheContext(package='keystone'),
                      keystone_context.KeystoneFIDServiceProviderContext(),
-                     keystone_context.WebSSOTrustedDashboardContext()],
+                     keystone_context.WebSSOTrustedDashboardContext(),
+                     keystone_context.context.SubordinateConfigContext(
+                         interface=['keystone-middleware'],
+                         service='keystone',
+                         config_file=KEYSTONE_CONF),
+                     keystone_context.MiddlewareContext()]
     }),
     (KEYSTONE_LOGGER_CONF, {
         'contexts': [keystone_context.KeystoneLoggingContext()],

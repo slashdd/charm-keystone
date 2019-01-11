@@ -789,6 +789,15 @@ def certs_changed(relation_id=None, unit=None):
     update_all_domain_backends()
 
 
+@hooks.hook('keystone-middleware-relation-joined',
+            'keystone-middleware-relation-changed',
+            'keystone-middleware-relation-broken',
+            'keystone-middleware-relation-departed')
+@restart_on_change(restart_map())
+def keystone_middleware_changed():
+    CONFIGS.write(KEYSTONE_CONF)
+
+
 @hooks.hook('pre-series-upgrade')
 def pre_series_upgrade():
     log("Running prepare series upgrade hook", "INFO")

@@ -275,6 +275,8 @@ def config_changed_postupgrade():
     for r_id in relation_ids('ha'):
         ha_joined(relation_id=r_id)
 
+    notify_middleware_with_release_version()
+
 
 @hooks.hook('shared-db-relation-joined')
 def db_joined():
@@ -789,8 +791,17 @@ def certs_changed(relation_id=None, unit=None):
     update_all_domain_backends()
 
 
-@hooks.hook('keystone-middleware-relation-joined',
-            'keystone-middleware-relation-changed',
+def notify_middleware_with_release_version():
+    for rid in relation_ids('keystone-middleware'):
+        relation_set(relation_id=rid, release=os_release('keystone'))
+
+
+@hooks.hook('keystone-middleware-relation-joined')
+def keystone_middleware_joined():
+    notify_middleware_with_release_version()
+
+
+@hooks.hook('keystone-middleware-relation-changed',
             'keystone-middleware-relation-broken',
             'keystone-middleware-relation-departed')
 @restart_on_change(restart_map())

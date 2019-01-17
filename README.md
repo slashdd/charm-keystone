@@ -62,7 +62,7 @@ HA/Clustering
 
 There are two mutually exclusive high availability options: using virtual
 IP(s) or DNS. In both cases, a relationship to hacluster is required which
-provides the corosync back end HA functionality.
+provides the corosync backend HA functionality.
 
 To use virtual IP(s) the clustered nodes must be on the same subnet such that
 the VIP is a valid IP on the subnet for one of the node's interfaces and each

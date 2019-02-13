@@ -442,6 +442,10 @@ valid_services = {
         "type": "load-balancer",
         "desc": "Octavia Load Balancer as a Service for OpenStack",
     },
+    "masakari": {
+        "type": "instance-ha",
+        "desc": "Masakari instance HA for Openstack"
+    },
 }
 
 # The interface is said to be satisfied if anyone of the interfaces in the

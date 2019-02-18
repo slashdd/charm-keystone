@@ -209,6 +209,7 @@ class KeystoneRelationTests(CharmTestCase):
                          configs.write.call_args_list)
         self.assertTrue(leader_init.called)
 
+    @patch.object(hooks, 'notify_middleware_with_release_version')
     @patch.object(hooks, 'update_all_domain_backends')
     @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(hooks, 'run_in_apache')
@@ -228,7 +229,8 @@ class KeystoneRelationTests(CharmTestCase):
                                               mock_is_db_initialised,
                                               mock_run_in_apache,
                                               update,
-                                              mock_update_domains):
+                                              mock_update_domains,
+                                              mock_notify_middleware):
         def fake_relation_ids(relation):
             rids = {'cluster': ['cluster:1'],
                     'identity-service': ['identity-service:0']}
@@ -254,6 +256,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertTrue(mock_cluster_joined.called)
         self.assertTrue(update.called)
         self.assertTrue(mock_update_domains.called)
+        self.assertTrue(mock_notify_middleware.called_once)
 
     @patch.object(hooks, 'is_db_initialised')
     @patch.object(hooks, 'update_all_domain_backends')
@@ -922,3 +925,25 @@ class KeystoneRelationTests(CharmTestCase):
         is_db_initialised.return_value = False
         hooks.certs_changed()
         self.assertFalse(ensure_initial_admin.called)
+
+    @patch.object(hooks, 'relation_set')
+    @patch.object(hooks, 'os_release')
+    def test_keystone_middleware_notify_release(
+            self,
+            os_release,
+            relation_set):
+        self.relation_ids.return_value = ['keystone-middleware:0']
+        os_release.return_value = 'Pike'
+        hooks.keystone_middleware_joined()
+        relation_set.assert_called_once_with(
+            relation_id='keystone-middleware:0', release='Pike')
+
+    @patch.object(hooks, 'notify_middleware_with_release_version')
+    @patch.object(hooks, 'CONFIGS')
+    def test_keystone_middleware_config_changed(
+            self,
+            configs,
+            notify_middleware_with_release_version):
+        hooks.keystone_middleware_changed()
+        self.assertTrue(configs.write.called)
+        self.assertFalse(notify_middleware_with_release_version.called)

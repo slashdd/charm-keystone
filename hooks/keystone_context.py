@@ -18,10 +18,8 @@ import json
 from charmhelpers.contrib.openstack import context
 
 from charmhelpers.contrib.hahelpers.cluster import (
-    DC_RESOURCE_NAME,
     determine_apache_port,
     determine_api_port,
-    is_elected_leader,
     https,
 )
 
@@ -30,6 +28,7 @@ from charmhelpers.core.hookenv import (
     config,
     log,
     leader_get,
+    is_leader,
     local_unit,
     related_units,
     relation_ids,
@@ -270,8 +269,7 @@ class TokenFlushContext(context.OSContextGenerator):
 
     def __call__(self):
         ctxt = {
-            'token_flush': (not fernet_enabled() and
-                            is_elected_leader(DC_RESOURCE_NAME))
+            'token_flush': (not fernet_enabled() and is_leader())
         }
         return ctxt
 
@@ -281,8 +279,7 @@ class FernetCronContext(context.OSContextGenerator):
     def __call__(self):
         token_expiration = int(config('token-expiration'))
         ctxt = {
-            'enabled': (fernet_enabled() and
-                        is_elected_leader(DC_RESOURCE_NAME)),
+            'enabled': (fernet_enabled() and is_leader()),
             'unit_name': local_unit(),
             'charm_dir': charm_dir(),
             'minute': ('*/5' if token_expiration > 300 else '*')
@@ -299,7 +296,7 @@ def fernet_enabled():
     cmp_release = CompareOpenStackReleases(os_release('keystone'))
     if cmp_release < 'ocata':
         return False
-    elif 'ocata' >= cmp_release < 'rocky':
+    elif cmp_release >= 'ocata' and cmp_release < 'rocky':
         return config('token-provider') == 'fernet'
     else:
         return True

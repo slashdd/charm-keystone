@@ -164,17 +164,17 @@ class TestKeystoneContexts(CharmTestCase):
                           'log_file': '/var/log/keystone/keystone.log'},
                          ctxt())
 
-    @patch.object(context, 'is_elected_leader')
+    @patch.object(context, 'is_leader')
     @patch.object(context, 'fernet_enabled')
     def test_token_flush_context(
-            self, mock_fernet_enabled, mock_is_elected_leader):
+            self, mock_fernet_enabled, mock_is_leader):
         ctxt = context.TokenFlushContext()
 
         mock_fernet_enabled.return_value = False
-        mock_is_elected_leader.return_value = False
+        mock_is_leader.return_value = False
         self.assertEqual({'token_flush': False}, ctxt())
 
-        mock_is_elected_leader.return_value = True
+        mock_is_leader.return_value = True
         self.assertEqual({'token_flush': True}, ctxt())
 
         mock_fernet_enabled.return_value = True
@@ -182,10 +182,10 @@ class TestKeystoneContexts(CharmTestCase):
 
     @patch.object(context, 'charm_dir')
     @patch.object(context, 'local_unit')
-    @patch.object(context, 'is_elected_leader')
+    @patch.object(context, 'is_leader')
     @patch.object(context, 'fernet_enabled')
     def test_fernet_cron_context(
-            self, mock_fernet_enabled, mock_is_elected_leader, mock_local_unit,
+            self, mock_fernet_enabled, mock_is_leader, mock_local_unit,
             mock_charm_dir):
         ctxt = context.FernetCronContext()
 
@@ -200,10 +200,10 @@ class TestKeystoneContexts(CharmTestCase):
         }
 
         mock_fernet_enabled.return_value = False
-        mock_is_elected_leader.return_value = False
+        mock_is_leader.return_value = False
         self.assertEqual(expected, ctxt())
 
-        mock_is_elected_leader.return_value = True
+        mock_is_leader.return_value = True
         self.assertEqual(expected, ctxt())
 
         mock_fernet_enabled.return_value = True

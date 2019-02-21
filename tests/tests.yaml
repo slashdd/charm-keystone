@@ -19,3 +19,4 @@ configure:
 tests:
 - zaza.charm_tests.keystone.tests.AuthenticationAuthorizationTest
 - zaza.charm_tests.keystone.tests.CharmOperationTest
+- zaza.charm_tests.keystone.tests.SecurityTests

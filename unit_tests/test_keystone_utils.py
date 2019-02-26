@@ -1029,6 +1029,7 @@ class TestKeystoneUtils(CharmTestCase):
         """ Verify add_credentials with Keystone V3 """
         manager = MagicMock()
         manager.resolve_tenant_id.return_value = 'abcdef0123456789'
+        manager.resolve_domain_id.return_value = 'a-domain-id'
         get_manager.return_value = manager
         remote_unit = 'unit/0'
         relation_id = 'identity-credentials:0'
@@ -1052,6 +1053,10 @@ class TestKeystoneUtils(CharmTestCase):
                          'credentials_password': 'password',
                          'credentials_project': 'services',
                          'credentials_project_id': 'abcdef0123456789',
+                         'credentials_user_domain_id': 'a-domain-id',
+                         'credentials_project_domain_id': 'a-domain-id',
+                         'credentials_project_domain_name': 'Non-Default',
+                         'credentials_user_domain_name': 'Non-Default',
                          'region': 'RegionOne',
                          'domain': 'Non-Default',
                          'api_version': 3}

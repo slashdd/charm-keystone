@@ -1757,6 +1757,13 @@ def add_credentials_to_keystone(relation_id=None, remote_unit=None):
     }
     if domain:
         relation_data['domain'] = domain
+        # The same domain is used for project and user creation. However, in
+        # the future they may not be.
+        domain_id = manager.resolve_domain_id(domain)
+        relation_data['credentials_user_domain_name'] = domain
+        relation_data['credentials_user_domain_id'] = domain_id
+        relation_data['credentials_project_domain_name'] = domain
+        relation_data['credentials_project_domain_id'] = domain_id
 
     peer_store_and_set(relation_id=relation_id, **relation_data)
 

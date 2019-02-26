@@ -50,6 +50,7 @@ from charmhelpers.core.hookenv import (
     open_port,
     is_leader,
     relation_id,
+    leader_set,
 )
 
 from charmhelpers.core.host import (
@@ -391,6 +392,13 @@ def db_changed():
                 os_release('keystone')) >= 'liberty':
             CONFIGS.write(POLICY_JSON)
         update_all_identity_relation_units()
+
+
+@hooks.hook('shared-db-relation-departed',
+            'shared-db-relation-broken')
+def db_departed_or_broken():
+    if is_leader():
+        leader_set({'db-initialised': None})
 
 
 @hooks.hook('identity-service-relation-changed')

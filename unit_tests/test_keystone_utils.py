@@ -125,23 +125,61 @@ class TestKeystoneUtils(CharmTestCase):
         ]
         fake_renderer.register.assert_has_calls(ex_reg, any_order=True)
 
-    @patch.object(utils, 'snap_install_requested')
-    @patch.object(utils, 'os')
-    def test_resource_map_enable_memcache_mitaka(self, mock_os,
-                                                 snap_install_requested):
-        self.os_release.return_value = 'mitaka'
-        snap_install_requested.return_value = False
-        mock_os.path.exists.return_value = True
-        self.assertTrue('/etc/memcached.conf' in utils.resource_map().keys())
+    def test_resource_map_exclude_policy_json_before_liberty(self):
+        resources = self._test_resource_map(os_release='kilo')
+        self.assertFalse('/etc/keystone/policy.json' in resources.keys())
+
+    def test_resource_map_include_policy_json_from_liberty(self):
+        resources = self._test_resource_map(os_release='liberty')
+        self.assertTrue('/etc/keystone/policy.json' in resources.keys())
+
+    def test_resource_map_apache24_conf_present_if_conf_avail_present(self):
+        resources = self._test_resource_map(os_path_return_value=True)
+        self.assertTrue(
+            '/etc/apache2/sites-available/openstack_https_frontend.conf'
+            in resources.keys())
+
+    def test_resource_map_apache24_conf_absent_if_conf_avail_absent(self):
+        resources = self._test_resource_map(os_path_return_value=False)
+        self.assertFalse(
+            '/etc/apache2/sites-available/openstack_https_frontend.conf'
+            in resources.keys())
+
+    def test_resource_map_excludes_apache_files_if_using_snap(self):
+        resources = self._test_resource_map(use_snap=True)
+        for config_file in (
+                '/etc/apache2/sites-available/openstack_https_frontend',
+                '/etc/apache2/sites-available/openstack_https_frontend.conf',
+        ):
+            self.assertFalse(config_file in resources.keys())
+
+    def test_resource_map_ensure_snap_includes_nginx_and_uwsgi(self):
+        resources = self._test_resource_map(use_snap=True)
+        required_services = ('snap.keystone.nginx', 'snap.keystone.uwsgi')
+        for cfile in resources:
+            services = resources[cfile]['services']
+            self.assertTrue(all(service in services)
+                            for service in required_services)
+
+    def test_resource_map_enable_memcache_mitaka(self):
+        resources = self._test_resource_map(os_release='mitaka')
+        self.assertTrue('/etc/memcached.conf' in resources.keys())
+
+    def test_resource_map_enable_memcache_liberty(self):
+        resources = self._test_resource_map(os_release='liberty')
+        self.assertFalse('/etc/memcached.conf' in resources.keys())
 
     @patch.object(utils, 'snap_install_requested')
     @patch.object(utils, 'os')
-    def test_resource_map_enable_memcache_liberty(self, mock_os,
-                                                  snap_install_requested):
-        self.os_release.return_value = 'liberty'
-        snap_install_requested.return_value = False
-        mock_os.path.exists.return_value = True
-        self.assertFalse('/etc/memcached.conf' in utils.resource_map().keys())
+    def _test_resource_map(self, mock_os, snap_install_requested,
+                           os_release='mitaka',
+                           use_snap=False,
+                           os_path_return_value=False):
+        self.os_release.return_value = os_release
+        snap_install_requested.return_value = use_snap
+        mock_os.path.exists.return_value = os_path_return_value
+        resource_map = utils.resource_map()
+        return resource_map
 
     def test_determine_ports(self):
         self.test_config.set('admin-port', '80')

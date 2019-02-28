@@ -145,6 +145,7 @@ from charmhelpers.contrib.peerstorage import (
 )
 from charmhelpers.contrib.openstack.ip import (
     ADMIN,
+    PUBLIC,
     resolve_address,
 )
 
@@ -759,12 +760,19 @@ def websso_trusted_dashboard_changed():
 
 
 def update_keystone_fid_service_provider(relation_id=None):
-    tls_enabled = (config('ssl_cert') is not None and
-                   config('ssl_key') is not None)
+    if relation_ids('certificates'):
+        tls_enabled = True
+    else:
+        tls_enabled = (config('ssl_cert') is not None and
+                       config('ssl_key') is not None)
+    # NOTE: thedac Use resolve_address which checks host name, VIP  and
+    # network bindings. Use PUBLIC for now. Possible TODO make this
+    # configurable?
+    hostname = resolve_address(endpoint_type=PUBLIC, override=True)
     # reactive endpoints implementation on the other side, hence
     # json-encoded values
     fid_settings = {
-        'hostname': json.dumps(config('os-public-hostname')),
+        'hostname': json.dumps(hostname),
         'port': json.dumps(config('service-port')),
         'tls-enabled': json.dumps(tls_enabled),
     }

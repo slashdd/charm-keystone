@@ -53,7 +53,8 @@ def openstack_upgrade():
     if (do_action_openstack_upgrade('keystone',
                                     do_openstack_upgrade,
                                     register_configs())):
-        os.execl('./hooks/config-changed-postupgrade', '')
+        os.execl('./hooks/config-changed-postupgrade',
+                 'config-changed-postupgrade')
 
 if __name__ == '__main__':
     openstack_upgrade()

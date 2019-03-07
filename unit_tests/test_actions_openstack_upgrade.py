@@ -56,7 +56,7 @@ class TestKeystoneUpgradeActions(CharmTestCase):
 
         self.assertTrue(self.do_openstack_upgrade.called)
         self.os.execl.assert_called_with('./hooks/config-changed-postupgrade',
-                                         '')
+                                         'config-changed-postupgrade')
 
     @patch.object(openstack_upgrade, 'register_configs')
     @patch('charmhelpers.contrib.openstack.utils.config')

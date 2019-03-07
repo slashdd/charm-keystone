@@ -1117,9 +1117,7 @@ class ManagerServer():
     def _launch_manager(self):
         script = os.path.abspath(os.path.join(os.path.dirname(__file__),
                                               'manager.py'))
-        release = CompareOpenStackReleases(
-            get_os_codename_install_source(config('openstack-origin'))
-        )
+        release = CompareOpenStackReleases(os_release('keystone'))
         # need to set the environment variable PYTHONPATH to include the
         # payload's directory for the manager.py to find the various keystone
         # clients

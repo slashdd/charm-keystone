@@ -42,7 +42,8 @@ def uses_sha256_for_hashing_tokens(audit_options):
             algorithm)
 
 
-@audits.audit(audits.is_audit_type(audits.AuditType.OpenStackSecurityGuide),)
+@audits.audit(audits.is_audit_type(audits.AuditType.OpenStackSecurityGuide),
+              audits.since_openstack_release('keystone', 'juno'))
 def check_max_request_body_size(audit_options):
     """Validate that a sane max_request_body_size is set.
 

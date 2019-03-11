@@ -829,6 +829,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.is_leader.return_value = True
         self.is_db_ready.return_value = True
         is_db_initialised.return_value = True
+        self.resolve_address.return_value = "10.0.0.10"
         mock_kv = MagicMock()
         mock_kv.get.return_value = None
         self.unitdata.kv.return_value = mock_kv
@@ -871,6 +872,7 @@ class KeystoneRelationTests(CharmTestCase):
         mock_kv.get.return_value = None
         self.unitdata.kv.return_value = mock_kv
         is_unit_paused_set.return_value = False
+        self.resolve_address.return_value = "10.0.0.10"
 
         hooks.keystone_fid_service_provider_changed()
 
@@ -883,6 +885,51 @@ class KeystoneRelationTests(CharmTestCase):
             'fid-restart-nonce-{}'.format(rel),
             'nonce2')
         self.assertTrue(mock_kv.flush.called)
+
+    def test_update_keystone_fid_service_provider_no_tls(self):
+        self.relation_ids.return_value = []
+        public_addr = "10.0.0.10"
+        self.resolve_address.return_value = public_addr
+        relation_id = "keystone-fid-service-provider-certificates:5"
+        relation_settings = {
+            'hostname': '"{}"'.format(public_addr),
+            'port': '5000',
+            'tls-enabled': 'false'
+        }
+        hooks.update_keystone_fid_service_provider(relation_id=relation_id)
+        self.relation_set.assert_called_once_with(
+            relation_id=relation_id, relation_settings=relation_settings)
+
+    def test_update_keystone_fid_service_provider_tls_certificates_relation(
+            self):
+        self.relation_ids.return_value = ["certficates:9"]
+        public_addr = "10.0.0.10"
+        self.resolve_address.return_value = public_addr
+        relation_id = "keystone-fid-service-provider-certificates:5"
+        relation_settings = {
+            'hostname': '"{}"'.format(public_addr),
+            'port': '5000',
+            'tls-enabled': 'true'
+        }
+        hooks.update_keystone_fid_service_provider(relation_id=relation_id)
+        self.relation_set.assert_called_once_with(
+            relation_id=relation_id, relation_settings=relation_settings)
+
+    def test_update_keystone_fid_service_provider_ssl_config(self):
+        self.test_config.set("ssl_cert", "CERTIFICATE")
+        self.test_config.set("ssl_key", "KEY")
+        self.relation_ids.return_value = []
+        public_addr = "10.0.0.10"
+        self.resolve_address.return_value = public_addr
+        relation_id = "keystone-fid-service-provider-certificates:5"
+        relation_settings = {
+            'hostname': '"{}"'.format(public_addr),
+            'port': '5000',
+            'tls-enabled': 'true'
+        }
+        hooks.update_keystone_fid_service_provider(relation_id=relation_id)
+        self.relation_set.assert_called_once_with(
+            relation_id=relation_id, relation_settings=relation_settings)
 
     @patch.object(hooks, 'relation_set')
     @patch.object(hooks, 'get_certificate_request')

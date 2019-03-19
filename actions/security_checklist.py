@@ -26,9 +26,18 @@ from charmhelpers.contrib.openstack.audits import (
 )
 
 
+# Via the openstack_security_guide above, we are running the following
+# security assertions automatically:
+#
+# - Check-Identity-01 - validate-file-ownership
+# - Check-Identity-02 - validate-file-permissions
+
+
 @audits.audit(audits.is_audit_type(audits.AuditType.OpenStackSecurityGuide),)
 def uses_sha256_for_hashing_tokens(audit_options):
     """Validate that SHA256 is used to hash tokens.
+
+    Security Guide Check Name: Check-Identity-04
 
     :param audit_options: Dictionary of options for audit configuration
     :type audit_options: Dict
@@ -36,16 +45,20 @@ def uses_sha256_for_hashing_tokens(audit_options):
     """
     section = audit_options['keystone-conf'].get('token')
     assert section is not None, "Missing section 'token'"
+    provider = section.get('provider')
     algorithm = section.get("hash_algorithm")
-    assert "SHA256" == algorithm, \
-        "Weak hash algorithm used for hashing tokens: ".format(
-            algorithm)
+    if provider and "pki" in provider:
+        assert "SHA256" == algorithm, \
+            "Weak hash algorithm used with PKI provider: ".format(
+                algorithm)
 
 
 @audits.audit(audits.is_audit_type(audits.AuditType.OpenStackSecurityGuide),
               audits.since_openstack_release('keystone', 'juno'))
 def check_max_request_body_size(audit_options):
     """Validate that a sane max_request_body_size is set.
+
+    Security Guide Check Name: Check-Identity-05
 
     :param audit_options: Dictionary of options for audit configuration
     :type audit_options: Dict
@@ -63,6 +76,8 @@ def check_max_request_body_size(audit_options):
 @audits.audit(audits.is_audit_type(audits.AuditType.OpenStackSecurityGuide))
 def disable_admin_token(audit_options):
     """Validate that the admin token is disabled.
+
+    Security Guide Check Name: Check-Identity-06
 
     :param audit_options: Dictionary of options for audit configuration
     :type audit_options: Dict
@@ -83,6 +98,8 @@ def disable_admin_token(audit_options):
 def insecure_debug_is_false(audit_options):
     """Valudaite that insecure_debug is false.
 
+    Security Guide Check Name: Check-Identity-07
+
     :param audit_options: Dictionary of options for audit configuration
     :type audit_options: Dict
     :raises: AssertionError if the assertion fails.
@@ -100,6 +117,8 @@ def insecure_debug_is_false(audit_options):
               audits.before_openstack_release('keystone', 'rocky'))
 def uses_fernet_token(audit_options):
     """Validate that fernet tokens are used.
+
+    Security Guide Check Name: Check-Identity-08
 
     :param audit_options: Dictionary of options for audit configuration
     :type audit_options: Dict

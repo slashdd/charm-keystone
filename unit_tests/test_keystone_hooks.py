@@ -486,6 +486,8 @@ class KeystoneRelationTests(CharmTestCase):
         hooks.ha_changed()
         self.assertTrue(configs.write_all.called)
 
+    @patch.object(hooks, 'update_all_fid_backends')
+    @patch.object(hooks, 'update_all_domain_backends')
     @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(hooks, 'is_db_initialised')
     @patch('keystone_utils.log')
@@ -495,7 +497,9 @@ class KeystoneRelationTests(CharmTestCase):
                                                   identity_changed,
                                                   mock_log,
                                                   mock_is_db_initialised,
-                                                  update):
+                                                  update_ids,
+                                                  update_domains,
+                                                  update_fids):
         mock_is_db_initialised.return_value = True
         self.is_db_ready.return_value = True
         self.relation_get.return_value = True
@@ -504,7 +508,9 @@ class KeystoneRelationTests(CharmTestCase):
 
         hooks.ha_changed()
         self.assertTrue(configs.write_all.called)
-        self.assertTrue(update.called)
+        update_ids.assert_called_once_with()
+        update_domains.assert_called_once_with()
+        update_fids.assert_called_once_with()
 
     @patch('keystone_utils.log')
     @patch.object(hooks, 'CONFIGS')

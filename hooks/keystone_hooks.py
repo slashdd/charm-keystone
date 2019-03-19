@@ -569,6 +569,8 @@ def ha_changed():
                 is_unit_paused_set()):
             ensure_initial_admin(config)
             update_all_identity_relation_units()
+            update_all_domain_backends()
+            update_all_fid_backends()
 
 
 @hooks.hook('identity-admin-relation-changed')

@@ -187,10 +187,10 @@ class KeystoneRelationTests(CharmTestCase):
         openstack_origin_git = {
             'repositories': [
                 {'name': 'requirements',
-                 'repository': 'git://git.openstack.org/openstack/requirements',  # noqa
+                 'repository': 'https://git.openstack.org/openstack/requirements',  # noqa
                  'branch': 'stable/juno'},
                 {'name': 'keystone',
-                 'repository': 'git://git.openstack.org/openstack/keystone',
+                 'repository': 'https://git.openstack.org/openstack/keystone',
                  'branch': 'stable/juno'}
             ],
             'directory': '/mnt/openstack-git',
@@ -603,10 +603,10 @@ class KeystoneRelationTests(CharmTestCase):
         openstack_origin_git = {
             'repositories': [
                 {'name': 'requirements',
-                 'repository': 'git://git.openstack.org/openstack/requirements',  # noqa
+                 'repository': 'https://git.openstack.org/openstack/requirements',  # noqa
                  'branch': 'stable/juno'},
                 {'name': 'keystone',
-                 'repository': 'git://git.openstack.org/openstack/keystone',
+                 'repository': 'https://git.openstack.org/openstack/keystone',
                  'branch': 'stable/juno'}
             ],
             'directory': '/mnt/openstack-git',

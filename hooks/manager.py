@@ -548,7 +548,7 @@ if __name__ == '__main__':
     while True:
         try:
             data = uds_client.receive()
-            if data == "QUIT":
+            if data == "QUIT" or data is None:
                 break
             spec = json.loads(data)
             manager = get_manager(

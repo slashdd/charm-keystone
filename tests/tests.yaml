@@ -9,10 +9,13 @@ gate_bundles:
 - xenial-queens
 - bionic-queens
 - bionic-rocky
+- bionic-stein
 dev_bundles:
 - cosmic-rocky
-comment:
-- 'the glance configure job validates operation of identity-service relation'
+- disco-stein
+comment: |
+  disable ``disco-stein`` test pending LP: #1823718
+  the glance configure job validates operation of identity-service relation
 configure:
 - zaza.charm_tests.glance.setup.add_lts_image
 - zaza.charm_tests.keystone.setup.add_demo_user

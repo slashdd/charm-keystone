@@ -655,13 +655,18 @@ def configure_https():
 @restart_on_change(restart_map(), stopstart=True)
 @harden()
 def upgrade_charm():
-    status_set('maintenance', 'Installing apt packages')
-    apt_install(filter_installed_packages(determine_packages()))
+    packages_to_install = filter_installed_packages(determine_packages())
+    if packages_to_install:
+        log('Installing apt packages')
+        status_set('maintenance', 'Installing apt packages')
+        apt_install(packages_to_install)
     packages_removed = remove_old_packages()
 
     if run_in_apache():
         disable_unused_apache_sites()
 
+    log('Regenerating configuration files')
+    status_set('maintenance', 'Regenerating configuration files')
     CONFIGS.write_all()
 
     # See LP bug 1519035
@@ -670,6 +675,7 @@ def upgrade_charm():
     update_nrpe_config()
 
     if packages_removed:
+        status_set('maintenance', 'Restarting services')
         log("Package purge detected, restarting services", "INFO")
         for s in services():
             service_restart(s)
@@ -691,6 +697,8 @@ def update_status():
             'nrpe-external-master-relation-changed')
 def update_nrpe_config():
     # python-dbus is used by check_upstart_job
+    log('Updating NRPE configuration')
+    status_set('maintenance', 'Updating NRPE configuration')
     apt_install('python-dbus')
     hostname = nrpe.get_nagios_hostname()
     current_unit = nrpe.get_nagios_unit_name()

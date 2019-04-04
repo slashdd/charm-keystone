@@ -559,9 +559,39 @@ class KeystoneRelationTests(CharmTestCase):
         self.remove_old_packages.return_value = True
         self.services.return_value = ['apache2']
 
-        self.filter_installed_packages.return_value = []
+        self.filter_installed_packages.return_value = ['something']
         hooks.upgrade_charm()
         self.assertTrue(self.apt_install.called)
+        self.assertTrue(update.called)
+        self.remove_old_packages.assert_called_once_with()
+        self.service_restart.assert_called_with('apache2')
+        mock_stop_manager_instance.assert_called_once_with()
+
+    @patch.object(hooks, 'update_all_identity_relation_units')
+    @patch.object(utils, 'os_release')
+    @patch.object(hooks, 'is_db_ready')
+    @patch.object(hooks, 'is_db_initialised')
+    @patch('keystone_utils.log')
+    @patch('keystone_utils.relation_ids')
+    @patch.object(hooks, 'stop_manager_instance')
+    def test_upgrade_charm_leader_no_packages(self,
+                                              mock_stop_manager_instance,
+                                              mock_relation_ids,
+                                              mock_log,
+                                              mock_is_db_initialised,
+                                              mock_is_db_ready,
+                                              os_release,
+                                              update):
+        os_release.return_value = 'havana'
+        mock_is_db_initialised.return_value = True
+        mock_is_db_ready.return_value = True
+        mock_relation_ids.return_value = []
+        self.remove_old_packages.return_value = True
+        self.services.return_value = ['apache2']
+
+        self.filter_installed_packages.return_value = []
+        hooks.upgrade_charm()
+        self.assertFalse(self.apt_install.called)
         self.assertTrue(update.called)
         self.remove_old_packages.assert_called_once_with()
         self.service_restart.assert_called_with('apache2')
@@ -719,10 +749,30 @@ class KeystoneRelationTests(CharmTestCase):
                                       os_release, update):
         os_release.return_value = 'havana'
 
-        self.filter_installed_packages.return_value = []
+        self.filter_installed_packages.return_value = ['something']
         self.is_elected_leader.return_value = False
         hooks.upgrade_charm()
         self.assertTrue(self.apt_install.called)
+        self.assertTrue(self.log.called)
+        self.assertFalse(update.called)
+        mock_stop_manager_instance.assert_called_once()
+
+    @patch.object(hooks, 'update_all_identity_relation_units')
+    @patch.object(utils, 'os_release')
+    @patch('keystone_utils.log')
+    @patch('keystone_utils.relation_ids')
+    @patch.object(hooks, 'stop_manager_instance')
+    def test_upgrade_charm_not_leader_no_packages(self,
+                                                  mock_stop_manager_instance,
+                                                  mock_relation_ids,
+                                                  mock_log,
+                                                  os_release, update):
+        os_release.return_value = 'havana'
+
+        self.filter_installed_packages.return_value = []
+        self.is_elected_leader.return_value = False
+        hooks.upgrade_charm()
+        self.assertFalse(self.apt_install.called)
         self.assertTrue(self.log.called)
         self.assertFalse(update.called)
         mock_stop_manager_instance.assert_called_once()

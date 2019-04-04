@@ -95,6 +95,7 @@ from charmhelpers.core.hookenv import (
     INFO,
     ERROR,
     WARNING,
+    status_set,
 )
 
 from charmhelpers.fetch import (
@@ -607,6 +608,8 @@ def disable_unused_apache_sites():
         if os.path.exists(apache_site_file):
             try:
                 # Try it cleanly
+                log('Disabling unused apache configs')
+                status_set('maintenance', 'Disabling unused apache configs')
                 subprocess.check_call(['a2dissite', apache_site])
             except subprocess.CalledProcessError:
                 # Remove the file
@@ -681,12 +684,14 @@ def determine_purge_packages():
 
 
 def remove_old_packages():
-    '''Purge any packages that need ot be removed.
+    '''Purge any packages that need to be removed.
 
     :returns: bool Whether packages were removed.
     '''
     installed_packages = filter_missing_packages(determine_purge_packages())
     if installed_packages:
+        log('Removing apt packages')
+        status_set('maintenance', 'Removing apt packages')
         apt_purge(installed_packages, fatal=True)
         apt_autoremove(purge=True, fatal=True)
     return bool(installed_packages)
@@ -772,6 +777,7 @@ def keystone_service():
 def migrate_database():
     """Runs keystone-manage to initialize a new database or migrate existing"""
     log('Migrating the keystone database.', level=INFO)
+    status_set('maintenance', 'Migrating the keystone database')
     if snap_install_requested():
         service_stop('snap.keystone.*')
     else:
@@ -1834,6 +1840,9 @@ def ensure_valid_service(service):
 
 
 def add_endpoint(region, service, publicurl, adminurl, internalurl):
+    status_message = 'Updating endpoint for {}'.format(service)
+    log(status_message)
+    status_set('maintenance', status_message)
     desc = valid_services[service]["desc"]
     service_type = valid_services[service]["type"]
     create_service_entry(service, service_type, desc)

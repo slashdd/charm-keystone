@@ -964,8 +964,14 @@ class KeystoneRelationTests(CharmTestCase):
         is_db_initialised.return_value = True
         is_elected_leader.return_value = True
         is_unit_paused_set.return_value = False
+        process_certificates.return_value = False
         hooks.certs_changed()
         process_certificates.assert_called_once_with('keystone', None, None)
+        self.assertFalse(configure_https.called)
+        self.assertFalse(ensure_initial_admin.called)
+        process_certificates.reset_mock()
+        process_certificates.return_value = True
+        hooks.certs_changed()
         configure_https.assert_called_once_with()
         is_db_initialised.assert_called_once_with()
         is_elected_leader.assert_called_once_with('grp_ks_vips')

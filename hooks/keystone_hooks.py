@@ -798,9 +798,14 @@ def certs_changed(relation_id=None, unit=None):
     # before
     @restart_on_change(restart_map(), stopstart=True)
     def write_certs_and_config():
-        process_certificates('keystone', relation_id, unit)
-        configure_https()
-    write_certs_and_config()
+        if process_certificates('keystone', relation_id, unit):
+            configure_https()
+            return True
+        return False
+    if not write_certs_and_config():
+        log('no certificates for us on the relation yet, deferring.',
+            level=INFO)
+        return
     # If enabling https the identity endpoints need updating.
     if (is_db_initialised() and is_elected_leader(CLUSTER_RES) and not
             is_unit_paused_set()):

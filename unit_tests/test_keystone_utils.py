@@ -302,8 +302,9 @@ class TestKeystoneUtils(CharmTestCase):
         _leader_get.return_value = None
         self.assertFalse(utils.is_db_initialised())
 
+    @patch.object(utils, 'stop_manager_instance')
     @patch.object(utils, 'leader_set')
-    def test_migrate_database(self, _leader_set):
+    def test_migrate_database(self, _leader_set, mock_stop_manager_instance):
         self.os_release.return_value = 'havana'
         utils.migrate_database()
 
@@ -312,6 +313,7 @@ class TestKeystoneUtils(CharmTestCase):
         self.subprocess.check_output.assert_called_with(cmd)
         self.service_start.assert_called_with('keystone')
         _leader_set.assert_called_with({'db-initialised': True})
+        mock_stop_manager_instance.assert_called_once_with()
 
     @patch.object(utils, 'leader_get')
     @patch.object(utils, 'get_api_version')
@@ -913,16 +915,74 @@ class TestKeystoneUtils(CharmTestCase):
             f.assert_called_once_with('assessor', services='s1', ports='p1')
 
     @patch.object(utils, 'run_in_apache')
-    @patch.object(utils, 'restart_pid_check')
-    def test_restart_function_map(self, restart_pid_check, run_in_apache):
+    @patch.object(utils, 'restart_keystone')
+    def test_restart_function_map(self, restart_keystone, run_in_apache):
         run_in_apache.return_value = True
         self.assertEqual(utils.restart_function_map(),
-                         {'apache2': restart_pid_check})
+                         {'apache2': restart_keystone})
+
+    @patch.object(utils, 'stop_manager_instance')
+    @patch.object(utils, 'is_unit_paused_set')
+    def test_restart_keystone_unit_paused(self,
+                                          mock_is_unit_paused_set,
+                                          mock_stop_manager_instance):
+        mock_is_unit_paused_set.return_value = True
+        utils.restart_keystone()
+        mock_stop_manager_instance.assert_not_called()
+
+    @patch.object(utils, 'snap_install_requested')
+    @patch.object(utils, 'service_restart')
+    @patch.object(utils, 'stop_manager_instance')
+    @patch.object(utils, 'is_unit_paused_set')
+    def test_restart_keystone_unit_not_paused_snap_install(
+            self,
+            mock_is_unit_paused_set,
+            mock_stop_manager_instance,
+            mock_service_restart,
+            mock_snap_install_requested):
+        mock_is_unit_paused_set.return_value = False
+        mock_snap_install_requested.return_value = True
+        utils.restart_keystone()
+        mock_service_restart.assert_called_once_with('snap.keystone.*')
+        mock_stop_manager_instance.assert_called_once_with()
 
     @patch.object(utils, 'run_in_apache')
-    def test_restart_function_map_legacy(self, run_in_apache):
-        run_in_apache.return_value = False
-        self.assertEqual(utils.restart_function_map(), {})
+    @patch.object(utils, 'snap_install_requested')
+    @patch.object(utils, 'service_restart')
+    @patch.object(utils, 'stop_manager_instance')
+    @patch.object(utils, 'is_unit_paused_set')
+    def test_restart_keystone_unit_not_paused_legacy(
+            self,
+            mock_is_unit_paused_set,
+            mock_stop_manager_instance,
+            mock_service_restart,
+            mock_snap_install_requested,
+            mock_run_in_apache):
+        mock_is_unit_paused_set.return_value = False
+        mock_snap_install_requested.return_value = False
+        mock_run_in_apache.return_value = False
+        utils.restart_keystone()
+        mock_service_restart.assert_called_once_with('keystone')
+        mock_stop_manager_instance.assert_called_once_with()
+
+    @patch.object(utils, 'run_in_apache')
+    @patch.object(utils, 'snap_install_requested')
+    @patch.object(utils, 'restart_pid_check')
+    @patch.object(utils, 'stop_manager_instance')
+    @patch.object(utils, 'is_unit_paused_set')
+    def test_restart_keystone_unit_not_paused(
+            self,
+            mock_is_unit_paused_set,
+            mock_stop_manager_instance,
+            mock_restart_pid_check,
+            mock_snap_install_requested,
+            mock_run_in_apache):
+        mock_is_unit_paused_set.return_value = False
+        mock_snap_install_requested.return_value = False
+        mock_run_in_apache.return_value = True
+        utils.restart_keystone()
+        mock_restart_pid_check.assert_called_once_with('apache2')
+        mock_stop_manager_instance.assert_called_once_with()
 
     def test_restart_pid_check(self):
         self.subprocess.call.return_value = 1

@@ -125,6 +125,7 @@ from keystone_utils import (
     pause_unit_helper,
     resume_unit_helper,
     remove_old_packages,
+    stop_manager_instance,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -243,6 +244,7 @@ def config_changed_postupgrade():
             CONFIGS.write(WSGI_KEYSTONE_API_CONF)
         if not is_unit_paused_set():
             restart_pid_check('apache2')
+            stop_manager_instance()
 
     if enable_memcache(release=release):
         # If charm or OpenStack have been upgraded then the list of required
@@ -262,6 +264,7 @@ def config_changed_postupgrade():
 
     if snap_install_requested() and not is_unit_paused_set():
         service_restart('snap.keystone.*')
+        stop_manager_instance()
 
     if (is_db_initialised() and is_elected_leader(CLUSTER_RES) and not
             is_unit_paused_set()):
@@ -670,6 +673,7 @@ def upgrade_charm():
         log("Package purge detected, restarting services", "INFO")
         for s in services():
             service_restart(s)
+        stop_manager_instance()
 
     if is_elected_leader(CLUSTER_RES):
         log('Cluster leader - ensuring endpoint configuration is up to '

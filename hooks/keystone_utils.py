@@ -557,12 +557,36 @@ def restart_pid_check(service_name, ptable_string=None):
 def restart_function_map():
     """Return a dict of services with any custom functions that should be
        used to restart that service
-    @returns dict of {'svc1': restart_func, 'svc2', other_func, ...}
+
+    :returns: dict of {'svc1': restart_func, 'svc2', other_func, ...}
+    :rtype: Dict[str, Callable]
     """
     rfunc_map = {}
-    if run_in_apache():
-        rfunc_map['apache2'] = restart_pid_check
+    rfunc_map[keystone_service()] = restart_keystone
     return rfunc_map
+
+
+def restart_keystone(*args):
+    """Restart the keystone process.
+
+    This will either keystone or apache2 depending on OpenStack version.
+    Also stop the ManagerServer (and thus manager.py script) which will
+    reconnect to keystone on next usage of the ManagerServer.
+
+    Note, as restart_keystone is used in the restart_functions map, when it is
+    called it is passed the service name.  However, this function determines
+    the actual service name to call, so that is discarded, hence the *args in
+    the function signature.
+    """
+    if not is_unit_paused_set():
+        if snap_install_requested():
+            service_restart('snap.keystone.*')
+        else:
+            if run_in_apache():
+                restart_pid_check(keystone_service())
+            else:
+                service_restart(keystone_service())
+        stop_manager_instance()
 
 
 def run_in_apache(release=None):
@@ -770,6 +794,7 @@ def migrate_database():
         service_start(keystone_service())
     time.sleep(10)
     leader_set({'db-initialised': True})
+    stop_manager_instance()
 
 # OLD
 
@@ -1083,12 +1108,25 @@ def _get_server_instance():
     return _the_manager_instance.server
 
 
+def stop_manager_instance():
+    """If a ManagerServer instance exists, then try to kill it, clean-up the
+    environment and reset the global singleton for it.
+    """
+    global _the_manager_instance
+    if _the_manager_instance is not None:
+        _the_manager_instance.clean_up()
+    _the_manager_instance = None
+
+
+# If a ManagerServer is still running at the end of the charm hook execution
+# then kill it off:
+atexit(stop_manager_instance)
+
+
 class ManagerServer():
     """This is a singleton server that launches and kills the manager.py script
     that is used to allow 'calling' into Keystone when it is in a completely
-    different process.  The object handles kill/quiting the manager.py script
-    when this keystone charm exits using the atexit charmhelpers `atexit()`
-    command to do the cleanup.
+    different process.
 
     The server() method also ensures that the manager.py script is still
     running, and if not, relaunches it.  This is to try to make the using the
@@ -1099,7 +1137,6 @@ class ManagerServer():
         self.pvar = None
         self._server = None
         self.socket_file = os.path.join(tempfile.gettempdir(), "keystone-uds")
-        atexit(lambda: self.clean_up())
 
     @property
     def server(self):
@@ -2090,14 +2127,6 @@ def post_snap_install():
     if os.path.exists(PASTE_SRC):
         log("Perfoming post snap install tasks", INFO)
         shutil.copy(PASTE_SRC, PASTE_DST)
-
-
-def restart_keystone():
-    if not is_unit_paused_set():
-        if snap_install_requested():
-            service_restart('snap.keystone.*')
-        else:
-            service_restart(keystone_service())
 
 
 def key_setup():

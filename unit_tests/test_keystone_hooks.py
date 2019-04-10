@@ -38,6 +38,7 @@ with patch('charmhelpers.core.hookenv.config') as config, \
         mock_dec.side_effect = (lambda *dargs, **dkwargs: lambda f:
                                 lambda *args, **kwargs: f(*args, **kwargs))
         with patch.object(utils, 'run_in_apache') as mock_run_in_apache:
+            mock_run_in_apache.return_value = True
             import keystone_hooks as hooks
             importlib.reload(hooks)
 
@@ -542,7 +543,9 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(hooks, 'is_db_initialised')
     @patch('keystone_utils.log')
     @patch('keystone_utils.relation_ids')
+    @patch.object(hooks, 'stop_manager_instance')
     def test_upgrade_charm_leader(self,
+                                  mock_stop_manager_instance,
                                   mock_relation_ids,
                                   mock_log,
                                   mock_is_db_initialised,
@@ -562,6 +565,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertTrue(update.called)
         self.remove_old_packages.assert_called_once_with()
         self.service_restart.assert_called_with('apache2')
+        mock_stop_manager_instance.assert_called_once_with()
 
     @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(hooks, 'is_db_initialised')
@@ -707,7 +711,9 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(utils, 'os_release')
     @patch('keystone_utils.log')
     @patch('keystone_utils.relation_ids')
+    @patch.object(hooks, 'stop_manager_instance')
     def test_upgrade_charm_not_leader(self,
+                                      mock_stop_manager_instance,
                                       mock_relation_ids,
                                       mock_log,
                                       os_release, update):
@@ -719,6 +725,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertTrue(self.apt_install.called)
         self.assertTrue(self.log.called)
         self.assertFalse(update.called)
+        mock_stop_manager_instance.assert_called_once()
 
     def test_domain_backend_changed_v2(self):
         self.get_api_version.return_value = 2
@@ -741,9 +748,9 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(hooks, 'is_unit_paused_set')
     @patch.object(hooks, 'is_db_initialised')
     @patch.object(utils, 'run_in_apache')
-    @patch.object(utils, 'service_restart')
+    @patch.object(utils, 'restart_pid_check')
     def test_domain_backend_changed_complete(self,
-                                             service_restart,
+                                             restart_pid_check,
                                              run_in_apache,
                                              is_db_initialised,
                                              is_unit_paused_set):
@@ -770,7 +777,7 @@ class KeystoneRelationTests(CharmTestCase):
                  rid=None),
         ])
         self.create_or_show_domain.assert_called_with('mydomain')
-        service_restart.assert_called_with('apache2')
+        restart_pid_check.assert_called_with('apache2')
         mock_kv.set.assert_called_with('domain-restart-nonce-mydomain',
                                        'nonce2')
         self.assertTrue(mock_kv.flush.called)
@@ -778,9 +785,9 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(hooks, 'is_unit_paused_set')
     @patch.object(hooks, 'is_db_initialised')
     @patch.object(utils, 'run_in_apache')
-    @patch.object(utils, 'service_restart')
+    @patch.object(utils, 'restart_pid_check')
     def test_domain_backend_changed_complete_follower(self,
-                                                      service_restart,
+                                                      restart_pid_check,
                                                       run_in_apache,
                                                       is_db_initialised,
                                                       is_unit_paused_set):
@@ -808,7 +815,7 @@ class KeystoneRelationTests(CharmTestCase):
         ])
         # Only lead unit will create the domain
         self.assertFalse(self.create_or_show_domain.called)
-        service_restart.assert_called_with('apache2')
+        restart_pid_check.assert_called_with('apache2')
         mock_kv.set.assert_called_with('domain-restart-nonce-mydomain',
                                        'nonce2')
         self.assertTrue(mock_kv.flush.called)
@@ -818,10 +825,10 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(hooks, 'is_unit_paused_set')
     @patch.object(hooks, 'is_db_initialised')
     @patch.object(utils, 'run_in_apache')
-    @patch.object(utils, 'service_restart')
+    @patch.object(utils, 'restart_pid_check')
     def test_fid_service_provider_changed_complete(
             self,
-            service_restart,
+            restart_pid_check,
             run_in_apache,
             is_db_initialised,
             is_unit_paused_set,
@@ -847,7 +854,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.relation_get.assert_has_calls([
             call('restart-nonce'),
         ])
-        service_restart.assert_called_with('apache2')
+        restart_pid_check.assert_called_with('apache2')
         mock_kv.set.assert_called_with(
             'fid-restart-nonce-{}'.format(rel), 'nonce2')
         self.assertTrue(mock_kv.flush.called)
@@ -857,10 +864,10 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(hooks, 'is_unit_paused_set')
     @patch.object(hooks, 'is_db_initialised')
     @patch.object(utils, 'run_in_apache')
-    @patch.object(utils, 'service_restart')
+    @patch.object(utils, 'restart_pid_check')
     def test_fid_service_provider_changed_complete_follower(
             self,
-            service_restart,
+            restart_pid_check,
             run_in_apache,
             is_db_initialised,
             is_unit_paused_set,
@@ -886,7 +893,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.relation_get.assert_has_calls([
             call('restart-nonce'),
         ])
-        service_restart.assert_called_with('apache2')
+        restart_pid_check.assert_called_with('apache2')
         mock_kv.set.assert_called_with(
             'fid-restart-nonce-{}'.format(rel),
             'nonce2')

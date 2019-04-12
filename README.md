@@ -43,7 +43,7 @@ The following interfaces are provided:
   - `username` Username to be created.
   - `project` Project (tenant) name to be created. Defaults to services
               project.
-  - `requested_roles` Comma delimited list of roles to be created
+  - `requested_roles` Comma delimited list of roles to be created.
   - `requested_grants` Comma delimited list of roles to be granted.
                        Defaults to Admin role.
   - `domain` Keystone v3 domain the user will be created in. Defaults
@@ -64,7 +64,7 @@ There are two mutually exclusive high availability options: using virtual
 IP(s) or DNS. In both cases, a relationship to hacluster is required which
 provides the corosync backend HA functionality.
 
-To use virtual IP(s) the clustered nodes must be on the same subnet such that
+To use virtual IP(s), the clustered nodes must be on the same subnet such that
 the VIP is a valid IP on the subnet for one of the node's interfaces and each
 node has an interface in said subnet. The VIP becomes a highly-available API
 endpoint.
@@ -74,16 +74,16 @@ HA. If multiple networks are being used, a VIP should be provided for each
 network, separated by spaces. Optionally, `vip_iface` or `vip_cidr` may be
 specified.
 
-To use DNS high availability there are several prerequisites. However, DNS HA
+To use DNS high availability, there are several prerequisites. However, DNS HA
 does not require the clustered nodes to be on the same subnet.
-Currently the DNS HA feature is only available for MAAS 2.0 or greater
+Currently, the DNS HA feature is only available for MAAS 2.0 or greater
 environments. MAAS 2.0 requires Juju 2.0 or greater. The clustered nodes must
 have static or "reserved" IP addresses registered in MAAS. The DNS hostname(s)
 must be pre-registered in MAAS before use with DNS HA.
 
 At a minimum, the configuration option `dns-ha` must be set to true and at
 least one of `os-public-hostname`, `os-internal-hostname` or
-`os-internal-hostname` must be set in order to use DNS HA. One or more of the
+`os-admin-hostname` must be set in order to use DNS HA. One or more of the
 above hostnames may be set.
 
 The charm will throw an exception in the following circumstances:
@@ -98,10 +98,10 @@ The charm will throw an exception in the following circumstances:
 TLS/HTTPS
 ---------
 
-Support for TLS and https endpoints can be enabled through configuration
+Support for TLS and HTTPS endpoints can be enabled through configuration
 options.
 
-To enable TLS and https endpoints with a certificate signed by your own
+To enable TLS and HTTPS endpoints with a certificate signed by your own
 Certificate Authority, set the following configuration options:
 
 - `ssl_ca`
@@ -121,7 +121,7 @@ Example bundle usage:
         ssl_key:  include-base64://path-to-base64-encoded-key-data
 
 NOTE: If your certificate is signed by a Certificate Authority present in the
-CA Certificate Store in operating systems used in your deployment you do not
+CA Certificate Store in operating systems used in your deployment, you do not
 need to provide the `ssl_ca` configuration option.
 
 Network Space Support
@@ -141,7 +141,7 @@ To use this feature, use the --bind option when deploying the charm:
 
     juju deploy keystone --bind "public=public-space internal=internal-space admin=admin-space shared-db=internal-space"
 
-Alternatively these can also be provided as part of a juju native bundle
+Alternatively, these can also be provided as part of a juju native bundle
 configuration:
 
     keystone:
@@ -174,7 +174,7 @@ Fernet tokens were added to OpenStack to solve the problem of keystone being
 required to persist tokens to a common database (cluster) like UUID tokens,
 and solve the problem of size for PKI or PKIZ tokens.
 
-For further information please see [Fernet - Frequently Asked
+For further information, please see [Fernet - Frequently Asked
 Questions](https://docs.openstack.org/keystone/pike/admin/identity-fernet-token-faq.html).
 
 ### Theory of Operation
@@ -185,15 +185,15 @@ key is an integer number, with the highest number being the primary key.  Key
 '0' is the staged key, that will be the next primary.  Other keys are secondary
 keys.
 
-New tokens are only ever generated from the primary key, whilst they secondary
+New tokens are only ever generated from the primary key, whilst the secondary
 keys are used to validate existing tokens.  The staging key is not used to
-generate tokens, but can be used to validate tokens as the staging key might be
+generate tokens but can be used to validate tokens as the staging key might be
 the new primary key on the master due to a rotation and the keys have not yet
 been synchronised across all the units.
 
 Fernet keys need to be rotated at periodic intervals, and the keys need to be
 synchronised to each of the other keystone units.  Keys should only be rotated
-on the master keystone unit, and must be synchronised *before* they are rotated
+on the master keystone unit and must be synchronised *before* they are rotated
 again.  *Over rotation* occurs if a unit rotates its keys such that there is
 no suitable decoding key on another unit that can decode a token that has been
 generated on the master.  This happens if two key rotations are done on the
@@ -236,11 +236,11 @@ Thus, the `fernet-max-active-keys` can never be less than 3 (which is
 enforced in the charm), which would make the rotation frequency the *same*
 as the token expiration time.
 
-Note: that to increase the rotation frequency, _either_ increase
+NOTE: To increase the rotation frequency, _either_ increase
 `fernet-max-active-keys` or reduce `token-expiration`, and to decrease
 rotation frequency, do the opposite.
 
-Note: if the configuration parameters are used to significantly reduce the
+NOTE: If the configuration parameters are used to significantly reduce the
 key lifetime, then it is possible to over-rotate the verification keys
 such that services will hold tokens that cannot be verified but haven't
 yet expired.  This should be avoided by only making small changes and

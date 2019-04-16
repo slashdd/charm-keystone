@@ -1061,6 +1061,11 @@ JSON_ENCODE_OPTIONS = dict(
 )
 
 
+class RetryProxyManagerCall(Exception):
+    pass
+
+
+@retry_on_exception(5, base_delay=3, exc_type=RetryProxyManagerCall)
 def _proxy_manager_call(path, api_version, args, kwargs):
     package = dict(path=path,
                    api_version=api_version,
@@ -1080,8 +1085,14 @@ def _proxy_manager_call(path, api_version, args, kwargs):
                  "The call was: path={}, args={}, kwargs={}, api_version={}"
                  .format(result['error'], path, args, kwargs, api_version))
             log(s, level=ERROR)
+            if result.get('retry'):
+                stop_manager_instance()
+                raise RetryProxyManagerCall()
             raise RuntimeError(s)
         return json.loads(result_str)['result']
+    except RetryProxyManagerCall:
+        # cause a retry
+        raise
     except RuntimeError as e:
         raise e
     except Exception as e:

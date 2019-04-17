@@ -560,6 +560,12 @@ if __name__ == '__main__':
                 _callable = getattr(_callable, attr)
             # now make the call and return the arguments
             result = {'result': _callable(*spec['args'], **spec['kwargs'])}
+        except exceptions.InternalServerError as e:
+            # we've hit a 500 error, which is bad, and really we want the
+            # parent process to restart us to try again.
+            print(str(e))
+            result = {'error': str(e),
+                      'retry': True}
         except uds.UDSException as e:
             print(str(e))
             import traceback

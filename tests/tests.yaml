@@ -17,9 +17,9 @@ comment: |
   disable ``disco-stein`` test pending LP: #1823718
   the glance configure job validates operation of identity-service relation
 configure:
-- zaza.charm_tests.glance.setup.add_lts_image
-- zaza.charm_tests.keystone.setup.add_demo_user
+- zaza.openstack.charm_tests.glance.setup.add_lts_image
+- zaza.openstack.charm_tests.keystone.setup.add_demo_user
 tests:
-- zaza.charm_tests.keystone.tests.AuthenticationAuthorizationTest
-- zaza.charm_tests.keystone.tests.CharmOperationTest
-- zaza.charm_tests.keystone.tests.SecurityTests
+- zaza.openstack.charm_tests.keystone.tests.AuthenticationAuthorizationTest
+- zaza.openstack.charm_tests.keystone.tests.CharmOperationTest
+- zaza.openstack.charm_tests.keystone.tests.SecurityTests

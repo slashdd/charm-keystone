@@ -139,7 +139,8 @@ using the shared-db relation.
 
 To use this feature, use the --bind option when deploying the charm:
 
-    juju deploy keystone --bind "public=public-space internal=internal-space admin=admin-space shared-db=internal-space"
+    juju deploy keystone --bind \
+    "public=public-space internal=internal-space admin=admin-space shared-db=internal-space"
 
 Alternatively, these can also be provided as part of a juju native bundle
 configuration:

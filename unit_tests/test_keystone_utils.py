@@ -1511,3 +1511,23 @@ class TestKeystoneUtils(CharmTestCase):
                 'cluster': {'interface': 'openstack-ha'}}}
         metadata.return_value = _metadata
         self.assertEqual(utils.container_scoped_relations(), ['ha'])
+
+    @patch.object(utils, 'resource_map')
+    @patch.object(utils.os.path, 'isdir')
+    def test_restart_map(self, osp_isdir, resource_map):
+        rsc_map = collections.OrderedDict([
+            ('file1', {
+                'services': ['svc1'],
+                'contexts': ['ctxt1']})])
+        resource_map.return_value = rsc_map
+        osp_isdir.return_value = False
+        self.assertEqual(
+            utils.restart_map(),
+            collections.OrderedDict([
+                ('file1', ['svc1'])]))
+        osp_isdir.return_value = True
+        self.assertEqual(
+            utils.restart_map(),
+            collections.OrderedDict([
+                ('file1', ['svc1']),
+                ('/etc/apache2/ssl/keystone/*', ['apache2'])]))

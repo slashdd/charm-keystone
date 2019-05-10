@@ -626,9 +626,12 @@ def register_configs():
 
 
 def restart_map():
-    return OrderedDict([(cfg, v['services'])
-                        for cfg, v in resource_map().items()
-                        if v['services']])
+    restart_map = OrderedDict([(cfg, v['services'])
+                               for cfg, v in resource_map().items()
+                               if v['services']])
+    if os.path.isdir(APACHE_SSL_DIR):
+        restart_map['{}/*'.format(APACHE_SSL_DIR)] = ['apache2']
+    return restart_map
 
 
 def services():

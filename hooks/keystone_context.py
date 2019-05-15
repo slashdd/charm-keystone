@@ -343,3 +343,26 @@ class WebSSOTrustedDashboardContext(context.OSContextGenerator):
         ctxt = ({'trusted_dashboards': trusted_dashboards}
                 if trusted_dashboards else {})
         return ctxt
+
+
+class AuthMethods(context.OSContextGenerator):
+
+    auth_methods = ["external", "password", "token", "oauth1",
+                    "openid", "totp", "application_credential"]
+
+    def __call__(self):
+
+        _external = "external"
+        _protocol_name = ""
+        for rid in relation_ids("keystone-fid-service-provider"):
+            for unit in related_units(rid):
+                rdata = relation_get(unit=unit, rid=rid)
+                _protocol_name = rdata.get('protocol-name').strip('"')
+                if _protocol_name and _protocol_name not in self.auth_methods:
+                    self.auth_methods.append(_protocol_name)
+                    # We are federated so remove the external method
+                    if _external in self.auth_methods:
+                        self.auth_methods.remove(_external)
+
+        ctxt = {"auth_methods": ",".join(self.auth_methods)}
+        return ctxt

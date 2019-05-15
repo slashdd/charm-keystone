@@ -239,7 +239,8 @@ BASE_RESOURCE_MAP = OrderedDict([
                          interface=['keystone-middleware'],
                          service='keystone',
                          config_file=KEYSTONE_CONF),
-                     keystone_context.MiddlewareContext()]
+                     keystone_context.MiddlewareContext(),
+                     keystone_context.AuthMethods()]
     }),
     (KEYSTONE_LOGGER_CONF, {
         'contexts': [keystone_context.KeystoneLoggingContext()],

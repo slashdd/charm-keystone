@@ -238,7 +238,7 @@ enforced in the charm), which would make the rotation frequency the *same*
 as the token expiration time.
 
 NOTE: To increase the rotation frequency, _either_ increase
-`fernet-max-active-keys` or reduce `token-expiration`, and to decrease
+`fernet-max-active-keys` or reduce `token-expiration`, and, to decrease
 rotation frequency, do the opposite.
 
 NOTE: If the configuration parameters are used to significantly reduce the

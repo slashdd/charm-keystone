@@ -824,6 +824,7 @@ def certs_changed(relation_id=None, unit=None):
         ensure_initial_admin(config)
     update_all_identity_relation_units()
     update_all_domain_backends()
+    update_all_fid_backends()
 
 
 def notify_middleware_with_release_version():

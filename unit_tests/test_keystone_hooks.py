@@ -1003,6 +1003,7 @@ class KeystoneRelationTests(CharmTestCase):
             relation_id='rid:23',
             relation_settings={'cn': 'this-unit'})
 
+    @patch.object(hooks, 'update_all_fid_backends')
     @patch.object(hooks, 'config')
     @patch.object(hooks, 'update_all_domain_backends')
     @patch.object(hooks, 'update_all_identity_relation_units')
@@ -1017,7 +1018,8 @@ class KeystoneRelationTests(CharmTestCase):
                            is_elected_leader, is_unit_paused_set,
                            ensure_initial_admin,
                            update_all_identity_relation_units,
-                           update_all_domain_backends, config):
+                           update_all_domain_backends, config,
+                           update_all_fid_backends):
         is_db_initialised.return_value = True
         is_elected_leader.return_value = True
         is_unit_paused_set.return_value = False
@@ -1036,6 +1038,7 @@ class KeystoneRelationTests(CharmTestCase):
         ensure_initial_admin.assert_called_once_with(config)
         update_all_identity_relation_units.assert_called_once_with()
         update_all_domain_backends.assert_called_once_with()
+        update_all_fid_backends.assert_called_once_with()
 
         ensure_initial_admin.reset_mock()
         is_db_initialised.return_value = False

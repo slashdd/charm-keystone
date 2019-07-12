@@ -1,6 +1,6 @@
 charm_name: keystone
 smoke_bundles:
-- bionic-rocky
+- bionic-stein
 gate_bundles:
 - trusty-mitaka
 - xenial-mitaka

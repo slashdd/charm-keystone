@@ -2,16 +2,15 @@ charm_name: keystone
 smoke_bundles:
 - bionic-stein
 gate_bundles:
-- trusty-mitaka
-- xenial-mitaka
-- xenial-ocata
-- xenial-pike
-- xenial-queens
-- bionic-queens
-- bionic-rocky
 - bionic-stein
+- bionic-rocky
+- bionic-queens
+- xenial-queens
+- xenial-pike
+- xenial-ocata
+- xenial-mitaka
+- trusty-mitaka
 dev_bundles:
-- cosmic-rocky
 - disco-stein
 comment: |
   disable ``disco-stein`` test pending LP: #1823718

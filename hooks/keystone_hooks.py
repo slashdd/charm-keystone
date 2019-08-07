@@ -855,6 +855,12 @@ def pre_series_upgrade():
 @hooks.hook('post-series-upgrade')
 def post_series_upgrade():
     log("Running complete series upgrade hook", "INFO")
+    # if we just upgraded from non systemd then ensure that the new packages of
+    # keystone definitely don't run the keystone service if we are a wsgi
+    # configured system.
+    if run_in_apache():
+        disable_unused_apache_sites()
+        service_pause('keystone')
     series_upgrade_complete(
         resume_unit_helper, CONFIGS)
 

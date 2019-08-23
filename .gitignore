@@ -13,3 +13,4 @@ func-results.json
 .local
 __pycache__
 .stestr
+.idea

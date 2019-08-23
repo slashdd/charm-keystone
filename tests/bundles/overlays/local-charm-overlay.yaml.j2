@@ -2,7 +2,7 @@
 applications:
   keystone:
     options:
-      vip: {{ AMULET_OS_VIP00 }}
+      vip: '{{ OS_VIP00 }}'
   hacluster:
     charm: cs:~openstack-charmers-next/hacluster
     num_units: 0

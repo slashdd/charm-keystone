@@ -16,7 +16,7 @@ import importlib
 import os
 import sys
 
-from mock import call, patch, MagicMock
+from mock import call, patch, MagicMock, ANY
 from test_utils import CharmTestCase
 
 # python-apt is not installed as part of test-requirements but is imported by
@@ -115,10 +115,13 @@ class KeystoneRelationTests(CharmTestCase):
         self.ssh_user = 'juju_keystone'
         self.snap_install_requested.return_value = False
 
+    @patch.object(hooks, 'maybe_do_policyd_overrides')
     @patch.object(utils, 'os_release')
     @patch.object(hooks, 'service_stop', lambda *args: None)
     @patch.object(hooks, 'service_start', lambda *args: None)
-    def test_install_hook(self, os_release):
+    def test_install_hook(self,
+                          os_release,
+                          mock_maybe_do_policyd_overrides):
         os_release.return_value = 'havana'
         self.run_in_apache.return_value = False
         repo = 'cloud:precise-grizzly'
@@ -132,11 +135,16 @@ class KeystoneRelationTests(CharmTestCase):
              'python-keystoneclient', 'python-mysqldb', 'python-psycopg2',
              'python3-six', 'uuid'], fatal=True)
         self.disable_unused_apache_sites.assert_not_called()
+        mock_maybe_do_policyd_overrides.assert_called_once_with(
+            ANY, "keystone")
 
+    @patch.object(hooks, 'maybe_do_policyd_overrides')
     @patch.object(utils, 'os_release')
     @patch.object(hooks, 'service_stop', lambda *args: None)
     @patch.object(hooks, 'service_start', lambda *args: None)
-    def test_install_hook_apache2(self, os_release):
+    def test_install_hook_apache2(self,
+                                  os_release,
+                                  mock_maybe_do_policyd_overrides):
         os_release.return_value = 'havana'
         self.run_in_apache.return_value = True
         repo = 'cloud:xenial-newton'
@@ -150,6 +158,9 @@ class KeystoneRelationTests(CharmTestCase):
              'python-keystoneclient', 'python-mysqldb', 'python-psycopg2',
              'python3-six', 'uuid'], fatal=True)
         self.disable_unused_apache_sites.assert_called_with()
+        mock_maybe_do_policyd_overrides.assert_called_once_with(
+            ANY, "keystone")
+
     mod_ch_openstack_utils = 'charmhelpers.contrib.openstack.utils'
 
     @patch.object(utils, 'os_release')
@@ -210,6 +221,7 @@ class KeystoneRelationTests(CharmTestCase):
                          configs.write.call_args_list)
         self.assertTrue(leader_init.called)
 
+    @patch.object(hooks, 'maybe_do_policyd_overrides_on_config_changed')
     @patch.object(hooks, 'notify_middleware_with_release_version')
     @patch.object(hooks, 'update_all_domain_backends')
     @patch.object(hooks, 'update_all_identity_relation_units')
@@ -221,17 +233,21 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(hooks, 'CONFIGS')
     @patch.object(hooks, 'identity_changed')
     @patch.object(hooks, 'configure_https')
-    def test_config_changed_no_upgrade_leader(self, configure_https,
-                                              identity_changed,
-                                              configs,
-                                              mock_cluster_joined,
-                                              admin_relation_changed,
-                                              mock_log,
-                                              mock_is_db_initialised,
-                                              mock_run_in_apache,
-                                              update,
-                                              mock_update_domains,
-                                              mock_notify_middleware):
+    def test_config_changed_no_upgrade_leader(
+        self,
+        configure_https,
+        identity_changed,
+        configs,
+        mock_cluster_joined,
+        admin_relation_changed,
+        mock_log,
+        mock_is_db_initialised,
+        mock_run_in_apache,
+        update,
+        mock_update_domains,
+        mock_notify_middleware,
+        mock_maybe_do_policyd_overrides_on_config_changed
+    ):
         def fake_relation_ids(relation):
             rids = {'cluster': ['cluster:1'],
                     'identity-service': ['identity-service:0']}
@@ -259,6 +275,10 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertTrue(mock_update_domains.called)
         self.assertTrue(mock_notify_middleware.called_once)
 
+        (mock_maybe_do_policyd_overrides_on_config_changed
+         .assert_called_once_with(ANY, "keystone"))
+
+    @patch.object(hooks, 'maybe_do_policyd_overrides_on_config_changed')
     @patch.object(hooks, 'is_db_initialised')
     @patch.object(hooks, 'update_all_domain_backends')
     @patch.object(hooks, 'update_all_identity_relation_units')
@@ -268,14 +288,18 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(hooks, 'CONFIGS')
     @patch.object(hooks, 'identity_changed')
     @patch.object(hooks, 'configure_https')
-    def test_config_changed_no_upgrade_not_leader(self, configure_https,
-                                                  identity_changed,
-                                                  configs,
-                                                  mock_cluster_joined,
-                                                  mock_log,
-                                                  mock_run_in_apache, update,
-                                                  mock_update_domains,
-                                                  mock_is_db_initialised):
+    def test_config_changed_no_upgrade_not_leader(
+        self,
+        configure_https,
+        identity_changed,
+        configs,
+        mock_cluster_joined,
+        mock_log,
+        mock_run_in_apache, update,
+        mock_update_domains,
+        mock_is_db_initialised,
+        mock_maybe_do_policyd_overrides_on_config_changed
+    ):
 
         def fake_relation_ids(relation):
             rids = {}
@@ -300,6 +324,10 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertTrue(update.called)
         self.assertTrue(mock_update_domains.called)
 
+        (mock_maybe_do_policyd_overrides_on_config_changed
+         .assert_called_once_with(ANY, "keystone"))
+
+    @patch.object(hooks, 'maybe_do_policyd_overrides_on_config_changed')
     @patch.object(hooks, 'update_all_domain_backends')
     @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(hooks, 'run_in_apache')
@@ -310,16 +338,20 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(hooks, 'CONFIGS')
     @patch.object(hooks, 'identity_changed')
     @patch.object(hooks, 'configure_https')
-    def test_config_changed_with_openstack_upgrade(self, configure_https,
-                                                   identity_changed,
-                                                   configs,
-                                                   cluster_joined,
-                                                   admin_relation_changed,
-                                                   mock_log,
-                                                   mock_is_db_initialised,
-                                                   mock_run_in_apache,
-                                                   update,
-                                                   mock_update_domains):
+    def test_config_changed_with_openstack_upgrade(
+        self,
+        configure_https,
+        identity_changed,
+        configs,
+        cluster_joined,
+        admin_relation_changed,
+        mock_log,
+        mock_is_db_initialised,
+        mock_run_in_apache,
+        update,
+        mock_update_domains,
+        mock_maybe_do_policyd_overrides_on_config_changed
+    ):
         def fake_relation_ids(relation):
             rids = {'identity-service': ['identity-service:0']}
             return rids.get(relation, [])
@@ -345,17 +377,24 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertTrue(update.called)
         self.assertTrue(mock_update_domains.called)
 
+        (mock_maybe_do_policyd_overrides_on_config_changed
+         .assert_called_once_with(ANY, "keystone"))
+
+    @patch.object(hooks, 'maybe_do_policyd_overrides_on_config_changed')
     @patch.object(hooks, 'is_expected_scale')
     @patch.object(hooks, 'os_release')
     @patch.object(hooks, 'run_in_apache')
     @patch.object(hooks, 'is_db_initialised')
     @patch.object(hooks, 'configure_https')
-    def test_config_changed_with_openstack_upgrade_action(self,
-                                                          config_https,
-                                                          mock_db_init,
-                                                          mock_run_in_apache,
-                                                          os_release,
-                                                          is_expected_scale):
+    def test_config_changed_with_openstack_upgrade_action(
+        self,
+        config_https,
+        mock_db_init,
+        mock_run_in_apache,
+        os_release,
+        is_expected_scale,
+        mock_maybe_do_policyd_overrides_on_config_changed
+    ):
         os_release.return_value = 'ocata'
         self.enable_memcache.return_value = False
         mock_run_in_apache.return_value = False
@@ -367,6 +406,9 @@ class KeystoneRelationTests(CharmTestCase):
         hooks.config_changed()
 
         self.assertFalse(self.do_openstack_upgrade_reexec.called)
+
+        (mock_maybe_do_policyd_overrides_on_config_changed
+         .assert_called_once_with(ANY, "keystone"))
 
     @patch.object(hooks, 'is_db_initialised')
     @patch('keystone_utils.log')
@@ -537,6 +579,7 @@ class KeystoneRelationTests(CharmTestCase):
         cmd = ['a2dissite', 'openstack_https_frontend']
         self.check_call.assert_called_with(cmd)
 
+    @patch.object(hooks, 'maybe_do_policyd_overrides')
     @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(utils, 'os_release')
     @patch.object(hooks, 'is_db_ready')
@@ -551,7 +594,8 @@ class KeystoneRelationTests(CharmTestCase):
                                   mock_is_db_initialised,
                                   mock_is_db_ready,
                                   os_release,
-                                  update):
+                                  update,
+                                  mock_maybe_do_policyd_overrides):
         os_release.return_value = 'havana'
         mock_is_db_initialised.return_value = True
         mock_is_db_ready.return_value = True
@@ -566,7 +610,10 @@ class KeystoneRelationTests(CharmTestCase):
         self.remove_old_packages.assert_called_once_with()
         self.service_restart.assert_called_with('apache2')
         mock_stop_manager_instance.assert_called_once_with()
+        mock_maybe_do_policyd_overrides.assert_called_once_with(
+            ANY, "keystone")
 
+    @patch.object(hooks, 'maybe_do_policyd_overrides')
     @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(utils, 'os_release')
     @patch.object(hooks, 'is_db_ready')
@@ -581,7 +628,8 @@ class KeystoneRelationTests(CharmTestCase):
                                               mock_is_db_initialised,
                                               mock_is_db_ready,
                                               os_release,
-                                              update):
+                                              update,
+                                              mock_maybe_do_policyd_overrides):
         os_release.return_value = 'havana'
         mock_is_db_initialised.return_value = True
         mock_is_db_ready.return_value = True
@@ -596,6 +644,8 @@ class KeystoneRelationTests(CharmTestCase):
         self.remove_old_packages.assert_called_once_with()
         self.service_restart.assert_called_with('apache2')
         mock_stop_manager_instance.assert_called_once_with()
+        mock_maybe_do_policyd_overrides.assert_called_once_with(
+            ANY, "keystone")
 
     @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(hooks, 'is_db_initialised')
@@ -737,6 +787,7 @@ class KeystoneRelationTests(CharmTestCase):
         # Still updates relations
         self.assertTrue(self.relation_ids.called)
 
+    @patch.object(hooks, 'maybe_do_policyd_overrides')
     @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(utils, 'os_release')
     @patch('keystone_utils.log')
@@ -746,7 +797,8 @@ class KeystoneRelationTests(CharmTestCase):
                                       mock_stop_manager_instance,
                                       mock_relation_ids,
                                       mock_log,
-                                      os_release, update):
+                                      os_release, update,
+                                      mock_maybe_do_policyd_overrides):
         os_release.return_value = 'havana'
 
         self.filter_installed_packages.return_value = ['something']
@@ -756,17 +808,24 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertTrue(self.log.called)
         self.assertFalse(update.called)
         mock_stop_manager_instance.assert_called_once()
+        mock_maybe_do_policyd_overrides.assert_called_once_with(
+            ANY, "keystone")
 
+    @patch.object(hooks, 'maybe_do_policyd_overrides')
     @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(utils, 'os_release')
     @patch('keystone_utils.log')
     @patch('keystone_utils.relation_ids')
     @patch.object(hooks, 'stop_manager_instance')
-    def test_upgrade_charm_not_leader_no_packages(self,
-                                                  mock_stop_manager_instance,
-                                                  mock_relation_ids,
-                                                  mock_log,
-                                                  os_release, update):
+    def test_upgrade_charm_not_leader_no_packages(
+        self,
+        mock_stop_manager_instance,
+        mock_relation_ids,
+        mock_log,
+        os_release,
+        update,
+        mock_maybe_do_policyd_overrides
+    ):
         os_release.return_value = 'havana'
 
         self.filter_installed_packages.return_value = []
@@ -776,6 +835,8 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertTrue(self.log.called)
         self.assertFalse(update.called)
         mock_stop_manager_instance.assert_called_once()
+        mock_maybe_do_policyd_overrides.assert_called_once_with(
+            ANY, "keystone")
 
     def test_domain_backend_changed_v2(self):
         self.get_api_version.return_value = 2

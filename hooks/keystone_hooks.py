@@ -164,6 +164,12 @@ from charmhelpers.contrib.openstack.cert_utils import (
     process_certificates,
 )
 
+from charmhelpers.contrib.openstack.policyd import (
+    maybe_do_policyd_overrides,
+    maybe_do_policyd_overrides_on_config_changed,
+)
+
+
 hooks = Hooks()
 CONFIGS = register_configs()
 
@@ -196,6 +202,8 @@ def install():
         if run_in_apache():
             disable_unused_apache_sites()
             service_pause('keystone')
+    # call the policy overrides handler which will install any policy overrides
+    maybe_do_policyd_overrides(os_release('keystone'), 'keystone')
 
 
 @hooks.hook('config-changed')
@@ -221,6 +229,10 @@ def config_changed():
 
     for r_id in relation_ids('cluster'):
         cluster_joined(rid=r_id)
+
+    # call the policy overrides handler which will install any policy overrides
+    maybe_do_policyd_overrides_on_config_changed(os_release('keystone'),
+                                                 'keystone')
 
     config_changed_postupgrade()
 
@@ -685,6 +697,9 @@ def upgrade_charm():
         log('Cluster leader - ensuring endpoint configuration is up to '
             'date', level=DEBUG)
         update_all_identity_relation_units()
+
+    # call the policy overrides handler which will install any policy overrides
+    maybe_do_policyd_overrides(os_release('keystone'), 'keystone')
 
 
 @hooks.hook('update-status')

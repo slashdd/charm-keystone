@@ -408,4 +408,11 @@ options:
     description: |
       A comma-separated list of nagios servicegroups.
       If left empty, the nagios_context will be used as the servicegroup
-
+  use-policyd-override:
+    type: boolean
+    default: False
+    description: |
+      If True then use the resource file named 'policyd-override' to install
+      override YAML files in the service's policy.d directory.  The resource
+      file should be a ZIP file containing at least one yaml file with a .yaml
+      or .yml extension.  If False then remove the overrides.

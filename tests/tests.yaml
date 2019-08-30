@@ -11,8 +11,9 @@ gate_bundles:
 - xenial-ocata
 - xenial-mitaka
 - trusty-mitaka
-comment:
-  the glance configure job validates operation of identity-service relation
+comment: |
+  the glance configure job validates operation of identity-service relation.
+  The policyd test is generic and validates the policy.d overrides work
 configure:
 - zaza.openstack.charm_tests.glance.setup.add_lts_image
 - zaza.openstack.charm_tests.keystone.setup.add_demo_user
@@ -20,3 +21,7 @@ tests:
 - zaza.openstack.charm_tests.keystone.tests.AuthenticationAuthorizationTest
 - zaza.openstack.charm_tests.keystone.tests.CharmOperationTest
 - zaza.openstack.charm_tests.keystone.tests.SecurityTests
+- zaza.openstack.charm_tests.policyd.tests.KeystoneTests
+tests_options:
+  policyd:
+    service: keystone

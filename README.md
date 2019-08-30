@@ -116,13 +116,17 @@ Example bundle usage:
       charm: cs:keystone
       num_units: 1
       options:
-        ssl_ca:   include-base64://path-to-base64-encoded-ca-data
-        ssl_cert: include-base64://path-to-base64-encoded-certificate-data
-        ssl_key:  include-base64://path-to-base64-encoded-key-data
+        ssl_ca:   include-base64://path-to-PEM-formatted-ca-data
+        ssl_cert: include-base64://path-to-PEM-formatted-certificate-data
+        ssl_key:  include-base64://path-to-PEM-formatted-key-data
 
-NOTE: If your certificate is signed by a Certificate Authority present in the
-CA Certificate Store in operating systems used in your deployment, you do not
-need to provide the `ssl_ca` configuration option.
+> **Note**: If your certificate is signed by a Certificate Authority present in
+  the CA Certificate Store in operating systems used in your deployment, you do
+  not need to provide the `ssl_ca` configuration option.
+
+> **Note**: The `include-base64` bundle keyword tells Juju to source a file and
+  Base64 encode it before storing it as a configuration option value. The path
+  can be absolute or relative to the location of the bundle file.
 
 Network Space Support
 ---------------------

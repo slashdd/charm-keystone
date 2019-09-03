@@ -2261,7 +2261,10 @@ def key_write():
         # now delete any keys that shouldn't be there
         for key_number in os.listdir(key_repository):
             if key_number not in leader_keys[key_repository].keys():
-                os.remove(os.path.join(key_repository, key_number))
+                # ignore if it is not a file
+                if os.path.isfile(os.path.join(key_repository, key_number)):
+                    os.remove(os.path.join(key_repository, key_number))
+
         # also say that keys have been setup for this system.
         open(KEY_SETUP_FILE, "w").close()
 

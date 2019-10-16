@@ -1,7 +1,8 @@
 charm_name: keystone
 smoke_bundles:
-- bionic-stein
+- bionic-train
 gate_bundles:
+- bionic-train
 - disco-stein
 - bionic-stein
 - bionic-rocky

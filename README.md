@@ -146,7 +146,7 @@ To use this feature, use the --bind option when deploying the charm:
     juju deploy keystone --bind \
     "public=public-space internal=internal-space admin=admin-space shared-db=internal-space"
 
-Alternatively, these can also be provided as part of a juju native bundle
+Alternatively, these can also be provided as part of a Juju native bundle
 configuration:
 
     keystone:
@@ -186,7 +186,6 @@ be overwritten on charm upgrades.
 Overrides are provided to the charm using a Juju resource called
 `policyd-override`.  The resource is a ZIP file.  This file, say
 `overrides.zip`, is attached to the charm by:
-
 
     juju attach-resource keystone policyd-override=overrides.zip
 
@@ -274,7 +273,6 @@ In the keystone charm, the _rotation frequency_ is calculated
 automatically from the `token-expiration` and the `fernet-max-active-keys`
 configuration parameters. For example, with an expiration of 24 hours and
 6 active keys, the rotation frequency is calculated as:
-
 
 ```python
 token_expiration = 24   # actually 3600, as it's in seconds

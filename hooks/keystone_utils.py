@@ -449,6 +449,10 @@ valid_services = {
         "type": "instance-ha",
         "desc": "Masakari instance HA for Openstack"
     },
+    "watcher": {
+        "type": "infra-optim",
+        "desc": "Infrastructure Optimization Service for Openstack"
+    },
 }
 
 # The interface is said to be satisfied if anyone of the interfaces in the

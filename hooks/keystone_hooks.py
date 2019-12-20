@@ -14,7 +14,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import hashlib
 import json
 import os
 import sys
@@ -126,6 +125,8 @@ from keystone_utils import (
     resume_unit_helper,
     remove_old_packages,
     stop_manager_instance,
+    assemble_endpoints,
+    endpoints_checksum,
 )
 
 from charmhelpers.contrib.hahelpers.cluster import (
@@ -440,18 +441,27 @@ def identity_changed(relation_id=None, remote_unit=None):
         if is_service_present('neutron', 'network'):
             delete_service_entry('quantum', 'network')
         settings = relation_get(rid=relation_id, unit=remote_unit)
-        service = settings.get('service', None)
+
+        # If endpoint has changed, notify to units related over the
+        # identity-notifications interface. We base the decision to notify on
+        # whether admin_url, public_url or internal_url have changed from
+        # previous notify.
+        service = settings.get('service')
         if service:
-            # If service is known and endpoint has changed, notify service if
-            # it is related with notifications interface.
-            csum = hashlib.sha256()
-            # We base the decision to notify on whether these parameters have
-            # changed (if csum is unchanged from previous notify, relation will
-            # not fire).
-            csum.update(settings.get('public_url', None).encode('utf-8'))
-            csum.update(settings.get('admin_url', None).encode('utf-8'))
-            csum.update(settings.get('internal_url', None).encode('utf-8'))
-            notifications['%s-endpoint-changed' % (service)] = csum.hexdigest()
+            key = '%s-endpoint-changed' % service
+            notifications[key] = endpoints_checksum(settings)
+        else:
+            # Some services don't set their name in the 'service' key in the
+            # relation, for those their name is calculated from the prefix of
+            # keys. See `assemble_endpoints()` for details.
+            single = {'service', 'region', 'public_url',
+                      'admin_url', 'internal_url'}
+            endpoints = assemble_endpoints(settings)
+            for ep in endpoints.keys():
+                if single.issubset(endpoints[ep]):
+                    key = '%s-endpoint-changed' % ep
+                    log('endpoint: %s' % ep)
+                    notifications[key] = endpoints_checksum(endpoints[ep])
     else:
         # Each unit needs to set the db information otherwise if the unit
         # with the info dies the settings die with it Bug# 1355848

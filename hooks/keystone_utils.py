@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import hashlib
 import json
 import os
 import shutil
@@ -1651,29 +1652,7 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
             https_cns.append(
                 urllib.parse.urlparse(settings['admin_url']).hostname)
     else:
-        # assemble multiple endpoints from relation data. service name
-        # should be prepended to setting name, ie:
-        #  realtion-set ec2_service=$foo ec2_region=$foo ec2_public_url=$foo
-        #  relation-set nova_service=$foo nova_region=$foo nova_public_url=$foo
-        # Results in a dict that looks like:
-        # { 'ec2': {
-        #       'service': $foo
-        #       'region': $foo
-        #       'public_url': $foo
-        #   }
-        #   'nova': {
-        #       'service': $foo
-        #       'region': $foo
-        #       'public_url': $foo
-        #   }
-        # }
-        endpoints = OrderedDict()  # for Python3 we need a consistent order
-        for k, v in settings.items():
-            ep = k.split('_')[0]
-            x = '_'.join(k.split('_')[1:])
-            if ep not in endpoints:
-                endpoints[ep] = {}
-            endpoints[ep][x] = v
+        endpoints = assemble_endpoints(settings)
 
         services = []
         for ep in endpoints:
@@ -2376,3 +2355,50 @@ def is_expected_scale():
     except NotImplementedError:
         return True
     return True
+
+
+def assemble_endpoints(settings):
+    """
+    Assemble multiple endpoints from relation data. service name
+    should be prepended to setting name, ie:
+     realtion-set ec2_service=$foo ec2_region=$foo ec2_public_url=$foo
+     relation-set nova_service=$foo nova_region=$foo nova_public_url=$foo
+
+    Results in a dict that looks like:
+    { 'ec2': {
+          'service': $foo
+          'region': $foo
+          'public_url': $foo
+      }
+      'nova': {
+          'service': $foo
+          'region': $foo
+          'public_url': $foo
+      }
+    }
+    """
+    endpoints = OrderedDict()  # for Python3 we need a consistent order
+    for k, v in settings.items():
+        ep = k.split('_')[0]
+        x = '_'.join(k.split('_')[1:])
+        if ep not in endpoints:
+            endpoints[ep] = {}
+        endpoints[ep][x] = v
+
+    return endpoints
+
+
+def endpoints_checksum(settings):
+    """
+    Calculate the checksum (sha256) of public_url, admin_url and internal_url
+    (in that order)
+
+    :param settings: dict with urls registered in keystone.
+    :returns: checksum
+    """
+    csum = hashlib.sha256()
+    log(str(settings))
+    csum.update(settings.get('public_url', None).encode('utf-8'))
+    csum.update(settings.get('admin_url', None).encode('utf-8'))
+    csum.update(settings.get('internal_url', None).encode('utf-8'))
+    return csum.hexdigest()

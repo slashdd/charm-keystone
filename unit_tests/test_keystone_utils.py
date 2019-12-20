@@ -1531,3 +1531,41 @@ class TestKeystoneUtils(CharmTestCase):
             collections.OrderedDict([
                 ('file1', ['svc1']),
                 ('/etc/apache2/ssl/keystone/*', ['apache2'])]))
+
+    def test_assemble_endpoints(self):
+        data = {
+            "egress-subnets": "10.5.0.16/32",
+            "ingress-address": "10.5.0.16",
+            "neutron_admin_url": "http://10.5.0.16:9696",
+            "neutron_internal_url": "http://10.5.1.16:9696",
+            "neutron_public_url": "http://10.5.2.16:9696",
+            "neutron_region": "RegionOne",
+            "neutron_service": "neutron",
+            "private-address": "10.5.3.16",
+            "relation_trigger": "821bd014-3189-4062-a004-5b286335bcef",
+        }
+        expected = {
+            'neutron': {'service': 'neutron',
+                        'admin_url': "http://10.5.0.16:9696",
+                        'internal_url': "http://10.5.1.16:9696",
+                        'public_url': "http://10.5.2.16:9696",
+                        'region': 'RegionOne'},
+            # these are leftovers which are present in the response
+            'egress-subnets': {'': "10.5.0.16/32"},
+            'ingress-address': {'': "10.5.0.16"},
+            'relation': {'trigger': "821bd014-3189-4062-a004-5b286335bcef"},
+            'private-address': {'': "10.5.3.16"}
+        }
+        endpoints = utils.assemble_endpoints(data)
+        self.assertDictEqual(dict(endpoints), expected)
+
+    def test_endpoints_checksum(self):
+        settings = {'service': 'neutron',
+                    'admin_url': "http://10.5.0.16:9696",
+                    'internal_url': "http://10.5.1.16:9696",
+                    'public_url': "http://10.5.2.16:9696",
+                    'region': 'RegionOne'}
+        csum = utils.endpoints_checksum(settings)
+        self.assertEqual(csum,
+                         ('d938ff5656d3d9b50345e8061b4c73c8'
+                          '116a9c7fbc087765ce2e3a4a5df7cb17'))

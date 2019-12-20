@@ -205,7 +205,6 @@ else:
 
 
 HAPROXY_CONF = '/etc/haproxy/haproxy.cfg'
-APACHE_PORTS_CONF = '/etc/apache2/ports.conf'
 APACHE_CONF = '/etc/apache2/sites-available/openstack_https_frontend'
 APACHE_24_CONF = '/etc/apache2/sites-available/openstack_https_frontend.conf'
 MEMCACHED_CONF = '/etc/memcached.conf'
@@ -293,10 +292,6 @@ BASE_RESOURCE_MAP = OrderedDict([
         'contexts': [keystone_context.FernetCronContext(),
                      context.SyslogContext()],
         'services': [],
-    }),
-    (APACHE_PORTS_CONF, {
-        'contexts': [],
-        'services': ['apache2'],
     }),
 ])
 

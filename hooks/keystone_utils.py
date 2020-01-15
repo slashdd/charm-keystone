@@ -1047,6 +1047,44 @@ def create_user(name, password, tenant=None, domain=None):
         .format(name, tenant_id, domain_id), level=DEBUG)
 
 
+def get_user_dict(user, **kwargs):
+    """Delegate update_user call to the manager
+
+    :param user: the user to fetch
+    :type user: str
+    :returns: a dictionary of the user keys:values
+    :rtype: Optional[Dict[str, ANY]]
+    """
+    manager = get_manager()
+    return manager.get_user_details_dict(user, **kwargs)
+
+
+def update_user(user, **kwargs):
+    """Delegate update_user call to the manager
+
+    :param user: the user to modify
+    :type user: str
+    :returns: a dictionary of the user keys:values after the update
+    :rtype: Dict[str, ANY]
+    """
+    manager = get_manager()
+    return manager.update_user(user, **kwargs)
+
+
+def list_users_for_domain(domain=None, domain_id=None):
+    """Delegate list_users_for_domain to the manager
+
+    :param domain: The domain name.
+    :type domain: Optional[str]
+    :param domain_id: The domain_id string
+    :type domain_id: Optional[str]
+    :returns: a list of user dictionaries in the domain
+    :rtype: List[Dict[str, ANY]]
+    """
+    manager = get_manager()
+    return manager.list_users_for_domain(domain, domain_id)
+
+
 def get_manager(api_version=None):
     return KeystoneManagerProxy(api_version=api_version)
 
@@ -1594,7 +1632,64 @@ def create_service_credentials(user, new_roles=None):
                                          tenant=tenant, new_roles=new_roles,
                                          grants=[config('admin-role')],
                                          domain=SERVICE_DOMAIN)
+        # protect the user from pci_dss password shenanigans
+        protect_user_account_from_pci_dss_force_change_password(user)
     return passwd
+
+
+def protect_user_account_from_pci_dss_force_change_password(user_name):
+    """Protect the user account against forcing a password change option
+
+    The PCI-DSS inspired option `change_password_upon_first_use` causes the
+    user to have to change their login password on first use.  Obviously, this
+    is a disaster for service accounts.  This function sets the option
+    `ignore_change_password_upon_first_use` on the specified user account so
+    that service accounts do not get locked out of the cloud.
+    It also sets the 'ignore_password_expiry' to ensure that passwords do not
+    get expired.
+
+    This is only applied in a keystone v3 environment, as the PCI-DSS options
+    are only supported on keystone v3 onwards.
+
+    :param user_name: the user to apply the protected option to.
+    :type user_name: str
+    """
+    if get_api_version() < 3:
+        return
+    tenant = config('service-tenant')
+    if not tenant:
+        raise ValueError("No service tenant provided in config")
+    for domain in (DEFAULT_DOMAIN, SERVICE_DOMAIN):
+        user = get_user_dict(user_name, domain=domain)
+        if user is None:
+            log("User {} in domain {} doesn't exist.  Can't set "
+                "'ignore_change_password_upon_first_use' option True for it."
+                .format(user_name, domain))
+            continue
+        options = user.get('options', {})
+        ignore_option = options.get('ignore_change_password_upon_first_use',
+                                    False)
+        ignore_password_option = options.get('ignore_password_expiry', False)
+        if ignore_option is False or ignore_password_option is False:
+            options['ignore_change_password_upon_first_use'] = True
+            options['ignore_password_expiry'] = True
+            log("Setting 'ignore_change_password_upon_first_use' and "
+                "'ignore_password_expiry' to True for"
+                "user {} in domain {}.".format(user_name, domain))
+            update_user(user['id'], options=options)
+
+
+def ensure_all_service_accounts_protected_for_pci_dss_options():
+    """This function ensures that the 'ignore_change_password_upon_first_use'
+    is set for all of the accounts in the SERVICE_DOMAIN, and then the
+    DEFAULT_DOMAIN.
+    """
+    if get_api_version() < 3:
+        return
+    log("Ensuring all service users are protected from PCI-DSS options")
+    users = list_users_for_domain(domain=SERVICE_DOMAIN)
+    for user in users:
+        protect_user_account_from_pci_dss_force_change_password(user['name'])
 
 
 def add_service_to_keystone(relation_id=None, remote_unit=None):
@@ -2016,7 +2111,7 @@ def get_optional_interfaces():
     return optional_interfaces
 
 
-def check_optional_relations(configs):
+def check_extra_for_assess_status(configs):
     """Check that if we have a relation_id for high availability that we can
     get the hacluster config.  If we can't then we are blocked.  This function
     is called from assess_status/set_os_workload_status as the charm_func and
@@ -2033,6 +2128,12 @@ def check_optional_relations(configs):
             return ('blocked',
                     'hacluster missing configuration: '
                     'vip, vip_iface, vip_cidr')
+    # verify that the config item, if set, is actually usable and valid
+    conf = config('password-security-compliance')
+    if (conf and (keystone_context.KeystoneContext
+                  ._decode_password_security_compliance_string(conf) is None)):
+        return ('blocked',
+                "'password-security-compliance' is invalid")
     # return 'unknown' as the lowest priority to not clobber an existing
     # status.
     return 'unknown', ''
@@ -2077,7 +2178,7 @@ def assess_status_func(configs, exclude_ha_resource=False):
         determine_ports())
     return make_assess_status_func(
         configs, required_interfaces,
-        charm_func=check_optional_relations,
+        charm_func=check_extra_for_assess_status,
         services=_services,
         ports=_ports)
 

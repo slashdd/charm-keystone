@@ -416,3 +416,17 @@ options:
       override YAML files in the service's policy.d directory.  The resource
       file should be a ZIP file containing at least one yaml file with a .yaml
       or .yml extension.  If False then remove the overrides.
+  password-security-compliance:
+    type: string
+    default:
+    description: |
+      This config item, if set, is used to configure the [security_compliance]
+      section of the keystone.conf file.  This is used to control how the
+      security around passwords is manged.  Please refer to the charm README
+      for full details.
+      .
+      The config item should be a YAML complaint string that sets the various
+      allowed options in [security_compliance].  The settings are checked by
+      the charm, but it's possible that it may break things unexpectedly.
+      Please ensure that the the README and relevant documentation is consulted
+      before setting this configuration option.

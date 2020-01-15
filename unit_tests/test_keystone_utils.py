@@ -14,6 +14,7 @@
 
 import builtins
 import collections
+import copy
 from mock import patch, call, MagicMock, mock_open, Mock
 import json
 import os
@@ -643,6 +644,148 @@ class TestKeystoneUtils(CharmTestCase):
         utils.create_service_credentials('serviceA')
         mock_create_user_credentials.assert_has_calls(calls)
 
+    @patch.object(utils,
+                  'protect_user_account_from_pci_dss_force_change_password')
+    @patch.object(utils, 'set_service_password')
+    @patch.object(utils, 'get_service_password')
+    @patch.object(utils, 'create_user_credentials')
+    def test_create_service_credentials_v3(self,
+                                           mock_create_user_credentials,
+                                           get_callback,
+                                           set_callback,
+                                           mock_protect_user_accounts):
+        get_callback.return_value = 'passA'
+        cfg = {'service-tenant': 'tenantA', 'admin-role': 'Admin',
+               'preferred-api-version': 3}
+        self.config.side_effect = lambda key: cfg.get(key, None)
+        calls = [
+            call('serviceA', get_callback, set_callback, domain='default',
+                 grants=['Admin'], new_roles=None, tenant='tenantA'),
+            call('serviceA', get_callback, set_callback,
+                 domain='service_domain', grants=['Admin'], new_roles=None,
+                 tenant='tenantA')]
+
+        utils.create_service_credentials('serviceA')
+        mock_create_user_credentials.assert_has_calls(calls)
+        mock_protect_user_accounts.assert_called_once_with('serviceA')
+
+    @patch.object(utils, 'get_api_version')
+    def test_protect_user_account_from_pci_dss_force_change_password_v2(
+            self, mock_get_api_version):
+        mock_get_api_version.return_value = 2
+        utils.protect_user_account_from_pci_dss_force_change_password('u1')
+        self.config.assert_not_called()
+
+    @patch.object(utils, 'get_api_version')
+    def test_protect_user_account_from_pci_dss_v3_no_tenant(
+            self, mock_get_api_version):
+        mock_get_api_version.return_value = 3
+        cfg = {}
+        self.config.side_effect = lambda key: cfg.get(key, None)
+        with self.assertRaises(ValueError):
+            utils.protect_user_account_from_pci_dss_force_change_password('u1')
+        self.config.assert_called_once_with('service-tenant')
+
+    @patch.object(utils, 'update_user')
+    @patch.object(utils, 'get_user_dict')
+    @patch.object(utils, 'get_api_version')
+    def test_protect_user_account_from_pci_dss_v3(
+            self,
+            mock_get_api_version,
+            mock_get_user_dict,
+            mock_update_user):
+        mock_get_api_version.return_value = 3
+        cfg = {'service-tenant': 'tenantA'}
+        self.config.side_effect = lambda key: cfg.get(key, None)
+        users = {
+            'u1': {
+                'id': 'u1id',
+                'options': {'ignore_change_password_upon_first_use': True,
+                            'ignore_password_expiry': True}},
+            'u2': {
+                'id': 'u2id',
+                'options': {'ignore_change_password_upon_first_use': False,
+                            'ignore_password_expiry': True}},
+            'u3': {'id': 'u3id', 'options': {}},
+            'u4': {'id': 'u4id'},
+        }
+        mock_get_user_dict.side_effect = (
+            lambda key, **kwargs: copy.deepcopy(users.get(key, None)))
+
+        # test user exists and option exists and is true
+        utils.protect_user_account_from_pci_dss_force_change_password('u1')
+        calls = [call('u1', utils.DEFAULT_DOMAIN),
+                 call('u1', utils.SERVICE_DOMAIN)]
+        mock_get_user_dict.has_calls(calls)
+        mock_update_user.assert_not_called()
+
+        # test user exists and option exists and is False
+        mock_get_user_dict.reset_mock()
+        utils.protect_user_account_from_pci_dss_force_change_password('u2')
+        calls = [call('u2id',
+                      options={'ignore_change_password_upon_first_use': True,
+                               'ignore_password_expiry': True}
+                      ),
+                 call('u2id',
+                      options={'ignore_change_password_upon_first_use': True,
+                               'ignore_password_expiry': True}
+                      )]
+        mock_update_user.assert_has_calls(calls)
+
+        # test user exists and the option doesn't exist
+        mock_get_user_dict.reset_mock()
+        mock_update_user.reset_mock(calls)
+        utils.protect_user_account_from_pci_dss_force_change_password('u3')
+        calls = [call('u3id',
+                      options={'ignore_change_password_upon_first_use': True,
+                               'ignore_password_expiry': True}
+                      ),
+                 call('u3id',
+                      options={'ignore_change_password_upon_first_use': True,
+                               'ignore_password_expiry': True}
+                      )]
+        mock_update_user.assert_has_calls(calls)
+        # test user exists and no options exist
+        mock_get_user_dict.reset_mock()
+        mock_update_user.reset_mock(calls)
+        utils.protect_user_account_from_pci_dss_force_change_password('u4')
+        calls = [call('u4id',
+                      options={'ignore_change_password_upon_first_use': True,
+                               'ignore_password_expiry': True}
+                      ),
+                 call('u4id',
+                      options={'ignore_change_password_upon_first_use': True,
+                               'ignore_password_expiry': True}
+                      )]
+        mock_update_user.assert_has_calls(calls)
+        # test user doesn't exist
+        mock_get_user_dict.reset_mock()
+        mock_update_user.reset_mock(calls)
+        utils.protect_user_account_from_pci_dss_force_change_password('u5')
+        mock_update_user.assert_not_called()
+
+    @patch.object(utils,
+                  'protect_user_account_from_pci_dss_force_change_password')
+    @patch.object(utils, 'list_users_for_domain')
+    @patch.object(utils, 'get_api_version')
+    def test_ensure_all_service_accounts_protected_for_pci_dss_options(
+        self,
+        mock_get_api_version,
+        mock_list_users_for_domain,
+        mock_protect_service_accounts,
+    ):
+        # test it does nothing for less that keystone v3
+        mock_get_api_version.return_value = 2
+        utils.ensure_all_service_accounts_protected_for_pci_dss_options()
+        mock_protect_service_accounts.assert_not_called()
+        # now check that service accounts get protected.
+        mock_get_api_version.return_value = 3
+        mock_list_users_for_domain.return_value = [
+            {'name': 'u1'}, {'name': 'u2'}]
+        utils.ensure_all_service_accounts_protected_for_pci_dss_options()
+        mock_protect_service_accounts.assert_has_calls([
+            call('u1'), call('u2')])
+
     def test_ensure_valid_service_incorrect(self):
         utils.ensure_valid_service('fakeservice')
         self.log.assert_called_with("Invalid service requested: 'fakeservice'")
@@ -875,13 +1018,13 @@ class TestKeystoneUtils(CharmTestCase):
     @patch.object(utils, 'services')
     @patch.object(utils, 'get_optional_interfaces')
     @patch.object(utils, 'REQUIRED_INTERFACES')
-    @patch.object(utils, 'check_optional_relations')
+    @patch.object(utils, 'check_extra_for_assess_status')
     @patch.object(utils, 'get_managed_services_and_ports')
     @patch.object(utils, 'make_assess_status_func')
     def test_assess_status_func(self,
                                 make_assess_status_func,
                                 get_managed_services_and_ports,
-                                check_optional_relations,
+                                check_extra_for_assess_status,
                                 REQUIRED_INTERFACES,
                                 get_optional_interfaces,
                                 services,
@@ -895,7 +1038,9 @@ class TestKeystoneUtils(CharmTestCase):
         make_assess_status_func.assert_called_once_with(
             'test-config',
             {'int': ['test 1'], 'opt': ['test 2']},
-            charm_func=check_optional_relations, services=['s1'], ports=[200])
+            charm_func=check_extra_for_assess_status,
+            services=['s1'],
+            ports=[200])
 
     def test_pause_unit_helper(self):
         with patch.object(utils, '_pause_resume_helper') as prh:

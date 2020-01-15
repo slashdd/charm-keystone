@@ -579,6 +579,8 @@ class KeystoneRelationTests(CharmTestCase):
         cmd = ['a2dissite', 'openstack_https_frontend']
         self.check_call.assert_called_with(cmd)
 
+    @patch.object(hooks,
+                  'ensure_all_service_accounts_protected_for_pci_dss_options')
     @patch.object(hooks, 'maybe_do_policyd_overrides')
     @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(utils, 'os_release')
@@ -595,7 +597,8 @@ class KeystoneRelationTests(CharmTestCase):
                                   mock_is_db_ready,
                                   os_release,
                                   update,
-                                  mock_maybe_do_policyd_overrides):
+                                  mock_maybe_do_policyd_overrides,
+                                  mock_protect_service_accounts):
         os_release.return_value = 'havana'
         mock_is_db_initialised.return_value = True
         mock_is_db_ready.return_value = True
@@ -612,7 +615,10 @@ class KeystoneRelationTests(CharmTestCase):
         mock_stop_manager_instance.assert_called_once_with()
         mock_maybe_do_policyd_overrides.assert_called_once_with(
             ANY, "keystone")
+        mock_protect_service_accounts.assert_called_once_with()
 
+    @patch.object(hooks,
+                  'ensure_all_service_accounts_protected_for_pci_dss_options')
     @patch.object(hooks, 'maybe_do_policyd_overrides')
     @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(utils, 'os_release')
@@ -629,7 +635,8 @@ class KeystoneRelationTests(CharmTestCase):
                                               mock_is_db_ready,
                                               os_release,
                                               update,
-                                              mock_maybe_do_policyd_overrides):
+                                              mock_maybe_do_policyd_overrides,
+                                              mock_protect_service_accounts):
         os_release.return_value = 'havana'
         mock_is_db_initialised.return_value = True
         mock_is_db_ready.return_value = True
@@ -646,6 +653,7 @@ class KeystoneRelationTests(CharmTestCase):
         mock_stop_manager_instance.assert_called_once_with()
         mock_maybe_do_policyd_overrides.assert_called_once_with(
             ANY, "keystone")
+        mock_protect_service_accounts.assert_called_once_with()
 
     @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(hooks, 'is_db_initialised')

@@ -84,6 +84,7 @@ from keystone_context import fernet_enabled
 
 from keystone_utils import (
     add_service_to_keystone,
+    ensure_all_service_accounts_protected_for_pci_dss_options,
     add_credentials_to_keystone,
     determine_packages,
     disable_unused_apache_sites,
@@ -707,6 +708,9 @@ def upgrade_charm():
         log('Cluster leader - ensuring endpoint configuration is up to '
             'date', level=DEBUG)
         update_all_identity_relation_units()
+        # also ensure that the PCI-DSS protection is in place for service
+        # accounts.
+        ensure_all_service_accounts_protected_for_pci_dss_options()
 
     # call the policy overrides handler which will install any policy overrides
     maybe_do_policyd_overrides(os_release('keystone'), 'keystone')

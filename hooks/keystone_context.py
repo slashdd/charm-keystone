@@ -14,6 +14,7 @@
 
 import os
 import json
+import yaml
 
 from charmhelpers.contrib.openstack import context
 
@@ -24,6 +25,7 @@ from charmhelpers.contrib.hahelpers.cluster import (
 )
 
 from charmhelpers.core.hookenv import (
+    cached,
     charm_dir,
     config,
     log,
@@ -213,6 +215,10 @@ class KeystoneContext(context.OSContextGenerator):
                 flags = context.config_flags_parser(ldap_flags)
                 ctxt['ldap_config_flags'] = flags
 
+        ctxt['password_security_compliance'] = (
+            self._decode_password_security_compliance_string(
+                config('password-security-compliance')))
+
         # Base endpoint URL's which are used in keystone responses
         # to unauthenticated requests to redirect clients to the
         # correct auth URL.
@@ -236,6 +242,79 @@ class KeystoneContext(context.OSContextGenerator):
             ctxt['paste_config_file'] = '/etc/keystone/keystone-paste.ini'
 
         return ctxt
+
+    ALLOWED_SECURITY_COMPLIANCE_SCHEMA = {
+        'lockout_failure_attempts': int,
+        'lockout_duration': int,
+        'disable_user_account_days_inactive': int,
+        'change_password_upon_first_use': bool,
+        'password_expires_days': int,
+        'password_regex': str,
+        'password_regex_description': str,
+        'unique_last_password_count': int,
+        'minimum_password_age': int,
+    }
+
+    @classmethod
+    @cached
+    def _decode_password_security_compliance_string(cls, maybe_yaml):
+        """Decode string to dict for 'password-security-compliance'
+
+        Perform some validation on the string and return either None,
+        if the string is not valid, or a dictionary of the security
+        compliance keys and values.
+
+        :param maybe_yaml: the config item that is (hopefully) YAML format
+        :type maybe_yaml: str
+        :returns: a dictionary of keys: values or None if the value is not
+                  valid.
+        :rtype: Optional[Dict[str, Union[str, int, bool]]]
+        """
+        cmp_release = CompareOpenStackReleases(os_release('keystone'))
+        if cmp_release < 'newton':
+            log("'password-security-compliance' isn't valid for releases "
+                "before Newton.",
+                level='ERROR')
+            return None
+        try:
+            config_items = yaml.safe_load(maybe_yaml)
+        except Exception as e:
+            log("Couldn't decode config value for "
+                "'password-security-compliance': Invalid YAML?: {}"
+                .format(str(e)),
+                level='ERROR')
+            return None
+        # ensure that the top level is a dictionary.
+        if type(config_items) != dict:
+            log("Couldn't decode config value for "
+                "'password-security-compliance'.  It doesn't appear to be a "
+                "dictionary: {}".format(str(config_items)),
+                level='ERROR')
+            return None
+        # check that the keys present are valid ones.
+        config_keys = config_items.keys()
+        allowed_keys = cls.ALLOWED_SECURITY_COMPLIANCE_SCHEMA.keys()
+        invalid_keys = [k for k in config_keys if k not in allowed_keys]
+        if invalid_keys:
+            log("Invalid config key(s) found in config "
+                "'password-security-compliance' setting: {}"
+                .format(", ".join(invalid_keys)),
+                level='ERROR')
+            return None
+        # check that the types are valid
+        valid_types = cls.ALLOWED_SECURITY_COMPLIANCE_SCHEMA
+        invalid_types = {k: (type(v) != valid_types[k])
+                         for k, v in config_items.items()}
+        if any(invalid_types.values()):
+            log("Invalid config value type(s) found in config "
+                "'password-security-compliance' setting: {}"
+                .format(", ".join(["{}: {} -- should be an {}"
+                                   .format(k, type(config_items[k]).__name__,
+                                           valid_types[k].__name__)
+                                   for k, v in invalid_types.items()])),
+                level='ERROR')
+            return None
+        return config_items
 
 
 class KeystoneLoggingContext(context.OSContextGenerator):

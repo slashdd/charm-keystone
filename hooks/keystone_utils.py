@@ -33,6 +33,7 @@ from charmhelpers.contrib.hahelpers.cluster import (
     determine_api_port,
     https,
     get_hacluster_config,
+    get_managed_services_and_ports,
 )
 
 from charmhelpers.contrib.openstack import context, templating
@@ -2054,34 +2055,6 @@ def assess_status(configs):
     os_application_version_set(VERSION_PACKAGE)
 
 
-def get_managed_services_and_ports():
-    """Get the services and ports managed by this charm.
-
-    Return only the services and corresponding ports that are managed by this
-    charm. This excludes haproxy when there is a relation with hacluster. This
-    is because this charm passes responsability for stopping and starting
-    haproxy to hacluster.
-
-    Similarly, if a relation with hacluster exists then the ports returned by
-    this method correspond to those managed by the apache server rather than
-    haproxy.
-
-    :returns: A tuple containing a list of services first followed by a list of
-              ports.
-    :rtype: Tuple[List[str], List[int]]
-    """
-    _services = services()
-    _ports = determine_ports()
-    if relation_ids('ha'):
-        try:
-            _services.remove('haproxy')
-        except ValueError:
-            pass
-        _ports = [determine_api_port(api_port(space), singlenode_mode=True)
-                  for space in ('keystone-admin', 'keystone-public')]
-    return _services, _ports
-
-
 def assess_status_func(configs, exclude_ha_resource=False):
     """Helper function to create the function that will assess_status() for
     the unit.
@@ -2099,7 +2072,9 @@ def assess_status_func(configs, exclude_ha_resource=False):
     """
     required_interfaces = REQUIRED_INTERFACES.copy()
     required_interfaces.update(get_optional_interfaces())
-    _services, _ports = get_managed_services_and_ports()
+    _services, _ports = get_managed_services_and_ports(
+        services(),
+        determine_ports())
     return make_assess_status_func(
         configs, required_interfaces,
         charm_func=check_optional_relations,
@@ -2147,7 +2122,9 @@ def _pause_resume_helper(f, configs):
     @param f: the function to be used with the assess_status(...) function
     @returns None - this function is executed for its side-effect
     """
-    _services, _ports = get_managed_services_and_ports()
+    _services, _ports = get_managed_services_and_ports(
+        services(),
+        determine_ports())
     f(assess_status_func(configs),
       services=_services,
       ports=_ports)

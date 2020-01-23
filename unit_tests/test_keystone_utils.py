@@ -871,6 +871,8 @@ class TestKeystoneUtils(CharmTestCase):
                 utils.VERSION_PACKAGE
             )
 
+    @patch.object(utils, 'determine_ports')
+    @patch.object(utils, 'services')
     @patch.object(utils, 'get_optional_interfaces')
     @patch.object(utils, 'REQUIRED_INTERFACES')
     @patch.object(utils, 'check_optional_relations')
@@ -881,7 +883,11 @@ class TestKeystoneUtils(CharmTestCase):
                                 get_managed_services_and_ports,
                                 check_optional_relations,
                                 REQUIRED_INTERFACES,
-                                get_optional_interfaces):
+                                get_optional_interfaces,
+                                services,
+                                determine_ports):
+        services.return_value = ['s1']
+        determine_ports.return_value = [200]
         get_managed_services_and_ports.return_value = (['s1'], [200])
         REQUIRED_INTERFACES.copy.return_value = {'int': ['test 1']}
         get_optional_interfaces.return_value = {'opt': ['test 2']}
@@ -899,8 +905,11 @@ class TestKeystoneUtils(CharmTestCase):
             utils.resume_unit_helper('random-config')
             prh.assert_called_once_with(utils.resume_unit, 'random-config')
 
+    @patch.object(utils, 'determine_ports')
+    @patch.object(utils, 'services')
     @patch.object(utils, 'get_managed_services_and_ports')
-    def test_pause_resume_helper(self, get_managed_services_and_ports):
+    def test_pause_resume_helper(self, get_managed_services_and_ports,
+                                 services, determine_ports):
         f = MagicMock()
         get_managed_services_and_ports.return_value = (['s1'], [200])
         with patch.object(utils, 'assess_status_func') as asf:
@@ -908,41 +917,6 @@ class TestKeystoneUtils(CharmTestCase):
             utils._pause_resume_helper(f, 'some-config')
             asf.assert_called_once_with('some-config')
             f.assert_called_once_with('assessor', services=['s1'], ports=[200])
-
-    @patch.object(utils, 'services')
-    @patch.object(utils, 'determine_ports')
-    @patch.object(utils, 'relation_ids')
-    @patch.object(utils, 'determine_api_port')
-    def test_get_managed_services_and_ports_no_ha(self, determine_api_port,
-                                                  relation_ids,
-                                                  determine_ports,
-                                                  services):
-        services.return_value = ['apache2', 'haproxy']
-        determine_ports.return_value = [80, 8080]
-        relation_ids.return_value = None
-        self.assertEqual(
-            utils.get_managed_services_and_ports(),
-            (['apache2', 'haproxy'], [80, 8080]))
-
-    @patch.object(utils, 'services')
-    @patch.object(utils, 'determine_ports')
-    @patch.object(utils, 'relation_ids')
-    @patch.object(utils, 'determine_api_port')
-    def test_get_managed_services_and_ports(self, determine_api_port,
-                                            relation_ids, determine_ports,
-                                            services):
-        ports = {
-            'keystone-admin': 5000,
-            'keystone-public': 3535}
-        services.return_value = ['apache2', 'haproxy']
-        determine_ports.return_value = [80, 8080]
-        self.api_port.return_value = 100
-        determine_api_port.side_effect = lambda x, singlenode_mode: x-10
-        self.api_port.side_effect = lambda x: ports.get(x)
-        relation_ids.return_value = ['rel:1']
-        self.assertEqual(
-            utils.get_managed_services_and_ports(),
-            (['apache2'], [4990, 3525]))
 
     @patch.object(utils, 'run_in_apache')
     @patch.object(utils, 'restart_keystone')

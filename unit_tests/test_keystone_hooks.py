@@ -104,6 +104,7 @@ TO_PATCH = [
     'run_in_apache',
     # unitdata
     'unitdata',
+    'is_db_maintenance_mode',
 ]
 
 
@@ -197,6 +198,7 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(hooks, 'CONFIGS')
     def test_db_changed_missing_relation_data(self, configs,
                                               mock_log):
+        self.is_db_maintenance_mode_return_value = False
         configs.complete_contexts = MagicMock()
         configs.complete_contexts.return_value = []
         hooks.db_changed()
@@ -206,6 +208,7 @@ class KeystoneRelationTests(CharmTestCase):
 
     @patch.object(hooks, 'update_all_identity_relation_units')
     def _shared_db_test(self, configs, unit_name, mock_update_all):
+        self.is_db_maintenance_mode_return_value = False
         self.relation_get.return_value = 'keystone/0 keystone/3'
         configs.complete_contexts = MagicMock()
         configs.complete_contexts.return_value = ['shared-db']
@@ -713,6 +716,7 @@ class KeystoneRelationTests(CharmTestCase):
                                                 configure_https,
                                                 is_expected_scale):
         """ Verify all identity relations are updated """
+        self.is_db_maintenance_mode.return_value = False
         is_db_initialized.return_value = True
         is_expected_scale.return_value = True
         self.relation_ids.return_value = ['identity-relation:0']
@@ -737,6 +741,7 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(hooks, 'CONFIGS')
     def test_update_all_db_not_ready(self, configs, configure_https):
         """ Verify update identity relations when DB is not ready """
+        self.is_db_maintenance_mode.return_value = False
         self.is_db_ready.return_value = False
         hooks.update_all_identity_relation_units(check_db_ready=True)
         self.assertTrue(self.is_db_ready.called)
@@ -750,6 +755,7 @@ class KeystoneRelationTests(CharmTestCase):
     def test_update_all_db_not_initializd(self, configs, is_db_initialized,
                                           configure_https):
         """ Verify update identity relations when DB is not initialized """
+        self.is_db_maintenance_mode.return_value = False
         is_db_initialized.return_value = False
         hooks.update_all_identity_relation_units(check_db_ready=False)
         self.assertFalse(self.is_db_ready.called)
@@ -765,6 +771,7 @@ class KeystoneRelationTests(CharmTestCase):
     def test_update_all_leader(self, configs, is_db_initialized,
                                configure_https, is_expected_scale):
         """ Verify update identity relations when the leader"""
+        self.is_db_maintenance_mode.return_value = False
         self.is_elected_leader.return_value = True
         is_db_initialized.return_value = True
         is_expected_scale.return_value = True
@@ -779,6 +786,7 @@ class KeystoneRelationTests(CharmTestCase):
     def test_update_all_not_leader(self, configs, is_db_initialized,
                                    configure_https, is_expected_scale):
         """ Verify update identity relations when not the leader"""
+        self.is_db_maintenance_mode.return_value = False
         self.is_elected_leader.return_value = False
         is_db_initialized.return_value = True
         is_expected_scale.return_value = True

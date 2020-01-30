@@ -78,6 +78,7 @@ from charmhelpers.contrib.openstack.utils import (
     enable_memcache,
     series_upgrade_prepare,
     series_upgrade_complete,
+    is_db_maintenance_mode,
 )
 
 from keystone_context import fernet_enabled
@@ -317,6 +318,9 @@ def db_joined():
 
 
 def update_all_identity_relation_units(check_db_ready=True):
+    if is_db_maintenance_mode():
+        log('Database maintenance mode, aborting hook.', level=INFO)
+        return
     if is_unit_paused_set():
         return
     if check_db_ready and not is_db_ready():

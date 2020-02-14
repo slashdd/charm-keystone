@@ -672,9 +672,9 @@ class TestKeystoneUtils(CharmTestCase):
     @patch.object(utils, 'relation_get')
     @patch.object(utils, 'relation_ids')
     @patch.object(utils, 'is_elected_leader')
-    def test_send_notifications(self, mock_is_elected_leader,
-                                mock_relation_ids, mock_relation_get,
-                                mock_relation_set, mock_uuid):
+    def test_send_id_notifications(self, mock_is_elected_leader,
+                                   mock_relation_ids, mock_relation_get,
+                                   mock_relation_set, mock_uuid):
         relation_id = 'testrel:0'
         mock_uuid.uuid4.return_value = '1234'
         mock_relation_ids.return_value = [relation_id]
@@ -698,6 +698,92 @@ class TestKeystoneUtils(CharmTestCase):
         settings['trigger'] = '1234'
         mock_relation_set.assert_called_once_with(relation_id=relation_id,
                                                   relation_settings=settings)
+
+    @patch.object(utils, 'relation_ids')
+    @patch.object(utils, 'related_units')
+    @patch.object(utils, 'relation_get')
+    @patch.object(utils, 'relation_set')
+    def test_send_id_service_notifications(self, mock_relation_set,
+                                           mock_relation_get,
+                                           mock_related_units,
+                                           mock_relation_ids):
+        id_svc_rel_units = {
+            'identity-service:1': ['neutron-gateway/0'],
+            'identity-service:2': [
+                'nova-cloud-controller/0',
+                'nova-cloud-controller/1',
+                'nova-cloud-controller/2'],
+            'identity-service:3': ['glance/0', 'glance/1', 'glance/2']
+        }
+
+        def _related_units(rid):
+            return id_svc_rel_units[rid]
+
+        id_svc_rel_data = {
+            'neutron-gateway/0': {
+                'subscribe_ep_change': 'neutron'},
+            'nova-cloud-controller/0': {
+                'nova_admin_url': 'http://172.20.0.13:8774/v2.1',
+                'subscribe_ep_change': 'placement neutron'},
+            'nova-cloud-controller/1': {},
+            'nova-cloud-controller/2': {},
+            'glance/0': {
+                'admin_url': 'http://172.20.0.32:9292'},
+            'glance/1': {},
+            'glance/2': {}}
+
+        def _relation_get(unit, rid, attribute):
+            return id_svc_rel_data[unit].get(attribute)
+
+        mock_relation_ids.return_value = id_svc_rel_units.keys()
+        mock_related_units.side_effect = _related_units
+        mock_relation_get.side_effect = _relation_get
+
+        # Check all services subscribed to placement changes are notified.
+        mock_relation_set.reset_mock()
+        utils.send_id_service_notifications(
+            {'placement-endpoint-changed': '4d0633ee'})
+        mock_relation_set.assert_called_once_with(
+            relation_id='identity-service:2',
+            relation_settings={
+                'ep_changed': '{"placement": "4d0633ee"}'})
+
+        # Check all services subscribed to neutron changes are notified.
+        mock_relation_set.reset_mock()
+        utils.send_id_service_notifications(
+            {'neutron-endpoint-changed': '1c261658'})
+        expected_rel_set_calls = [
+            call(
+                relation_id='identity-service:1',
+                relation_settings={
+                    'ep_changed': '{"neutron": "1c261658"}'}),
+            call(
+                relation_id='identity-service:2',
+                relation_settings={
+                    'ep_changed': '{"neutron": "1c261658"}'})]
+        mock_relation_set.assert_has_calls(
+            expected_rel_set_calls,
+            any_order=True)
+
+        # Check multiple ep changes with app subscribing to multiple eps
+        mock_relation_set.reset_mock()
+        utils.send_id_service_notifications(
+            {'neutron-endpoint-changed': '1c261658',
+             'placement-endpoint-changed': '4d0633ee'})
+        expected_rel_set_calls = [
+            call(
+                relation_id='identity-service:1',
+                relation_settings={
+                    'ep_changed': '{"neutron": "1c261658"}'}),
+            call(
+                relation_id='identity-service:2',
+                relation_settings={
+                    'ep_changed': (
+                        '{"neutron": "1c261658", '
+                        '"placement": "4d0633ee"}')})]
+        mock_relation_set.assert_has_calls(
+            expected_rel_set_calls,
+            any_order=True)
 
     def test_get_admin_passwd_pwd_set(self):
         self.test_config.set('admin-password', 'supersecret')

@@ -1885,7 +1885,49 @@ def setup_ipv6():
         apt_install('haproxy/trusty-backports', fatal=True)
 
 
+def send_id_service_notifications(data):
+    """Send notification on identity-service relation.
+
+    Services can optionally request notifications of other services endpoint
+    changes. They do this by sending a space seperated list of service names
+    that they wish to be notified of. e.g
+
+        subscribe_ep_change="placement neutron"
+
+    If the endpoints change for any service in the list then a notification is
+    sent back with a nonce. e.g. if the neutron ep changes the charm will
+    recieve a json encoded dict of changes:
+        'ep_changed': '{"neutron": "1c261658"}'
+
+    :param data: Dict of key=value to use as trigger for notification.
+    :type data: dict
+    """
+    id_svc_rel_ids = relation_ids('identity-service')
+    for rid in id_svc_rel_ids:
+        changed = {}
+        for unit in related_units(rid):
+            rs = relation_get(
+                unit=unit,
+                rid=rid,
+                attribute='subscribe_ep_change')
+            if rs:
+                for r in rs.split():
+                    key = '{}-endpoint-changed'.format(r)
+                    if data.get(key):
+                        changed[r] = data[key]
+        if changed:
+            relation_set(
+                relation_id=rid,
+                relation_settings={
+                    'ep_changed': json.dumps(changed, sort_keys=True)})
+
+
 def send_notifications(data, force=False):
+    send_id_notifications(data, force=force)
+    send_id_service_notifications(data)
+
+
+def send_id_notifications(data, force=False):
     """Send notifications to all units listening on the identity-notifications
     interface.
 

@@ -406,6 +406,89 @@ class KeystoneManager3(KeystoneManager):
     def update_password(self, user, password):
         self.api.users.update(user, password=password)
 
+    def get_user_details_dict(self, user, **kwargs):
+        """Get the user details dictionary for a user.
+
+        This fetches the user details for a user and domain or domain_id.
+        It uses the lowercase name for the user; all users as far as the
+        keystone charm are concerned are the same if lower cased.
+
+        :param user: the user name to look for.
+        :type user: str
+        :returns: a dictionary of key:value pairs representing the user
+        :rtype: Optional[Dict[str, ANY]]
+        :raises: RuntimeError if no domain or domain_id is passed.
+                 ValueError if the domain_id cannot be resolved
+        """
+        domain_id = kwargs.get('domain_id', None)
+        domain = kwargs.get('domain', None)
+        if not domain_id:
+            if not domain:
+                raise RuntimeError(
+                    "Can't resolve a domain as no domain or domain_id "
+                    "supplid.")
+            domain_id = manager.resolve_domain_id(domain)
+            if not domain_id:
+                raise ValueError(
+                    'Could not resolve domain_id for {} when checking if '
+                    ' user {} exists'.format(domain, user))
+        for u in self.api.users.list(domain=domain_id):
+            if user.lower() == u.name.lower():
+                if domain_id == u.domain_id:
+                    return u.to_dict()
+        return None
+
+    def update_user(self, user, **kwargs):
+        """Update the user with data from the **kwargs.
+
+        It is the responsibility of the caller to fully define the user
+        that needs to be udpated.  e.g. preferably the user is a
+        :class:`keystoneclient.v3.users.User`
+
+        :param user: The user to be updated.
+        :type user: Union[str, keystoneclient.v3.users.User]
+        :params **kwargs: the keys, values to be udpated.
+        :type **kwargs: Dict[str, str]
+        :returns: the dictionary representation of the updated user
+        :rtype: Dict[str, ANY]
+        """
+        res = self.api.users.update(user, **kwargs)
+        return res.to_dict()
+
+    def list_users_for_domain(self, domain=None, domain_id=None):
+        """Return a list of all the users in a domain.
+
+        This returns a list of the users in the specified domain_id or
+        domain_id resolved from the domain name.  The return value is a
+        restricted list of dictionary items:
+
+            {
+                'name': <str>
+                'id': <str>
+            }
+
+        One of either the :param:`domain` or :param:`domain_id` must be
+        supplied or otherwise the function raises a RuntimeError.
+
+        :param domain: The domain name.
+        :type domain: Optional[str]
+        :param domain_id: The domain_id string
+        :type domain_id: Optional[str]
+        :returns: a list of user dictionaries in the domain
+        :rtype: List[Dict[str, ANY]]
+        :raises: RuntimeError if no domain or domain_id is passed.
+                 ValueError if the domain_id cannot be resolved from the domain
+        """
+        if domain is None and domain_id is None:
+            raise RuntimeError("Must supply either domain or domain_id param")
+        domain_id = domain_id or manager.resolve_domain_id(domain)
+        if domain_id is None:
+            raise ValueError(
+                'Could not resolve domain_id for {}.'.format(domain))
+        users = [{'name': u.name, 'id': u.id}
+                 for u in self.api.users.list(domain=domain_id)]
+        return users
+
     def roles_for_user(self, user_id, tenant_id=None, domain_id=None):
         # Specify either a domain or project, not both
         if domain_id:
@@ -547,6 +630,7 @@ if __name__ == '__main__':
     # endless loop whilst we process messages from the caller
     while True:
         try:
+            result = None
             data = uds_client.receive()
             if data == "QUIT" or data is None:
                 break
@@ -587,8 +671,9 @@ if __name__ == '__main__':
             traceback.print_exc()
             result = {'error': str(e)}
         finally:
-            result_json = json.dumps(result, **JSON_ENCODE_OPTIONS)
-            uds_client.send(result_json)
+            if result is not None:
+                result_json = json.dumps(result, **JSON_ENCODE_OPTIONS)
+                uds_client.send(result_json)
 
     # normal exit
     exit(0)

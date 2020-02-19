@@ -16,7 +16,7 @@ import collections
 import importlib
 import os
 
-from mock import patch, MagicMock
+from mock import patch, MagicMock, ANY
 with patch('charmhelpers.contrib.openstack.'
            'utils.snap_install_requested') as snap_install_requested:
     snap_install_requested.return_value = False
@@ -506,3 +506,78 @@ class TestKeystoneContexts(CharmTestCase):
                                 [u'simple_token_secret', u'foobar']]}}
 
         self.assertEqual(ctxt(), exp)
+
+    @patch.object(context, 'log')
+    def test__decode_password_security_compliance_string_pre_newton(
+            self, mock_log):
+        self.os_release.return_value = 'mitaka'
+        self.assertIsNone(
+            context.
+            KeystoneContext.
+            _decode_password_security_compliance_string(""))
+        mock_log.assert_called_once_with(ANY, level='ERROR')
+        self.assertIn("Newton", mock_log.call_args.args[0])
+
+    @patch.object(context, 'log')
+    def test__decode_password_security_compliance_string_invalid_yaml(
+            self, mock_log):
+        self.os_release.return_value = 'ocata'
+        self.assertIsNone(
+            context.
+            KeystoneContext.
+            _decode_password_security_compliance_string("hello: this: one"))
+        mock_log.assert_called_once_with(ANY, level='ERROR')
+        self.assertIn("Invalid YAML", mock_log.call_args.args[0])
+
+    @patch.object(context, 'log')
+    def test__decode_password_security_compliance_string_yaml_not_dict(
+            self, mock_log):
+        self.os_release.return_value = 'pike'
+        self.assertIsNone(
+            context.
+            KeystoneContext.
+            _decode_password_security_compliance_string("hello"))
+        mock_log.assert_called_once_with(ANY, level='ERROR')
+        self.assertIn("dictionary", mock_log.call_args.args[0])
+
+    @patch.object(context, 'log')
+    def test__decode_password_security_compliance_string_invalid_key(
+            self, mock_log):
+        self.os_release.return_value = 'queens'
+        self.assertIsNone(
+            context.
+            KeystoneContext.
+            _decode_password_security_compliance_string(
+                "lockout_failure_attempts: 5\nlookout_duration: 180\n"))
+        mock_log.assert_called_once_with(ANY, level='ERROR')
+        self.assertIn("Invalid config key(s)", mock_log.call_args.args[0])
+
+    @patch.object(context, 'log')
+    def test__decode_password_security_compliance_string_invalid_type(
+            self, mock_log):
+        self.os_release.return_value = 'rocky'
+        self.assertIsNone(
+            context.
+            KeystoneContext.
+            _decode_password_security_compliance_string(
+                "lockout_failure_attempts: hello"))
+        mock_log.assert_called_once_with(ANY, level='ERROR')
+        self.assertIn("Invalid config value", mock_log.call_args.args[0])
+
+    @patch.object(context, 'log')
+    def test__decode_password_security_compliance_string_valid(
+            self, mock_log):
+        self.os_release.return_value = 'stein'
+        ctxt = (context.
+                KeystoneContext.
+                _decode_password_security_compliance_string(
+                    "lockout_failure_attempts: 5\n"
+                    "lockout_duration: 180\n"
+                    "password_expires_days: 30\n"))
+        mock_log.assert_not_called()
+        self.assertEqual(ctxt,
+                         {
+                             "lockout_failure_attempts": 5,
+                             "lockout_duration": 180,
+                             "password_expires_days": 30,
+                         })

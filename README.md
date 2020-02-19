@@ -187,6 +187,47 @@ Here are the essential commands (filenames are arbitrary):
 See appendix [Policy Overrides][cdg-appendix-n] in the [OpenStack Charms
 Deployment Guide][cdg] for a thorough treatment of this feature.
 
+## Security Compliance config option "password-security-compliance"
+
+The `password-security-compliance` configuration option sets the
+`[security_compliance]` section of Keystone's configuration file.
+
+The configuration option is a YAML dictionary, that is one level deep, with the
+following keys (and value formats).
+
+```yaml
+lockout_failure_attempts: <int>
+lockout_duration: <int>
+disable_user_account_days_inactive: <int>
+change_password_upon_first_use: <boolean>
+password_expires_days: <int>
+password_regex: <string>
+password_regex_description: <string>
+unique_last_password_count: <int>
+minimum_password_age: <int>
+```
+
+It can be set by placing the keys and values in a file and then using the Juju
+command:
+
+    juju config keystone --file path/to/config.yaml
+
+Note that, in this, case the `config.yaml` file requires the YAML key
+`password-security-compliance:` with the desired config keys and values on the
+following lines, indented for a dictionary.
+
+> **Note**: Please ensure that the page [Security compliance and PCI-DSS][SCPD]
+  is consulted before setting these option.
+
+The charm will protect service accounts (accounts requested by other units that
+are in the service domain) against being forced to change their password.
+Operators should also ensure that any other accounts are protected as per the
+above referenced note.
+
+If the config value cannot be parsed as YAML and/or the options are not
+able to be parsed as their indicated types then the charm will enter a blocked
+state until the config value is changed.
+
 ## Token Support
 
 As the keystone charm supports multiple releases of the OpenStack software, it
@@ -294,3 +335,4 @@ For general charm questions refer to the OpenStack [Charm Guide][cg].
 [cdg]: https://docs.openstack.org/project-deploy-guide/charm-deployment-guide
 [cdg-appendix-n]: https://docs.openstack.org/project-deploy-guide/charm-deployment-guide/latest/app-policy-overrides.html
 [lp-bugs-charm-keystone]: https://bugs.launchpad.net/charm-keystone/+filebug
+[SCPD]: https://docs.openstack.org/keystone/latest/admin/configuration.html#security-compliance-and-pci-dss

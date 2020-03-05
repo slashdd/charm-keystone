@@ -1812,6 +1812,18 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
     service_tenant_id = manager.resolve_tenant_id(service_tenant,
                                                   domain=service_domain)
 
+    admin_project_id = None
+    admin_user_id = None
+    if get_api_version() > 2:
+        # NOTE(jamespage):
+        # Resolve cloud admin project and user ID's
+        # which may be used for trusts in consuming
+        # services - but don't pass the password
+        admin_project_id = manager.resolve_tenant_id(ADMIN_PROJECT,
+                                                     domain=ADMIN_DOMAIN)
+        admin_user_id = manager.resolve_user_id(config('admin-user'),
+                                                user_domain=ADMIN_DOMAIN)
+
     # NOTE(dosaboy): we use __null__ to represent settings that are to be
     # routed to relations via the cluster relation and set to None.
     relation_data = {
@@ -1834,6 +1846,8 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         "service_protocol": protocol,
         "api_version": get_api_version(),
         "admin_domain_id": leader_get(attribute='admin_domain_id'),
+        "admin_project_id": admin_project_id,
+        "admin_user_id": admin_user_id,
     }
 
     peer_store_and_set(relation_id=relation_id, **relation_data)

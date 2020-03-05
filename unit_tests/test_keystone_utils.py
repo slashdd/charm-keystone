@@ -389,13 +389,18 @@ class TestKeystoneUtils(CharmTestCase):
         service_domain = None
         service_domain_id = None
         service_role = 'Admin'
+        admin_project_id = None
+        admin_user_id = None
         if test_api_version > 2:
             service_domain = 'service_domain'
             service_domain_id = '1234567890'
+            admin_user_id = 'foobar-user'
+            admin_project_id = 'tenant_id'
 
         mock_keystone = MagicMock()
         mock_keystone.resolve_tenant_id.return_value = 'tenant_id'
         mock_keystone.resolve_domain_id.return_value = service_domain_id
+        mock_keystone.resolve_user_id.return_value = admin_user_id
         KeystoneManager.return_value = mock_keystone
 
         self.relation_get.return_value = {'service': 'keystone',
@@ -427,6 +432,8 @@ class TestKeystoneUtils(CharmTestCase):
                                             domain=service_domain)
 
         relation_data = {'admin_domain_id': None,
+                         'admin_user_id': admin_user_id,
+                         'admin_project_id': admin_project_id,
                          'auth_host': '10.0.0.3',
                          'service_host': '10.0.0.3', 'admin_token': 'token',
                          'service_port': 81, 'auth_port': 80,

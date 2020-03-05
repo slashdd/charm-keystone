@@ -2003,7 +2003,13 @@ def send_id_service_notifications(data):
     """
     id_svc_rel_ids = relation_ids('identity-service')
     for rid in id_svc_rel_ids:
-        changed = {}
+        changed = relation_get(unit=local_unit(),
+                               rid=rid,
+                               attribute='ep_changed')
+        if changed:
+            changed = json.loads(changed)
+        else:
+            changed = {}
         for unit in related_units(rid):
             rs = relation_get(
                 unit=unit,
@@ -2021,9 +2027,9 @@ def send_id_service_notifications(data):
                     'ep_changed': json.dumps(changed, sort_keys=True)})
 
 
-def send_notifications(data, force=False):
-    send_id_notifications(data, force=force)
-    send_id_service_notifications(data)
+def send_notifications(checksum_data, endpoint_data, force=False):
+    send_id_notifications(checksum_data, force=force)
+    send_id_service_notifications(endpoint_data)
 
 
 def send_id_notifications(data, force=False):
@@ -2565,3 +2571,18 @@ def endpoints_checksum(settings):
     csum.update(settings.get('admin_url', None).encode('utf-8'))
     csum.update(settings.get('internal_url', None).encode('utf-8'))
     return csum.hexdigest()
+
+
+def endpoints_dict(settings):
+    """
+    Build a dictionary of endpoint types using settings
+
+    :param settings: dict with urls registered in keystone.
+    :returns: dict of endpoints from settings
+    """
+    endpoints = {
+        'public': settings.get('public_url', None),
+        'admin': settings.get('admin_url', None),
+        'internal': settings.get('internal_url', None),
+    }
+    return endpoints

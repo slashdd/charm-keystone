@@ -818,29 +818,28 @@ class TestKeystoneUtils(CharmTestCase):
     def test_send_id_notifications(self, mock_is_elected_leader,
                                    mock_relation_ids, mock_relation_get,
                                    mock_relation_set, mock_uuid):
+        checksums = {'foo-endpoint-changed': 1}
         relation_id = 'testrel:0'
         mock_uuid.uuid4.return_value = '1234'
         mock_relation_ids.return_value = [relation_id]
         mock_is_elected_leader.return_value = False
-        utils.send_notifications({'foo-endpoint-changed': 1})
+        utils.send_id_notifications(checksums)
         self.assertFalse(mock_relation_set.called)
 
         mock_is_elected_leader.return_value = True
-        utils.send_notifications({})
+        utils.send_id_notifications({})
         self.assertFalse(mock_relation_set.called)
 
-        settings = {'foo-endpoint-changed': 1}
-        utils.send_notifications(settings)
+        utils.send_id_notifications(checksums)
         self.assertTrue(mock_relation_set.called)
         mock_relation_set.assert_called_once_with(relation_id=relation_id,
-                                                  relation_settings=settings)
+                                                  relation_settings=checksums)
         mock_relation_set.reset_mock()
-        settings = {'foo-endpoint-changed': 1}
-        utils.send_notifications(settings, force=True)
+        utils.send_id_notifications(checksums, force=True)
         self.assertTrue(mock_relation_set.called)
-        settings['trigger'] = '1234'
+        checksums['trigger'] = '1234'
         mock_relation_set.assert_called_once_with(relation_id=relation_id,
-                                                  relation_settings=settings)
+                                                  relation_settings=checksums)
 
     @patch.object(utils, 'relation_ids')
     @patch.object(utils, 'related_units')
@@ -873,7 +872,9 @@ class TestKeystoneUtils(CharmTestCase):
             'glance/0': {
                 'admin_url': 'http://172.20.0.32:9292'},
             'glance/1': {},
-            'glance/2': {}}
+            'glance/2': {},
+            'keystone/0': {}
+        }
 
         def _relation_get(unit, rid, attribute):
             return id_svc_rel_data[unit].get(attribute)
@@ -881,29 +882,40 @@ class TestKeystoneUtils(CharmTestCase):
         mock_relation_ids.return_value = id_svc_rel_units.keys()
         mock_related_units.side_effect = _related_units
         mock_relation_get.side_effect = _relation_get
+        self.local_unit.return_value = 'keystone/0'
 
         # Check all services subscribed to placement changes are notified.
         mock_relation_set.reset_mock()
         utils.send_id_service_notifications(
-            {'placement-endpoint-changed': '4d0633ee'})
+            {'placement-endpoint-changed': {"internal": "http://demo.com"}})
         mock_relation_set.assert_called_once_with(
             relation_id='identity-service:2',
             relation_settings={
-                'ep_changed': '{"placement": "4d0633ee"}'})
+                'ep_changed':
+                    '{"placement": {"internal": "http://demo.com"}}'
+            }
+        )
 
         # Check all services subscribed to neutron changes are notified.
         mock_relation_set.reset_mock()
         utils.send_id_service_notifications(
-            {'neutron-endpoint-changed': '1c261658'})
+            {'neutron-endpoint-changed': {"internal": "http://demo.com"}})
         expected_rel_set_calls = [
             call(
                 relation_id='identity-service:1',
                 relation_settings={
-                    'ep_changed': '{"neutron": "1c261658"}'}),
+                    'ep_changed':
+                        '{"neutron": {"internal": "http://demo.com"}}'
+                }
+            ),
             call(
                 relation_id='identity-service:2',
                 relation_settings={
-                    'ep_changed': '{"neutron": "1c261658"}'})]
+                    'ep_changed':
+                        '{"neutron": {"internal": "http://demo.com"}}'
+                }
+            )
+        ]
         mock_relation_set.assert_has_calls(
             expected_rel_set_calls,
             any_order=True)
@@ -911,19 +923,26 @@ class TestKeystoneUtils(CharmTestCase):
         # Check multiple ep changes with app subscribing to multiple eps
         mock_relation_set.reset_mock()
         utils.send_id_service_notifications(
-            {'neutron-endpoint-changed': '1c261658',
-             'placement-endpoint-changed': '4d0633ee'})
+            {'neutron-endpoint-changed': {"internal": "http://demo.com"},
+             'placement-endpoint-changed': {"internal": "http://demo.com"}})
         expected_rel_set_calls = [
             call(
                 relation_id='identity-service:1',
                 relation_settings={
-                    'ep_changed': '{"neutron": "1c261658"}'}),
+                    'ep_changed':
+                        '{"neutron": {"internal": "http://demo.com"}}'
+                }
+            ),
             call(
                 relation_id='identity-service:2',
                 relation_settings={
                     'ep_changed': (
-                        '{"neutron": "1c261658", '
-                        '"placement": "4d0633ee"}')})]
+                        '{"neutron": {"internal": "http://demo.com"}, '
+                        '"placement": {"internal": "http://demo.com"}}'
+                    )
+                }
+            )
+        ]
         mock_relation_set.assert_has_calls(
             expected_rel_set_calls,
             any_order=True)

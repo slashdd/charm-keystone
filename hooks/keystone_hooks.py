@@ -128,6 +128,7 @@ from keystone_utils import (
     remove_old_packages,
     stop_manager_instance,
     assemble_endpoints,
+    endpoints_dict,
     endpoints_checksum,
 )
 
@@ -426,7 +427,8 @@ def db_departed_or_broken():
 @hooks.hook('identity-service-relation-changed')
 @restart_on_change(restart_map(), restart_functions=restart_function_map())
 def identity_changed(relation_id=None, remote_unit=None):
-    notifications = {}
+    notifications_checksums = {}
+    notifications_endpoints = {}
     if is_elected_leader(CLUSTER_RES):
         if not is_db_ready():
             log("identity-service-relation-changed hook fired before db "
@@ -454,7 +456,8 @@ def identity_changed(relation_id=None, remote_unit=None):
         service = settings.get('service')
         if service:
             key = '%s-endpoint-changed' % service
-            notifications[key] = endpoints_checksum(settings)
+            notifications_endpoints[key] = endpoints_dict(settings)
+            notifications_checksums[key] = endpoints_checksum(settings)
         else:
             # Some services don't set their name in the 'service' key in the
             # relation, for those their name is calculated from the prefix of
@@ -466,7 +469,12 @@ def identity_changed(relation_id=None, remote_unit=None):
                 if single.issubset(endpoints[ep]):
                     key = '%s-endpoint-changed' % ep
                     log('endpoint: %s' % ep)
-                    notifications[key] = endpoints_checksum(endpoints[ep])
+                    notifications_endpoints[key] = (
+                        endpoints_dict(endpoints[ep])
+                    )
+                    notifications_checksums[key] = (
+                        endpoints_checksum(endpoints[ep])
+                    )
     else:
         # Each unit needs to set the db information otherwise if the unit
         # with the info dies the settings die with it Bug# 1355848
@@ -479,8 +487,9 @@ def identity_changed(relation_id=None, remote_unit=None):
 
         log('Deferring identity_changed() to service leader.')
 
-    if notifications:
-        send_notifications(notifications)
+    if notifications_endpoints or notifications_checksums:
+        send_notifications(notifications_checksums,
+                           notifications_endpoints)
 
 
 @hooks.hook('identity-credentials-relation-joined',

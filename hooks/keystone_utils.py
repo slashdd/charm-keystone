@@ -459,6 +459,10 @@ valid_services = {
         "type": "infra-optim",
         "desc": "Infrastructure Optimization Service for Openstack"
     },
+    "workloadmgr": {
+        "type": "workloads",
+        "desc": "TrilioVault Workload Manager Service",
+    },
 }
 
 # The interface is said to be satisfied if anyone of the interfaces in the

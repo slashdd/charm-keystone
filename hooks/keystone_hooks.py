@@ -85,6 +85,7 @@ from keystone_context import fernet_enabled
 
 from keystone_utils import (
     add_service_to_keystone,
+    bootstrap_keystone,
     ensure_all_service_accounts_protected_for_pci_dss_options,
     add_credentials_to_keystone,
     determine_packages,
@@ -370,6 +371,7 @@ def update_all_fid_backends():
         update_keystone_fid_service_provider(relation_id=rid)
 
 
+@restart_on_change(restart_map(), restart_functions=restart_function_map())
 def leader_init_db_if_ready(use_current_context=False):
     """ Initialise the keystone db if it is ready and mark it as initialised.
 
@@ -393,6 +395,7 @@ def leader_init_db_if_ready(use_current_context=False):
         return
 
     migrate_database()
+    bootstrap_keystone(configs=CONFIGS)
     ensure_initial_admin(config)
     if CompareOpenStackReleases(
             os_release('keystone')) >= 'liberty':
@@ -704,6 +707,12 @@ def upgrade_charm():
     log('Regenerating configuration files')
     status_set('maintenance', 'Regenerating configuration files')
     CONFIGS.write_all()
+
+    # We no longer use the admin_token and need to ensure the charm has
+    # credentials.  This call is idempotent and safe to run on existing
+    # deployments.
+    if is_leader():
+        bootstrap_keystone(configs=CONFIGS)
 
     # See LP bug 1519035
     leader_init_db_if_ready()

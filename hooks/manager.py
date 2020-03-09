@@ -23,12 +23,16 @@ import stat
 import sys
 import time
 
-from keystoneclient.v2_0 import client
+from keystoneauth1 import session as ks_session
+from keystoneauth1.identity import v2 as ks_identity_v2
+from keystoneauth1.identity import v3 as ks_identity_v3
+from keystoneclient.v2_0 import client as keystoneclient_v2
 from keystoneclient.v3 import client as keystoneclient_v3
-from keystoneclient.auth import token_endpoint
-from keystoneclient import session, exceptions
+from keystoneclient import exceptions
 
 import uds_comms as uds
+
+import keystone_types
 
 
 _usage = """This file is called from the keystone_utils.py file to implement
@@ -42,7 +46,7 @@ following keys:
     'path': The api path on the keystone manager object.
     'api_version': the keystone API version to use.
     'api_local_endpoint': the local endpoint to connect to.
-    'admin_token': the admin token to use with keystone.
+    'charm_credentials': the credentials to use when speaking with Keystone.
     'args': the non-keyword argument to supply to the keystone manager call.
     'kwargs': any keyword args to supply to the keystone manager call.
 }
@@ -75,17 +79,17 @@ else:
     econnrefused = exceptions.ConnectionError
 
 
-def _get_keystone_manager_class(endpoint, token, api_version):
+def _get_keystone_manager_class(endpoint, charm_credentials, api_version):
     """Return KeystoneManager class for the given API version
     @param endpoint: the keystone endpoint to point client at
-    @param token: the keystone admin_token
+    @param charm_credentials: the keystone credentials
     @param api_version: version of the keystone api the client should use
     @returns keystonemanager class used for interrogating keystone
     """
     if api_version == 2:
-        return KeystoneManager2(endpoint, token)
+        return KeystoneManager2(endpoint, charm_credentials)
     if api_version == 3:
-        return KeystoneManager3(endpoint, token)
+        return KeystoneManager3(endpoint, charm_credentials)
     raise ValueError('No manager found for api version {}'.format(api_version))
 
 
@@ -118,7 +122,7 @@ def retry_on_exception(num_retries, base_delay=0, exc_type=Exception):
 
 
 @retry_on_exception(5, base_delay=3, exc_type=econnrefused)
-def get_keystone_manager(endpoint, token, api_version=None):
+def get_keystone_manager(endpoint, charm_credentials, api_version=None):
     """Return a keystonemanager for the correct API version
 
     If api_version has not been set then create a manager based on the endpoint
@@ -131,17 +135,20 @@ def get_keystone_manager(endpoint, token, api_version=None):
         simplified
 
     @param endpoint: the keystone endpoint to point client at
-    @param token: the keystone admin_token
+    @param charm_credentials: the keystone credentials
     @param api_version: version of the keystone api the client should use
     @returns keystonemanager class used for interrogating keystone
     """
     if api_version:
-        return _get_keystone_manager_class(endpoint, token, api_version)
+        return _get_keystone_manager_class(
+            endpoint, charm_credentials, api_version)
     else:
         if 'v2.0' in endpoint.split('/'):
-            manager = _get_keystone_manager_class(endpoint, token, 2)
+            manager = _get_keystone_manager_class(
+                endpoint, charm_credentials, 2)
         else:
-            manager = _get_keystone_manager_class(endpoint, token, 3)
+            manager = _get_keystone_manager_class(
+                endpoint, charm_credentials, 3)
         if endpoint.endswith('/'):
             base_ep = endpoint.rsplit('/', 2)[0]
         else:
@@ -158,10 +165,12 @@ def get_keystone_manager(endpoint, token, api_version=None):
                 break
         if version and version == 'v2.0':
             new_ep = base_ep + "/" + 'v2.0'
-            return _get_keystone_manager_class(new_ep, token, 2)
+            return _get_keystone_manager_class(
+                new_ep, charm_credentials, 2)
         elif version and version == 'v3':
             new_ep = base_ep + "/" + 'v3'
-            return _get_keystone_manager_class(new_ep, token, 3)
+            return _get_keystone_manager_class(
+                new_ep, charm_credentials, 3)
         else:
             return manager
 
@@ -207,6 +216,11 @@ class KeystoneManager(object):
             if type == s['type']:
                 return s['id']
 
+    def get_service_by_id(self, service_id):
+        """Get a service by the service id"""
+        service = self.api.services.get(service_id)
+        return service.to_dict()
+
     def delete_service_by_id(self, service_id):
         """Delete a service by the service id"""
         self.api.services.delete(service_id)
@@ -232,9 +246,21 @@ class KeystoneManager(object):
 
 class KeystoneManager2(KeystoneManager):
 
-    def __init__(self, endpoint, token):
+    def __init__(self, endpoint, charm_credentials):
         self.api_version = 2
-        self.api = client.Client(endpoint=endpoint, token=token)
+        auth = ks_identity_v2.Password(
+            auth_url=endpoint,
+            username=charm_credentials.username,
+            password=charm_credentials.password,
+            tenant_name=charm_credentials.project_name)
+        session = ks_session.Session(auth=auth)
+
+        # NOTE: We need to also provide the local endpoint URL as an
+        # endpoint_override, otherwise the client will attempt to discover the
+        # endpoint to use in the catalog.  Since we are managing said catalog
+        # we need to avoid situations where there is no endpoint to be found.
+        self.api = keystoneclient_v2.Client(
+            session=session, endpoint_override=endpoint)
 
     def resolve_user_id(self, name, user_domain=None):
         """Find the user_id of a given user"""
@@ -300,11 +326,36 @@ class KeystoneManager2(KeystoneManager):
 
 class KeystoneManager3(KeystoneManager):
 
-    def __init__(self, endpoint, token):
+    def __init__(self, endpoint, charm_credentials):
         self.api_version = 3
-        keystone_auth_v3 = token_endpoint.Token(endpoint=endpoint, token=token)
-        keystone_session_v3 = session.Session(auth=keystone_auth_v3)
-        self.api = keystoneclient_v3.Client(session=keystone_session_v3)
+        # The bootstrap process creates a user for the charm in the ``default``
+        # domain and assigns a system level role.  We need to specify domain
+        # name even when we request a system scoped token.
+        try:
+            auth = ks_identity_v3.Password(
+                auth_url=endpoint,
+                username=charm_credentials.username,
+                password=charm_credentials.password,
+                system_scope=charm_credentials.system_scope,
+                project_domain_name=charm_credentials.project_domain_name,
+                user_domain_name=charm_credentials.user_domain_name)
+        except TypeError:
+            # Support for OpenStack versions prior to Queens
+            auth = ks_identity_v3.Password(
+                auth_url=endpoint,
+                username=charm_credentials.username,
+                password=charm_credentials.password,
+                project_name=charm_credentials.project_name,
+                project_domain_name=charm_credentials.project_domain_name,
+                user_domain_name=charm_credentials.user_domain_name)
+        keystone_session_v3 = ks_session.Session(auth=auth)
+
+        # NOTE: We need to also provide the local endpoint URL as an
+        # endpoint_override, otherwise the client will attempt to discover the
+        # endpoint to use in the catalog.  Since we are managing said catalog
+        # we need to avoid situations where there is no endpoint to be found.
+        self.api = keystoneclient_v3.Client(
+            session=keystone_session_v3, endpoint_override=endpoint)
 
     def resolve_tenant_id(self, name, domain=None):
         """Find the tenant_id of a given tenant"""
@@ -532,19 +583,22 @@ class KeystoneManager3(KeystoneManager):
 _keystone_manager = dict(
     api_version=None,
     api_local_endpoint=None,
-    admin_token=None,
+    charm_credentials=None,
     manager=None)
 
 
-def get_manager(api_version=None, api_local_endpoint=None, admin_token=None):
+def get_manager(api_version=None, api_local_endpoint=None,
+                charm_credentials=None):
     """Return a keystonemanager for the correct API version
 
     This function actually returns a singleton of the right kind of
     KeystoneManager (v2 or v3).  If the api_version, api_local_endpoint and
-    admin_token haven't changed then the current _keystone_manager object is
-    returned, otherwise a new one is created (and thus the old one goes out of
-    scope and is closed).  This is to that repeated calls to get_manager(...)
-    only results in a single authorisation request if the details don't change.
+    charm_credentials haven't changed then the current _keystone_manager object
+    is returned, otherwise a new one is created (and thus the old one goes out
+    of scope and is closed).  This is to that repeated calls to
+    get_manager(...) only results in a single authorisation request if the
+    details don't change.
+
     This is to speed up calls from the keystone charm into keystone and make
     the charm more performant.  It's hoped that the complexity/performance
     trade-off is a good choice.
@@ -552,25 +606,26 @@ def get_manager(api_version=None, api_local_endpoint=None, admin_token=None):
     :param api_verion: The version of the api to use or None.  if None then the
         version is determined from the api_local_enpoint variable.
     :param api_local_endpoint: where to find the keystone API
-    :param admin_token: the token used for authentication.
-    :raises: RuntimeError if api_local_endpoint or admin_token is not set.
+    :param charm_credentials: the credentials used for authentication.
+    :raises: RuntimeError if api_local_endpoint or charm_credentials is not
+             set.
     :returns: a KeystoneManager derived class (possibly the singleton).
     """
     if api_local_endpoint is None:
         raise RuntimeError("get_manager(): api_local_endpoint is not set")
-    if admin_token is None:
-        raise RuntimeError("get_manager(): admin_token is not set")
+    if charm_credentials is None:
+        raise RuntimeError("get_manager(): charm_credentials is not set")
     global _keystone_manager
     if (api_version == _keystone_manager['api_version'] and
             api_local_endpoint == _keystone_manager['api_local_endpoint'] and
-            admin_token == _keystone_manager['admin_token']):
+            charm_credentials == _keystone_manager['charm_credentials']):
         return _keystone_manager['manager']
     # only retain the params IF getting the manager actually works
     _keystone_manager['manager'] = get_keystone_manager(
-        api_local_endpoint, admin_token, api_version)
+        api_local_endpoint, charm_credentials, api_version)
     _keystone_manager['api_version'] = api_version
     _keystone_manager['api_local_endpoint'] = api_local_endpoint
-    _keystone_manager['admin_token'] = admin_token
+    _keystone_manager['charm_credentials'] = charm_credentials
     return _keystone_manager['manager']
 
 
@@ -638,7 +693,8 @@ if __name__ == '__main__':
             manager = get_manager(
                 api_version=spec['api_version'],
                 api_local_endpoint=spec['api_local_endpoint'],
-                admin_token=spec['admin_token'])
+                charm_credentials=keystone_types.CharmCredentials._make(
+                    spec['charm_credentials']))
             _callable = manager
             for attr in spec['path']:
                 _callable = getattr(_callable, attr)

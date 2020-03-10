@@ -26,6 +26,7 @@ def _add_path(path):
     if path not in sys.path:
         sys.path.insert(1, path)
 
+
 _add_path(_hooks)
 _add_path(_root)
 
@@ -55,6 +56,7 @@ def openstack_upgrade():
                                     register_configs())):
         os.execl('./hooks/config-changed-postupgrade',
                  'config-changed-postupgrade')
+
 
 if __name__ == '__main__':
     openstack_upgrade()

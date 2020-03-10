@@ -20,9 +20,9 @@ from test_utils import CharmTestCase
 with patch('charmhelpers.contrib.openstack.utils.'
            'snap_install_requested') as snap_install_requested, \
         patch('keystone_utils.register_configs') as configs:
-        snap_install_requested.return_value = False
-        configs.return_value = 'test-config'
-        import actions.actions
+    snap_install_requested.return_value = False
+    configs.return_value = 'test-config'
+    import actions.actions
 
 
 class PauseTestCase(CharmTestCase):

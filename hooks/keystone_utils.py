@@ -881,7 +881,7 @@ def get_admin_token():
             if l.split(' ')[0] == 'admin_token':
                 try:
                     return l.split('=')[1].strip()
-                except:
+                except Exception:
                     error_out('Could not parse admin_token line from %s' %
                               KEYSTONE_CONF)
     error_out('Could not find admin_token line in %s' % KEYSTONE_CONF)
@@ -2195,7 +2195,7 @@ def check_extra_for_assess_status(configs):
     if relation_ids('ha'):
         try:
             get_hacluster_config()
-        except:
+        except Exception:
             return ('blocked',
                     'hacluster missing configuration: '
                     'vip, vip_iface, vip_cidr')

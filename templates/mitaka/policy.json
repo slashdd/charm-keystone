@@ -1,7 +1,11 @@
 {% if api_version == 3 -%}
 {
     "admin_required": "role:{{ admin_role }}",
-    "cloud_admin": "rule:admin_required and (token.is_admin_project:True or domain_id:{{ admin_domain_id }} or project_id:{{ service_tenant_id }})",
+{% if transitional_charm_user_id %}
+    "cloud_admin": "rule:admin_required and (user_id:{{ transitional_charm_user_id }} or token.is_admin_project:True or domain_id:{{ admin_domain_id }} or project_id:{{ service_tenant_id }})",
+{% else %}
+    "cloud_admin": "rule:admin_required",
+{% endif %}
     "service_role": "role:service",
     "service_or_admin": "rule:admin_required or rule:service_role",
     "owner" : "user_id:%(user_id)s or user_id:%(target.token.user_id)s",

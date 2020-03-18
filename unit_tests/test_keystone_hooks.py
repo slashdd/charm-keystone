@@ -582,6 +582,7 @@ class KeystoneRelationTests(CharmTestCase):
         cmd = ['a2dissite', 'openstack_https_frontend']
         self.check_call.assert_called_with(cmd)
 
+    @patch.object(hooks, 'bootstrap_keystone')
     @patch.object(hooks,
                   'ensure_all_service_accounts_protected_for_pci_dss_options')
     @patch.object(hooks, 'maybe_do_policyd_overrides')
@@ -601,7 +602,8 @@ class KeystoneRelationTests(CharmTestCase):
                                   os_release,
                                   update,
                                   mock_maybe_do_policyd_overrides,
-                                  mock_protect_service_accounts):
+                                  mock_protect_service_accounts,
+                                  mock_bootstrap_keystone):
         os_release.return_value = 'havana'
         mock_is_db_initialised.return_value = True
         mock_is_db_ready.return_value = True
@@ -615,11 +617,13 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertTrue(update.called)
         self.remove_old_packages.assert_called_once_with()
         self.service_restart.assert_called_with('apache2')
+        mock_bootstrap_keystone.assert_called_once_with(configs=ANY)
         mock_stop_manager_instance.assert_called_once_with()
         mock_maybe_do_policyd_overrides.assert_called_once_with(
             ANY, "keystone")
         mock_protect_service_accounts.assert_called_once_with()
 
+    @patch.object(hooks, 'bootstrap_keystone')
     @patch.object(hooks,
                   'ensure_all_service_accounts_protected_for_pci_dss_options')
     @patch.object(hooks, 'maybe_do_policyd_overrides')
@@ -639,7 +643,8 @@ class KeystoneRelationTests(CharmTestCase):
                                               os_release,
                                               update,
                                               mock_maybe_do_policyd_overrides,
-                                              mock_protect_service_accounts):
+                                              mock_protect_service_accounts,
+                                              mock_bootstrap_keystone):
         os_release.return_value = 'havana'
         mock_is_db_initialised.return_value = True
         mock_is_db_ready.return_value = True
@@ -653,15 +658,17 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertTrue(update.called)
         self.remove_old_packages.assert_called_once_with()
         self.service_restart.assert_called_with('apache2')
+        mock_bootstrap_keystone.assert_called_once_with(configs=ANY)
         mock_stop_manager_instance.assert_called_once_with()
         mock_maybe_do_policyd_overrides.assert_called_once_with(
             ANY, "keystone")
         mock_protect_service_accounts.assert_called_once_with()
 
+    @patch.object(hooks, 'bootstrap_keystone')
     @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(hooks, 'is_db_initialised')
     def test_leader_init_db_if_ready(self, is_db_initialized,
-                                     update):
+                                     update, mock_bootstrap_keystone):
         """ Verify leader initilaizes db """
         self.is_elected_leader.return_value = True
         is_db_initialized.return_value = False
@@ -670,6 +677,7 @@ class KeystoneRelationTests(CharmTestCase):
         hooks.leader_init_db_if_ready()
         self.is_db_ready.assert_called_with(use_current_context=False)
         self.migrate_database.assert_called_with()
+        mock_bootstrap_keystone.assert_called_once_with(configs=ANY)
         update.assert_called_with(check_db_ready=False)
 
     @patch.object(hooks, 'update_all_identity_relation_units')
@@ -803,6 +811,7 @@ class KeystoneRelationTests(CharmTestCase):
         # Still updates relations
         self.assertTrue(self.relation_ids.called)
 
+    @patch.object(hooks, 'bootstrap_keystone')
     @patch.object(hooks, 'maybe_do_policyd_overrides')
     @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(utils, 'os_release')
@@ -814,7 +823,8 @@ class KeystoneRelationTests(CharmTestCase):
                                       mock_relation_ids,
                                       mock_log,
                                       os_release, update,
-                                      mock_maybe_do_policyd_overrides):
+                                      mock_maybe_do_policyd_overrides,
+                                      mock_bootstrap_keystone):
         os_release.return_value = 'havana'
 
         self.filter_installed_packages.return_value = ['something']
@@ -823,10 +833,12 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertTrue(self.apt_install.called)
         self.assertTrue(self.log.called)
         self.assertFalse(update.called)
+        mock_bootstrap_keystone.assert_called_once_with(configs=ANY)
         mock_stop_manager_instance.assert_called_once()
         mock_maybe_do_policyd_overrides.assert_called_once_with(
             ANY, "keystone")
 
+    @patch.object(hooks, 'bootstrap_keystone')
     @patch.object(hooks, 'maybe_do_policyd_overrides')
     @patch.object(hooks, 'update_all_identity_relation_units')
     @patch.object(utils, 'os_release')
@@ -840,7 +852,8 @@ class KeystoneRelationTests(CharmTestCase):
         mock_log,
         os_release,
         update,
-        mock_maybe_do_policyd_overrides
+        mock_maybe_do_policyd_overrides,
+        mock_bootstrap_keystone,
     ):
         os_release.return_value = 'havana'
 
@@ -850,6 +863,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertFalse(self.apt_install.called)
         self.assertTrue(self.log.called)
         self.assertFalse(update.called)
+        mock_bootstrap_keystone.assert_called_once_with(configs=ANY)
         mock_stop_manager_instance.assert_called_once()
         mock_maybe_do_policyd_overrides.assert_called_once_with(
             ANY, "keystone")

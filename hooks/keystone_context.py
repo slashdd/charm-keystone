@@ -175,12 +175,11 @@ class KeystoneContext(context.OSContextGenerator):
 
     def __call__(self):
         from keystone_utils import (
-            api_port, set_admin_token, endpoint_url, resolve_address,
+            api_port, endpoint_url, resolve_address,
             PUBLIC, ADMIN, ADMIN_DOMAIN,
             snap_install_requested, get_api_version,
         )
         ctxt = {}
-        ctxt['token'] = set_admin_token(config('admin-token'))
         ctxt['api_version'] = get_api_version()
         ctxt['admin_role'] = config('admin-role')
         if ctxt['api_version'] > 2:
@@ -191,6 +190,9 @@ class KeystoneContext(context.OSContextGenerator):
                 leader_get(attribute='admin_domain_id')
             ctxt['default_domain_id'] = \
                 leader_get(attribute='default_domain_id')
+            # This is required prior to system-scope being implemented (Queens)
+            ctxt['transitional_charm_user_id'] = leader_get(
+                attribute='transitional_charm_user_id')
         ctxt['admin_port'] = determine_api_port(api_port('keystone-admin'),
                                                 singlenode_mode=True)
         ctxt['public_port'] = determine_api_port(api_port('keystone-public'),

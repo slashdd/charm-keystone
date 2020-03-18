@@ -15,13 +15,15 @@
 import builtins
 import collections
 import copy
-from mock import patch, call, MagicMock, mock_open, Mock
+from mock import ANY, patch, call, MagicMock, mock_open, Mock
 import json
 import os
 import subprocess
 import time
 
 from test_utils import CharmTestCase
+
+import keystone_types as ks_types
 
 os.environ['JUJU_UNIT_NAME'] = 'keystone'
 with patch('charmhelpers.core.hookenv.config') as config, \
@@ -42,7 +44,6 @@ TO_PATCH = [
     'create_role',
     'create_service_entry',
     'create_endpoint_template',
-    'get_admin_token',
     'get_local_endpoint',
     'get_requested_roles',
     'get_service_password',
@@ -242,6 +243,7 @@ class TestKeystoneUtils(CharmTestCase):
                           if p.startswith('python-')] +
                          ['python-keystone', 'python-memcache'])
 
+    @patch.object(utils, 'bootstrap_keystone')
     @patch.object(utils, 'is_elected_leader')
     @patch.object(utils, 'disable_unused_apache_sites')
     @patch('os.path.exists')
@@ -251,7 +253,7 @@ class TestKeystoneUtils(CharmTestCase):
     def test_openstack_upgrade_leader(
             self, migrate_database, determine_packages,
             run_in_apache, os_path_exists, disable_unused_apache_sites,
-            mock_is_elected_leader):
+            mock_is_elected_leader, mock_bootstrap_keystone):
         configs = MagicMock()
         self.test_config.set('openstack-origin', 'cloud:xenial-newton')
         self.os_release.return_value = 'ocata'
@@ -285,6 +287,7 @@ class TestKeystoneUtils(CharmTestCase):
         self.assertTrue(configs.set_release.called)
         self.assertTrue(configs.write_all.called)
         self.assertTrue(migrate_database.called)
+        mock_bootstrap_keystone.assert_called_once_with(configs=ANY)
         disable_unused_apache_sites.assert_called_with()
         self.reset_os_release.assert_called()
 
@@ -374,7 +377,6 @@ class TestKeystoneUtils(CharmTestCase):
         leader_get.return_value = None
         relation_id = 'identity-service:0'
         remote_unit = 'unit/0'
-        self.get_admin_token.return_value = 'token'
         self.get_service_password.return_value = 'password'
         self.test_config.set('service-tenant', 'tenant')
         self.test_config.set('admin-role', 'Admin')
@@ -418,7 +420,6 @@ class TestKeystoneUtils(CharmTestCase):
                                         publicurl='10.0.0.1',
                                         adminurl='10.0.0.2',
                                         internalurl='192.168.1.2')
-        self.assertTrue(self.get_admin_token.called)
         self.get_service_password.assert_called_with('keystone')
         create_user.assert_called_with('keystone', 'password',
                                        domain=service_domain,
@@ -435,7 +436,7 @@ class TestKeystoneUtils(CharmTestCase):
                          'admin_user_id': admin_user_id,
                          'admin_project_id': admin_project_id,
                          'auth_host': '10.0.0.3',
-                         'service_host': '10.0.0.3', 'admin_token': 'token',
+                         'service_host': '10.0.0.3',
                          'service_port': 81, 'auth_port': 80,
                          'service_username': 'keystone',
                          'service_password': 'password',
@@ -1830,3 +1831,78 @@ class TestKeystoneUtils(CharmTestCase):
         self.assertEqual(csum,
                          ('d938ff5656d3d9b50345e8061b4c73c8'
                           '116a9c7fbc087765ce2e3a4a5df7cb17'))
+
+    @patch.object(utils, 'leader_get')
+    def test_get_charm_credentials(self, mock_leader_get):
+        expect = ks_types.CharmCredentials(
+            '_charm-keystone-admin', 'fakepassword',
+            'all', 'admin', 'default', 'default')
+        mock_leader_get.return_value = 'fakepassword'
+        self.assertEquals(utils.get_charm_credentials(), expect)
+        mock_leader_get.assert_called_once_with(expect.username + '_passwd')
+        mock_leader_get.retrun_value = None
+        mock_leader_get.side_effect = [None]
+        with self.assertRaises(RuntimeError):
+            utils.get_charm_credentials()
+
+    @patch.object(utils, 'leader_get')
+    def test_is_bootstrapped(self, mock_leader_get):
+        mock_leader_get.side_effect = [None, None]
+        self.assertFalse(utils.is_bootstrapped())
+        mock_leader_get.assert_called_once_with('keystone-bootstrapped')
+        mock_leader_get.side_effect = [True, None]
+        self.assertFalse(utils.is_bootstrapped())
+        mock_leader_get.side_effect = [True, 'fakepassword']
+        self.assertTrue(utils.is_bootstrapped())
+        mock_leader_get.assert_called_with('_charm-keystone-admin_passwd')
+
+    @patch.object(utils, 'get_manager')
+    @patch.object(utils, 'leader_set')
+    @patch.object(utils, 'resolve_address')
+    @patch.object(utils, 'endpoint_url')
+    @patch.object(utils, 'pwgen')
+    @patch.object(utils, 'leader_get')
+    @patch.object(utils, 'get_api_suffix')
+    def test_bootstrap_keystone(
+            self,
+            mock_get_api_suffix,
+            mock_leader_get,
+            mock_pwgen,
+            mock_endpoint_url,
+            mock_resolve_address,
+            mock_leader_set,
+            mock_get_manager):
+        configs = MagicMock()
+        mock_get_api_suffix.return_value = 'suffix'
+        mock_resolve_address.side_effect = lambda x: x
+        mock_endpoint_url.side_effect = (
+            lambda x, y, z: 'http://{}:{}/{}'.format(x, y, z))
+        mock_leader_get.return_value = 'fakepassword'
+        mock_get_manager().resolve_user_id.return_value = 'fakeid'
+        self.os_release.return_value = 'queens'
+        utils.bootstrap_keystone(configs=configs)
+        self.subprocess.check_call.assert_called_once_with(
+            ('keystone-manage', 'bootstrap',
+             '--bootstrap-username', '_charm-keystone-admin',
+             '--bootstrap-password', 'fakepassword',
+             '--bootstrap-project-name', 'admin',
+             '--bootstrap-role-name', 'Admin',
+             '--bootstrap-service-name', 'keystone',
+             '--bootstrap-admin-url', 'http://admin:35357/suffix',
+             '--bootstrap-public-url', 'http://public:5000/suffix',
+             '--bootstrap-internal-url', 'http://int:5000/suffix',
+             '--bootstrap-region-id', 'RegionOne'),
+        )
+        mock_leader_set.assert_called_once_with({
+            'keystone-bootstrapped': True,
+            '_charm-keystone-admin_passwd': 'fakepassword'})
+        self.assertFalse(configs.write_all.called)
+        mock_leader_set.reset_mock()
+        self.os_release.return_value = 'pike'
+        utils.bootstrap_keystone(configs=configs)
+        mock_leader_set.assert_has_calls([
+            call({'keystone-bootstrapped': True,
+                  '_charm-keystone-admin_passwd': 'fakepassword'}),
+            call({'transitional_charm_user_id': 'fakeid'}),
+        ])
+        configs.write_all.assert_called_once_with()

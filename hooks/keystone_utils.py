@@ -129,6 +129,8 @@ import keystone_context
 
 import uds_comms as uds
 
+import keystone_types
+
 TEMPLATES = 'templates/'
 
 # removed from original: charm-helper-sh
@@ -178,7 +180,6 @@ if snap_install_requested():
     KEYSTONE_LOGGER_CONF = "{}/logging.conf".format(SNAP_COMMON_KEYSTONE_DIR)
     SNAP_LIB_DIR = '{}/lib'.format(SNAP_COMMON_DIR)
     STORED_PASSWD = "{}/keystone.passwd".format(SNAP_LIB_DIR)
-    STORED_TOKEN = "{}/keystone.token".format(SNAP_LIB_DIR)
     STORED_ADMIN_DOMAIN_ID = ("{}/keystone.admin_domain_id"
                               "".format(SNAP_LIB_DIR))
     STORED_DEFAULT_DOMAIN_ID = ("{}/keystone.default_domain_id"
@@ -196,7 +197,6 @@ else:
     KEYSTONE_LOGGER_CONF = "/etc/keystone/logging.conf"
     KEYSTONE_CONF_DIR = os.path.dirname(KEYSTONE_CONF)
     STORED_PASSWD = "/var/lib/keystone/keystone.passwd"
-    STORED_TOKEN = "/var/lib/keystone/keystone.token"
     STORED_ADMIN_DOMAIN_ID = "/var/lib/keystone/keystone.admin_domain_id"
     STORED_DEFAULT_DOMAIN_ID = "/var/lib/keystone/keystone.default_domain_id"
     SERVICE_PASSWD_PATH = '/var/lib/keystone/services.passwd'
@@ -212,6 +212,7 @@ APACHE_CONF = '/etc/apache2/sites-available/openstack_https_frontend'
 APACHE_24_CONF = '/etc/apache2/sites-available/openstack_https_frontend.conf'
 MEMCACHED_CONF = '/etc/memcached.conf'
 
+CHARM_USER = '_charm-keystone-admin'
 CLUSTER_RES = 'grp_ks_vips'
 ADMIN_DOMAIN = 'admin_domain'
 ADMIN_PROJECT = 'admin'
@@ -772,6 +773,10 @@ def do_openstack_upgrade(configs):
     if is_elected_leader(CLUSTER_RES):
         if is_db_ready():
             migrate_database()
+            # After an OpenStack upgrade we re-run bootstrap to make sure role
+            # assignments are up to date.  One example is the system role
+            # assignment support that first appeared at Queens.
+            bootstrap_keystone(configs=configs)
         else:
             log("Database not ready - deferring to shared-db relation",
                 level=INFO)
@@ -821,6 +826,94 @@ def migrate_database():
     leader_set({'db-initialised': True})
     stop_manager_instance()
 
+
+def is_bootstrapped():
+    """Determines whether Keystone has been bootstrapped.
+
+    :returns: True when Keystone bootstrap has been run, False otherwise.
+    :rtype: bool
+    """
+    return (
+        leader_get('keystone-bootstrapped') is True and
+        leader_get('{}_passwd'.format(CHARM_USER)) is not None
+    )
+
+
+def bootstrap_keystone(configs=None):
+    """Runs ``keystone-manage bootstrap`` to bootstrap keystone.
+
+    The bootstrap command is designed to be idempotent when it needs to be,
+    i.e. if nothing has changed it will do nothing.  It is also safe to run
+    the bootstrap command on a already deployed Keystone.
+
+    The bootstrap command creates resources in the ``default`` domain.  It
+    assigns a system-scoped role to the created user and as such the charm can
+    use it to manage any domains resources.
+
+    For successful operation of the ``keystoneclient`` used by the charm, we
+    must create initial endpoints at bootstrap time.  For HA deployments these
+    will be replaced as soon as HA configuration is complete.
+
+    :param configs: Registered configs
+    :type configs: Optional[Dict]
+    """
+    log('Bootstrapping keystone.', level=INFO)
+    status_set('maintenance', 'Bootstrapping keystone')
+    # NOTE: The bootstrap process is necessary for the charm to be able to
+    # talk to Keystone.  We will still rely on ``ensure_initial_admin`` to
+    # maintain Keystone's endpoints and the rest of the CRUD.
+    api_suffix = get_api_suffix()
+    charm_password = leader_get('{}_passwd'.format(CHARM_USER)) or pwgen(64)
+    subprocess.check_call((
+        'keystone-manage', 'bootstrap',
+        '--bootstrap-username', CHARM_USER,
+        '--bootstrap-password', charm_password,
+        '--bootstrap-project-name', ADMIN_PROJECT,
+        '--bootstrap-role-name', config('admin-role'),
+        '--bootstrap-service-name', 'keystone',
+        '--bootstrap-admin-url', endpoint_url(
+            resolve_address(ADMIN),
+            config('admin-port'),
+            api_suffix),
+        '--bootstrap-public-url', endpoint_url(
+            resolve_address(PUBLIC),
+            config('service-port'),
+            api_suffix),
+        '--bootstrap-internal-url', endpoint_url(
+            resolve_address(INTERNAL),
+            config('service-port'),
+            api_suffix),
+        '--bootstrap-region-id', config('region').split()[0]),
+    )
+    # TODO: we should consider to add --immutable-roles for supported releases
+    # and/or make it configurable.  Saving for a future change as this one is
+    # big enough as-is.
+    leader_set({
+        'keystone-bootstrapped': True,
+        '{}_passwd'.format(CHARM_USER): charm_password,
+    })
+
+    cmp_release = CompareOpenStackReleases(os_release('keystone'))
+    if configs and cmp_release < 'queens':
+        # For Mitaka through Pike we need to work around the lack of support
+        # for system scope by having a special bootstrap version of the
+        # policy.json that ensures the charm has access to retrieve the user ID
+        # created for the charm in the bootstrap process.
+        #
+        # As soon as the user ID is retrieved it will be stored in leader
+        # storage which will be picked up by a context and subsequently written
+        # to the runtime policy.json.
+        #
+        # NOTE: Remove this and the associated policy change as soon as
+        # support for Mitaka -> Pike is removed.
+        manager = get_manager()
+        transitional_charm_user_id = manager.resolve_user_id(
+            CHARM_USER, user_domain='default')
+        leader_set({
+            'transitional_charm_user_id': transitional_charm_user_id,
+        })
+        configs.write_all()
+
 # OLD
 
 
@@ -850,41 +943,30 @@ def get_local_endpoint(api_suffix=None):
     return local_endpoint
 
 
-def set_admin_token(admin_token='None'):
-    """Set admin token according to deployment config or use a randomly
-       generated token if none is specified (default).
-    """
-    if admin_token != 'None':
-        log('Configuring Keystone to use a pre-configured admin token.')
-        token = admin_token
-    else:
-        log('Configuring Keystone to use a random admin token.')
-        if os.path.isfile(STORED_TOKEN):
-            msg = 'Loading a previously generated' \
-                  ' admin token from %s' % STORED_TOKEN
-            log(msg)
-            with open(STORED_TOKEN, 'r') as f:
-                token = f.read().strip()
-        else:
-            token = pwgen(length=64)
-            with open(STORED_TOKEN, 'w') as out:
-                out.write('%s\n' % token)
-    return(token)
+def get_charm_credentials():
+    """Retrieve credentials for use by charm when managing identity CRUD.
 
+    The bootstrap process creates a user for the charm in the default domain
+    and assigns a system level role.  Subsequently the charm authenticates with
+    a system-scoped token so it can manage all domain's resources.
 
-def get_admin_token():
-    """Temporary utility to grab the admin token as configured in
-       keystone.conf
+    :returns: CharmCredentials with username, password and defaults for scoping
+    :rtype: collections.namedtuple[str,str,str,str,str,str]
+    :raises: RuntimeError
     """
-    with open(KEYSTONE_CONF, 'r') as f:
-        for l in f.readlines():
-            if l.split(' ')[0] == 'admin_token':
-                try:
-                    return l.split('=')[1].strip()
-                except Exception:
-                    error_out('Could not parse admin_token line from %s' %
-                              KEYSTONE_CONF)
-    error_out('Could not find admin_token line in %s' % KEYSTONE_CONF)
+    charm_password = leader_get('{}_passwd'.format(CHARM_USER))
+    if charm_password is None:
+        raise RuntimeError('Leader unit has not provided credentials required '
+                           'for speaking with Keystone yet.')
+
+    return keystone_types.CharmCredentials(
+        CHARM_USER,
+        charm_password,
+        'all',
+        ADMIN_PROJECT,  # For V2 and pre system scope compatibility
+        'default',      # For Mitaka -> Pike (pre system scope)
+        'default',      # For Mitaka -> Pike (pre system scope)
+    )
 
 
 def is_service_present(service_name, service_type):
@@ -950,7 +1032,14 @@ def create_endpoint_template_v2(manager, region, service, publicurl, adminurl,
             else:
                 # delete endpoint and recreate if endpoint urls need updating.
                 log("Updating endpoint template with new endpoint urls.")
-                manager.delete_endpoint_by_id(ep['id'])
+                # NOTE: When using the 2.0 API and not using the admin_token
+                # the call to delete_endpoint_by_id returns 404.
+                # Deleting service works and will cascade delete endpoint.
+                svc = manager.get_service_by_id(service_id)
+                manager.delete_service_by_id(service_id)
+                # NOTE: We do not get the service description in API v2.0
+                create_service_entry(svc['name'], svc['type'], '')
+                service_id = manager.resolve_service_id(service)
 
     manager.create_endpoints(region=region,
                              service_id=service_id,
@@ -1133,7 +1222,7 @@ def _proxy_manager_call(path, api_version, args, kwargs):
     package = dict(path=path,
                    api_version=api_version,
                    api_local_endpoint=get_local_endpoint(),
-                   admin_token=get_admin_token(),
+                   charm_credentials=get_charm_credentials(),
                    args=args,
                    kwargs=kwargs)
     serialized = json.dumps(package, **JSON_ENCODE_OPTIONS)
@@ -1696,7 +1785,11 @@ def ensure_all_service_accounts_protected_for_pci_dss_options():
     if get_api_version() < 3:
         return
     log("Ensuring all service users are protected from PCI-DSS options")
-    users = list_users_for_domain(domain=SERVICE_DOMAIN)
+    # We want to make sure our own charm credentials are protected too, they
+    # only exist in DEFAULT_DOMAIN, but the called function gracefully deals
+    # with that.
+    users = [{'name': CHARM_USER}]
+    users += list_users_for_domain(domain=SERVICE_DOMAIN)
     for user in users:
         protect_user_account_from_pci_dss_force_change_password(user['name'])
 
@@ -1799,7 +1892,6 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
     if not service_username:
         return
 
-    token = get_admin_token()
     roles = get_requested_roles(settings)
     service_password = create_service_credentials(service_username,
                                                   new_roles=roles)
@@ -1829,7 +1921,6 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
     relation_data = {
         "auth_host": resolve_address(ADMIN),
         "service_host": resolve_address(PUBLIC),
-        "admin_token": token,
         "service_port": config("service-port"),
         "auth_port": config("admin-port"),
         "service_username": service_username,

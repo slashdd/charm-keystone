@@ -217,9 +217,13 @@ class KeystoneContext(context.OSContextGenerator):
                 flags = context.config_flags_parser(ldap_flags)
                 ctxt['ldap_config_flags'] = flags
 
-        ctxt['password_security_compliance'] = (
-            self._decode_password_security_compliance_string(
-                config('password-security-compliance')))
+        # Only try to decode it if there is something actually set - this
+        # siliences a NoneType warning in the logs if it isn't set
+        password_security_compliance = config('password-security-compliance')
+        if password_security_compliance:
+            ctxt['password_security_compliance'] = (
+                self._decode_password_security_compliance_string(
+                    password_security_compliance))
 
         # Base endpoint URL's which are used in keystone responses
         # to unauthenticated requests to redirect clients to the

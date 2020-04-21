@@ -64,6 +64,8 @@ TO_PATCH = [
     # charmhelpers.contrib.openstack.utils
     'configure_installation_source',
     'snap_install_requested',
+    'check_api_application_ready',
+    'inform_peers_if_ready',
     # charmhelpers.contrib.openstack.ip
     'resolve_address',
     # charmhelpers.contrib.openstack.ha.utils
@@ -104,7 +106,6 @@ TO_PATCH = [
     'run_in_apache',
     # unitdata
     'unitdata',
-    'is_db_maintenance_mode',
 ]
 
 
@@ -198,7 +199,6 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(hooks, 'CONFIGS')
     def test_db_changed_missing_relation_data(self, configs,
                                               mock_log):
-        self.is_db_maintenance_mode_return_value = False
         configs.complete_contexts = MagicMock()
         configs.complete_contexts.return_value = []
         hooks.db_changed()
@@ -208,7 +208,6 @@ class KeystoneRelationTests(CharmTestCase):
 
     @patch.object(hooks, 'update_all_identity_relation_units')
     def _shared_db_test(self, configs, unit_name, mock_update_all):
-        self.is_db_maintenance_mode_return_value = False
         self.relation_get.return_value = 'keystone/0 keystone/3'
         configs.complete_contexts = MagicMock()
         configs.complete_contexts.return_value = ['shared-db']
@@ -384,7 +383,6 @@ class KeystoneRelationTests(CharmTestCase):
          .assert_called_once_with(ANY, "keystone", restart_handler=ANY))
 
     @patch.object(hooks, 'maybe_do_policyd_overrides_on_config_changed')
-    @patch.object(hooks, 'is_expected_scale')
     @patch.object(hooks, 'os_release')
     @patch.object(hooks, 'run_in_apache')
     @patch.object(hooks, 'is_db_initialised')
@@ -395,13 +393,12 @@ class KeystoneRelationTests(CharmTestCase):
         mock_db_init,
         mock_run_in_apache,
         os_release,
-        is_expected_scale,
         mock_maybe_do_policyd_overrides_on_config_changed
     ):
+        self.check_api_application_ready.return_value = (True, 'msg')
         os_release.return_value = 'ocata'
         self.enable_memcache.return_value = False
         mock_run_in_apache.return_value = False
-        is_expected_scale.return_value = True
 
         self.openstack_upgrade_available.return_value = True
         self.test_config.set('action-managed-upgrade', True)
@@ -678,7 +675,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.is_db_ready.assert_called_with(use_current_context=False)
         self.migrate_database.assert_called_with()
         mock_bootstrap_keystone.assert_called_once_with(configs=ANY)
-        update.assert_called_with(check_db_ready=False)
+        update.assert_called_with()
 
     @patch.object(hooks, 'update_all_identity_relation_units')
     def test_leader_init_db_not_leader(self, update):
@@ -717,7 +714,6 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertFalse(self.migrate_database.called)
         self.assertFalse(update.called)
 
-    @patch.object(hooks, 'is_expected_scale')
     @patch.object(hooks, 'configure_https')
     @patch.object(hooks, 'admin_relation_changed')
     @patch.object(hooks, 'identity_credentials_changed')
@@ -729,12 +725,10 @@ class KeystoneRelationTests(CharmTestCase):
                                                 identity_changed,
                                                 identity_credentials_changed,
                                                 admin_relation_changed,
-                                                configure_https,
-                                                is_expected_scale):
+                                                configure_https):
         """ Verify all identity relations are updated """
-        self.is_db_maintenance_mode.return_value = False
+        self.check_api_application_ready.return_value = (True, 'msg')
         is_db_initialized.return_value = True
-        is_expected_scale.return_value = True
         self.relation_ids.return_value = ['identity-relation:0']
         self.related_units.return_value = ['unit/0']
         log_calls = [call('Firing identity_changed hook for all related '
@@ -743,7 +737,7 @@ class KeystoneRelationTests(CharmTestCase):
                           'services.'),
                      call('Firing identity_credentials_changed hook for all '
                           'related services.')]
-        hooks.update_all_identity_relation_units(check_db_ready=False)
+        hooks.update_all_identity_relation_units()
         identity_changed.assert_called_with(
             relation_id='identity-relation:0',
             remote_unit='unit/0')
@@ -757,56 +751,30 @@ class KeystoneRelationTests(CharmTestCase):
     @patch.object(hooks, 'CONFIGS')
     def test_update_all_db_not_ready(self, configs, configure_https):
         """ Verify update identity relations when DB is not ready """
-        self.is_db_maintenance_mode.return_value = False
-        self.is_db_ready.return_value = False
-        hooks.update_all_identity_relation_units(check_db_ready=True)
-        self.assertTrue(self.is_db_ready.called)
-        self.log.assert_called_with('Allowed_units list provided and this '
-                                    'unit not present', level='INFO')
+        self.check_api_application_ready.return_value = (False, 'msg')
+        hooks.update_all_identity_relation_units()
+        self.log.assert_called_with(
+            ("Keystone charm unit not ready - deferring identity-relation "
+             "updates"),
+            level='INFO')
         self.assertFalse(self.relation_ids.called)
 
     @patch.object(hooks, 'configure_https')
-    @patch.object(hooks, 'is_db_initialised')
     @patch.object(hooks, 'CONFIGS')
-    def test_update_all_db_not_initializd(self, configs, is_db_initialized,
-                                          configure_https):
-        """ Verify update identity relations when DB is not initialized """
-        self.is_db_maintenance_mode.return_value = False
-        is_db_initialized.return_value = False
-        hooks.update_all_identity_relation_units(check_db_ready=False)
-        self.assertFalse(self.is_db_ready.called)
-        self.log.assert_called_with('Database not yet initialised - '
-                                    'deferring identity-relation updates',
-                                    level='INFO')
-        self.assertFalse(self.relation_ids.called)
-
-    @patch.object(hooks, 'is_expected_scale')
-    @patch.object(hooks, 'configure_https')
-    @patch.object(hooks, 'is_db_initialised')
-    @patch.object(hooks, 'CONFIGS')
-    def test_update_all_leader(self, configs, is_db_initialized,
-                               configure_https, is_expected_scale):
+    def test_update_all_leader(self, configs, configure_https):
         """ Verify update identity relations when the leader"""
-        self.is_db_maintenance_mode.return_value = False
-        self.is_elected_leader.return_value = True
-        is_db_initialized.return_value = True
-        is_expected_scale.return_value = True
-        hooks.update_all_identity_relation_units(check_db_ready=False)
+        self.check_api_application_ready.return_value = (True, 'msg')
+        hooks.update_all_identity_relation_units()
         # Still updates relations
         self.assertTrue(self.relation_ids.called)
 
-    @patch.object(hooks, 'is_expected_scale')
     @patch.object(hooks, 'configure_https')
-    @patch.object(hooks, 'is_db_initialised')
     @patch.object(hooks, 'CONFIGS')
-    def test_update_all_not_leader(self, configs, is_db_initialized,
-                                   configure_https, is_expected_scale):
+    def test_update_all_not_leader(self, configs, configure_https):
         """ Verify update identity relations when not the leader"""
-        self.is_db_maintenance_mode.return_value = False
+        self.check_api_application_ready.return_value = (True, 'msg')
         self.is_elected_leader.return_value = False
-        is_db_initialized.return_value = True
-        is_expected_scale.return_value = True
-        hooks.update_all_identity_relation_units(check_db_ready=False)
+        hooks.update_all_identity_relation_units()
         self.assertFalse(self.ensure_initial_admin.called)
         # Still updates relations
         self.assertTrue(self.relation_ids.called)

@@ -42,10 +42,6 @@ from charmhelpers.contrib.network.ip import (
     get_ipv6_addr
 )
 
-from charmhelpers.contrib.openstack.ha.utils import (
-    expect_ha,
-)
-
 from charmhelpers.contrib.openstack.ip import (
     resolve_address,
     PUBLIC,
@@ -63,6 +59,7 @@ from charmhelpers.contrib.openstack.utils import (
     resume_unit,
     make_assess_status_func,
     os_application_version_set,
+    os_application_status_set,
     CompareOpenStackReleases,
     reset_os_release,
     snap_install_requested,
@@ -70,6 +67,8 @@ from charmhelpers.contrib.openstack.utils import (
     get_snaps_install_info_from_origin,
     enable_memcache,
     is_unit_paused_set,
+    check_api_unit_ready,
+    get_api_application_status,
 )
 
 from charmhelpers.core.decorators import (
@@ -78,16 +77,12 @@ from charmhelpers.core.decorators import (
 
 from charmhelpers.core.hookenv import (
     atexit,
-    cached,
     config,
-    expected_peer_units,
-    expected_related_units,
     is_leader,
     leader_get,
     leader_set,
     log,
     local_unit,
-    metadata,
     relation_get,
     relation_set,
     relation_id,
@@ -2296,6 +2291,9 @@ def check_extra_for_assess_status(configs):
                   ._decode_password_security_compliance_string(conf) is None)):
         return ('blocked',
                 "'password-security-compliance' is invalid")
+    unit_ready, msg = check_api_unit_ready()
+    if not unit_ready:
+        return ('blocked', msg)
     # return 'unknown' as the lowest priority to not clobber an existing
     # status.
     return 'unknown', ''
@@ -2316,6 +2314,8 @@ def assess_status(configs):
     """
     assess_status_func(configs)()
     os_application_version_set(VERSION_PACKAGE)
+    if is_leader():
+        os_application_status_set(get_api_application_status)
 
 
 def assess_status_func(configs, exclude_ha_resource=False):
@@ -2572,63 +2572,6 @@ def fernet_keys_rotate_and_sync(log_func=log):
     key_leader_set()
     log_func("Rotated and started sync (via leader settings) of fernet keys",
              level=INFO)
-
-
-@cached
-def container_scoped_relations():
-    '''Get all the container scoped relations'''
-    md = metadata()
-    relations = []
-    for relation_type in ('provides', 'requires', 'peers'):
-        for relation in md.get(relation_type, []):
-            if md[relation_type][relation].get('scope') == 'container':
-                relations.append(relation)
-    return relations
-
-
-def is_expected_scale():
-    """Query juju goal-state to determine whether our peer- and dependency-
-    relations are at the expected scale.
-
-    Useful for deferring per unit per relation housekeeping work until we are
-    ready to complete it successfully and without unnecessary repetiton.
-
-    Always returns True if version of juju used does not support goal-state.
-
-    :returns: True or False
-    :rtype: bool
-    """
-    peer_type = 'cluster'
-    peer_rid = next((rid for rid in relation_ids(reltype=peer_type)), None)
-    if not peer_rid:
-        return False
-    deps = [
-        ('shared-db',
-         next((rid for rid in relation_ids(reltype='shared-db')), None)),
-    ]
-    if expect_ha():
-        deps.append(('ha',
-                     next((rid for rid in relation_ids(reltype='ha')), None)))
-    try:
-        if (len(related_units(relid=peer_rid)) <
-                len(list(expected_peer_units()))):
-            return False
-        for dep in deps:
-            if not dep[1]:
-                return False
-            # Goal state returns every unit even for container scoped
-            # relations but the charm only ever has a relation with
-            # the local unit.
-            if dep[0] in container_scoped_relations():
-                expected_count = 1
-            else:
-                expected_count = len(
-                    list(expected_related_units(reltype=dep[0])))
-            if len(related_units(relid=dep[1])) < expected_count:
-                return False
-    except NotImplementedError:
-        return True
-    return True
 
 
 def assemble_endpoints(settings):

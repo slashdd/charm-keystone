@@ -78,7 +78,10 @@ from charmhelpers.contrib.openstack.utils import (
     enable_memcache,
     series_upgrade_prepare,
     series_upgrade_complete,
-    is_db_maintenance_mode,
+    inform_peers_if_ready,
+    check_api_unit_ready,
+    check_api_application_ready,
+    is_db_ready,
 )
 
 from keystone_context import fernet_enabled
@@ -105,9 +108,7 @@ from keystone_utils import (
     TOKEN_FLUSH_CRON_FILE,
     setup_ipv6,
     send_notifications,
-    is_db_ready,
     is_db_initialised,
-    is_expected_scale,
     filter_null,
     is_service_present,
     delete_service_entry,
@@ -303,6 +304,7 @@ def config_changed_postupgrade():
         ha_joined(relation_id=r_id)
 
     notify_middleware_with_release_version()
+    inform_peers_if_ready(check_api_unit_ready)
 
 
 @hooks.hook('shared-db-relation-joined')
@@ -325,24 +327,13 @@ def db_joined():
                      hostname=host)
 
 
-def update_all_identity_relation_units(check_db_ready=True):
-    if is_db_maintenance_mode():
-        log('Database maintenance mode, aborting hook.', level=INFO)
-        return
-    if is_unit_paused_set():
-        return
-    if check_db_ready and not is_db_ready():
-        log('Allowed_units list provided and this unit not present',
+def update_all_identity_relation_units():
+    unit_ready, _ = check_api_application_ready()
+    if not unit_ready:
+        log(
+            ("Keystone charm unit not ready - deferring identity-relation "
+             "updates"),
             level=INFO)
-        return
-
-    if not is_db_initialised():
-        log("Database not yet initialised - deferring identity-relation "
-            "updates", level=INFO)
-        return
-    if not is_expected_scale():
-        log("Keystone charm and it's dependencies not yet at expected scale "
-            "- deferring identity-relation updates", level=INFO)
         return
 
     log('Firing identity_changed hook for all related services.')
@@ -388,7 +379,7 @@ def leader_init_db_if_ready(use_current_context=False):
 
     if is_db_initialised():
         log("Database already initialised - skipping db init", level=DEBUG)
-        update_all_identity_relation_units(check_db_ready=False)
+        update_all_identity_relation_units()
         return
 
     # Bugs 1353135 & 1187508. Dbs can appear to be ready before the
@@ -406,8 +397,8 @@ def leader_init_db_if_ready(use_current_context=False):
             os_release('keystone')) >= 'liberty':
         CONFIGS.write(POLICY_JSON)
     # Ensure any existing service entries are updated in the
-    # new database backend. Also avoid duplicate db ready check.
-    update_all_identity_relation_units(check_db_ready=False)
+    # new database backend.
+    update_all_identity_relation_units()
     update_all_domain_backends()
 
 
@@ -423,6 +414,7 @@ def db_changed():
                 os_release('keystone')) >= 'liberty':
             CONFIGS.write(POLICY_JSON)
         update_all_identity_relation_units()
+        inform_peers_if_ready(check_api_unit_ready)
 
 
 @hooks.hook('shared-db-relation-departed',
@@ -558,6 +550,7 @@ def cluster_changed():
     update_all_identity_relation_units()
 
     CONFIGS.write_all()
+    inform_peers_if_ready(check_api_unit_ready)
 
 
 @hooks.hook('leader-elected')
@@ -569,6 +562,7 @@ def leader_elected():
     CONFIGS.write(TOKEN_FLUSH_CRON_FILE)
 
     update_all_identity_relation_units()
+    inform_peers_if_ready(check_api_unit_ready)
 
 
 @hooks.hook('leader-settings-changed')
@@ -595,6 +589,7 @@ def leader_settings_changed():
         key_write()
 
     update_all_identity_relation_units()
+    inform_peers_if_ready(check_api_unit_ready)
 
 
 @hooks.hook('ha-relation-joined')
@@ -618,6 +613,7 @@ def ha_changed():
             update_all_identity_relation_units()
             update_all_domain_backends()
             update_all_fid_backends()
+            inform_peers_if_ready(check_api_unit_ready)
 
 
 @hooks.hook('identity-admin-relation-changed')
@@ -744,6 +740,7 @@ def upgrade_charm():
         os_release('keystone'),
         'keystone',
         restart_handler=lambda: service_restart('apache2'))
+    inform_peers_if_ready(check_api_unit_ready)
 
 
 @hooks.hook('update-status')
@@ -884,6 +881,7 @@ def certs_changed(relation_id=None, unit=None):
     update_all_identity_relation_units()
     update_all_domain_backends()
     update_all_fid_backends()
+    inform_peers_if_ready(check_api_unit_ready)
 
 
 def notify_middleware_with_release_version():

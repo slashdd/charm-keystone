@@ -137,7 +137,7 @@ class KeystoneRelationTests(CharmTestCase):
              'python3-six', 'uuid'], fatal=True)
         self.disable_unused_apache_sites.assert_not_called()
         mock_maybe_do_policyd_overrides.assert_called_once_with(
-            ANY, "keystone")
+            ANY, "keystone", restart_handler=ANY)
 
     @patch.object(hooks, 'maybe_do_policyd_overrides')
     @patch.object(utils, 'os_release')
@@ -160,7 +160,7 @@ class KeystoneRelationTests(CharmTestCase):
              'python3-six', 'uuid'], fatal=True)
         self.disable_unused_apache_sites.assert_called_with()
         mock_maybe_do_policyd_overrides.assert_called_once_with(
-            ANY, "keystone")
+            ANY, "keystone", restart_handler=ANY)
 
     mod_ch_openstack_utils = 'charmhelpers.contrib.openstack.utils'
 
@@ -279,7 +279,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertTrue(mock_notify_middleware.called_once)
 
         (mock_maybe_do_policyd_overrides_on_config_changed
-         .assert_called_once_with(ANY, "keystone"))
+         .assert_called_once_with(ANY, "keystone", restart_handler=ANY))
 
     @patch.object(hooks, 'maybe_do_policyd_overrides_on_config_changed')
     @patch.object(hooks, 'is_db_initialised')
@@ -328,7 +328,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertTrue(mock_update_domains.called)
 
         (mock_maybe_do_policyd_overrides_on_config_changed
-         .assert_called_once_with(ANY, "keystone"))
+         .assert_called_once_with(ANY, "keystone", restart_handler=ANY))
 
     @patch.object(hooks, 'maybe_do_policyd_overrides_on_config_changed')
     @patch.object(hooks, 'update_all_domain_backends')
@@ -381,7 +381,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertTrue(mock_update_domains.called)
 
         (mock_maybe_do_policyd_overrides_on_config_changed
-         .assert_called_once_with(ANY, "keystone"))
+         .assert_called_once_with(ANY, "keystone", restart_handler=ANY))
 
     @patch.object(hooks, 'maybe_do_policyd_overrides_on_config_changed')
     @patch.object(hooks, 'is_expected_scale')
@@ -411,7 +411,7 @@ class KeystoneRelationTests(CharmTestCase):
         self.assertFalse(self.do_openstack_upgrade_reexec.called)
 
         (mock_maybe_do_policyd_overrides_on_config_changed
-         .assert_called_once_with(ANY, "keystone"))
+         .assert_called_once_with(ANY, "keystone", restart_handler=ANY))
 
     @patch.object(hooks, 'is_db_initialised')
     @patch('keystone_utils.log')
@@ -620,7 +620,7 @@ class KeystoneRelationTests(CharmTestCase):
         mock_bootstrap_keystone.assert_called_once_with(configs=ANY)
         mock_stop_manager_instance.assert_called_once_with()
         mock_maybe_do_policyd_overrides.assert_called_once_with(
-            ANY, "keystone")
+            ANY, "keystone", restart_handler=ANY)
         mock_protect_service_accounts.assert_called_once_with()
 
     @patch.object(hooks, 'bootstrap_keystone')
@@ -661,7 +661,7 @@ class KeystoneRelationTests(CharmTestCase):
         mock_bootstrap_keystone.assert_called_once_with(configs=ANY)
         mock_stop_manager_instance.assert_called_once_with()
         mock_maybe_do_policyd_overrides.assert_called_once_with(
-            ANY, "keystone")
+            ANY, "keystone", restart_handler=ANY)
         mock_protect_service_accounts.assert_called_once_with()
 
     @patch.object(hooks, 'bootstrap_keystone')
@@ -836,7 +836,7 @@ class KeystoneRelationTests(CharmTestCase):
         mock_bootstrap_keystone.assert_called_once_with(configs=ANY)
         mock_stop_manager_instance.assert_called_once()
         mock_maybe_do_policyd_overrides.assert_called_once_with(
-            ANY, "keystone")
+            ANY, "keystone", restart_handler=ANY)
 
     @patch.object(hooks, 'bootstrap_keystone')
     @patch.object(hooks, 'maybe_do_policyd_overrides')
@@ -866,7 +866,7 @@ class KeystoneRelationTests(CharmTestCase):
         mock_bootstrap_keystone.assert_called_once_with(configs=ANY)
         mock_stop_manager_instance.assert_called_once()
         mock_maybe_do_policyd_overrides.assert_called_once_with(
-            ANY, "keystone")
+            ANY, "keystone", restart_handler=ANY)
 
     def test_domain_backend_changed_v2(self):
         self.get_api_version.return_value = 2

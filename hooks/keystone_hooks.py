@@ -208,7 +208,10 @@ def install():
             disable_unused_apache_sites()
             service_pause('keystone')
     # call the policy overrides handler which will install any policy overrides
-    maybe_do_policyd_overrides(os_release('keystone'), 'keystone')
+    maybe_do_policyd_overrides(
+        os_release('keystone'),
+        'keystone',
+        restart_handler=lambda: service_restart('apache2'))
 
 
 @hooks.hook('config-changed')
@@ -236,8 +239,10 @@ def config_changed():
         cluster_joined(rid=r_id)
 
     # call the policy overrides handler which will install any policy overrides
-    maybe_do_policyd_overrides_on_config_changed(os_release('keystone'),
-                                                 'keystone')
+    maybe_do_policyd_overrides_on_config_changed(
+        os_release('keystone'),
+        'keystone',
+        restart_handler=lambda: service_restart('apache2'))
 
     config_changed_postupgrade()
 
@@ -735,7 +740,10 @@ def upgrade_charm():
         ensure_all_service_accounts_protected_for_pci_dss_options()
 
     # call the policy overrides handler which will install any policy overrides
-    maybe_do_policyd_overrides(os_release('keystone'), 'keystone')
+    maybe_do_policyd_overrides(
+        os_release('keystone'),
+        'keystone',
+        restart_handler=lambda: service_restart('apache2'))
 
 
 @hooks.hook('update-status')

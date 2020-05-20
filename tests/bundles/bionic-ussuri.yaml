@@ -26,7 +26,7 @@ applications:
     num_units: 3
     options:
       openstack-origin: cloud:bionic-ussuri
-      token-expiration: 60
+      token-expiration: 300
     to:
     - '1'
     - '2'

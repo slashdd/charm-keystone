@@ -109,7 +109,6 @@ from keystone_utils import (
     setup_ipv6,
     send_notifications,
     is_db_initialised,
-    filter_null,
     is_service_present,
     delete_service_entry,
     assess_status,
@@ -147,7 +146,6 @@ from charmhelpers.contrib.openstack.ha.utils import (
 
 from charmhelpers.payload.execd import execd_preinstall
 from charmhelpers.contrib.peerstorage import (
-    peer_retrieve_by_prefix,
     peer_echo,
 )
 from charmhelpers.contrib.openstack.ip import (
@@ -476,15 +474,6 @@ def identity_changed(relation_id=None, remote_unit=None):
                         endpoints_checksum(endpoints[ep])
                     )
     else:
-        # Each unit needs to set the db information otherwise if the unit
-        # with the info dies the settings die with it Bug# 1355848
-        for rel_id in relation_ids('identity-service'):
-            peerdb_settings = peer_retrieve_by_prefix(rel_id)
-            # Ensure the null'd settings are unset in the relation.
-            peerdb_settings = filter_null(peerdb_settings)
-            if 'service_password' in peerdb_settings:
-                relation_set(relation_id=rel_id, **peerdb_settings)
-
         log('Deferring identity_changed() to service leader.')
 
     if notifications_endpoints or notifications_checksums:

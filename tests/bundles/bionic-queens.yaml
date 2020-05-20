@@ -27,7 +27,7 @@ applications:
     num_units: 3
     options:
       token-provider: 'fernet'
-      token-expiration: 60
+      token-expiration: 300
     to:
     - '1'
     - '2'

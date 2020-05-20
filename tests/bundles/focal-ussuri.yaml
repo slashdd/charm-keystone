@@ -40,7 +40,7 @@ applications:
     options:
       openstack-origin: *openstack-origin
       token-provider: 'fernet'
-      token-expiration: 60
+      token-expiration: 300
     to:
     - '3'
     - '4'

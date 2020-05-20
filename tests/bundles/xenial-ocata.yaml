@@ -28,7 +28,7 @@ applications:
     options:
       openstack-origin: cloud:xenial-ocata
       token-provider: 'fernet'
-      token-expiration: 60
+      token-expiration: 300
     to:
     - '1'
     - '2'

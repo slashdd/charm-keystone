@@ -1520,6 +1520,12 @@ def ensure_initial_admin(config):
                 'ldap' and config('ldap-readonly')):
 
             admin_username = config('admin-user')
+
+            # NOTE(lourot): get_admin_passwd() will generate a new password if
+            # the juju config or the leader DB doesn't contain already one. The
+            # set_admin_passwd() callback will then store that password in the
+            # leader DB. So if the leader dies, the new leader will still have
+            # access to the password.
             if get_api_version() > 2:
                 passwd = create_user_credentials(admin_username,
                                                  get_admin_passwd,

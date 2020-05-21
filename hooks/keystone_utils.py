@@ -1603,8 +1603,8 @@ def load_stored_passwords(path=SERVICE_PASSWD_PATH):
         return creds
 
     stored_passwd = open(path, 'r')
-    for l in stored_passwd.readlines():
-        user, passwd = l.strip().split(':')
+    for _line in stored_passwd.readlines():
+        user, passwd = _line.strip().split(':')
         creds[user] = passwd
     return creds
 

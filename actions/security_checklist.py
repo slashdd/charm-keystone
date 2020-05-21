@@ -49,7 +49,7 @@ def uses_sha256_for_hashing_tokens(audit_options):
     algorithm = section.get("hash_algorithm")
     if provider and "pki" in provider:
         assert "SHA256" == algorithm, \
-            "Weak hash algorithm used with PKI provider: ".format(
+            "Weak hash algorithm used with PKI provider: {}".format(
                 algorithm)
 
 

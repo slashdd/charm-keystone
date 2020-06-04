@@ -438,11 +438,10 @@ class AuthMethods(context.OSContextGenerator):
     def __call__(self):
 
         _external = "external"
-        _protocol_name = ""
         for rid in relation_ids("keystone-fid-service-provider"):
             for unit in related_units(rid):
                 rdata = relation_get(unit=unit, rid=rid)
-                _protocol_name = rdata.get('protocol-name').strip('"')
+                _protocol_name = json.loads(rdata.get('protocol-name', '""'))
                 if _protocol_name and _protocol_name not in self.auth_methods:
                     self.auth_methods.append(_protocol_name)
                     # We are federated so remove the external method

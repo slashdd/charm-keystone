@@ -318,7 +318,7 @@ class TestKeystoneContexts(CharmTestCase):
         )
 
     @patch.object(context, 'relation_ids')
-    def test_keystone_fid_service_provider_empty(
+    def test_keystone_fid_service_provider_no_relations(
             self, mock_relation_ids):
         os.environ['JUJU_UNIT_NAME'] = 'keystone'
 
@@ -332,6 +332,51 @@ class TestKeystoneContexts(CharmTestCase):
 
         self.maxDiff = None
         self.assertCountEqual(ctxt(), {})
+
+        auth_ctxt = context.AuthMethods()
+        self.assertCountEqual(auth_ctxt(), {
+            'auth_methods': 'external,password,token,oauth1,openid'
+                            ',totp,application_credential'})
+
+    @patch.object(context, 'relation_ids')
+    @patch.object(context, 'related_units')
+    @patch.object(context, 'relation_get')
+    def test_keystone_fid_service_provider_empty_relation(
+            self, mock_relation_get, mock_related_units,
+            mock_relation_ids):
+        os.environ['JUJU_UNIT_NAME'] = 'keystone'
+
+        def relation_ids_side_effect(rname):
+            return {
+                'keystone-fid-service-provider': {
+                    'keystone-fid-service-provider:0',
+                }
+            }[rname]
+
+        mock_relation_ids.side_effect = relation_ids_side_effect
+
+        def related_units_side_effect(rid):
+            return {
+                'keystone-fid-service-provider:0': ['sp-mellon/0'],
+            }[rid]
+        mock_related_units.side_effect = related_units_side_effect
+
+        def relation_get_side_effect(unit, rid):
+            # one unit only as the relation is container-scoped
+            return {
+                "keystone-fid-service-provider:0": {
+                    "sp-mellon/0": {
+                        "ingress-address": '10.0.0.10',
+                    },
+                },
+            }[rid][unit]
+
+        mock_relation_get.side_effect = relation_get_side_effect
+
+        auth_ctxt = context.AuthMethods()
+        self.assertCountEqual(auth_ctxt(), {
+            'auth_methods': 'external,password,token,oauth1,openid'
+                            ',totp,application_credential'})
 
     @patch.object(context, 'relation_ids')
     @patch.object(context, 'related_units')

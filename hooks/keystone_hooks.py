@@ -516,6 +516,14 @@ def identity_credentials_changed(relation_id=None, remote_unit=None):
                 "identity-credentials-relation updates", level=INFO)
             return
 
+        unit_ready, _ = check_api_application_ready()
+        if not unit_ready:
+            log(
+                ("Keystone charm unit not ready - deferring identity-relation "
+                 "updates"),
+                level=INFO)
+            return
+
         # Create the tenant user
         add_credentials_to_keystone(relation_id, remote_unit)
     else:

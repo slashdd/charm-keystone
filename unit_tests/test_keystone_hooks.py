@@ -529,6 +529,7 @@ class KeystoneRelationTests(CharmTestCase):
         hooks.ha_changed()
         self.assertTrue(configs.write_all.called)
 
+    @patch.object(hooks, 'relation_ids')
     @patch.object(hooks, 'update_all_fid_backends')
     @patch.object(hooks, 'update_all_domain_backends')
     @patch.object(hooks, 'update_all_identity_relation_units')
@@ -542,18 +543,55 @@ class KeystoneRelationTests(CharmTestCase):
                                                   mock_is_db_initialised,
                                                   update_ids,
                                                   update_domains,
-                                                  update_fids):
+                                                  update_fids,
+                                                  relation_ids):
         mock_is_db_initialised.return_value = True
         self.is_db_ready.return_value = True
         self.relation_get.return_value = True
         self.relation_ids.return_value = ['identity-service:0']
         self.related_units.return_value = ['unit/0']
-
+        relation_ids.return_value = []
         hooks.ha_changed()
         self.assertTrue(configs.write_all.called)
         update_ids.assert_called_once_with()
         update_domains.assert_called_once_with()
         update_fids.assert_called_once_with()
+
+    @patch.object(hooks, 'certs_changed')
+    @patch.object(hooks, 'related_units')
+    @patch.object(hooks, 'relation_ids')
+    @patch.object(hooks, 'update_all_fid_backends')
+    @patch.object(hooks, 'update_all_domain_backends')
+    @patch.object(hooks, 'update_all_identity_relation_units')
+    @patch.object(hooks, 'is_db_initialised')
+    @patch('keystone_utils.log')
+    @patch.object(hooks, 'identity_changed')
+    @patch.object(hooks, 'CONFIGS')
+    def test_ha_relation_changed_clustered_leader_with_certs(
+            self,
+            configs,
+            identity_changed,
+            mock_log,
+            mock_is_db_initialised,
+            update_ids,
+            update_domains,
+            update_fids,
+            relation_ids,
+            related_units,
+            certs_changed):
+        mock_is_db_initialised.return_value = True
+        self.is_db_ready.return_value = True
+        self.relation_get.return_value = True
+        self.relation_ids.return_value = ['identity-service:0']
+        self.related_units.return_value = ['unit/0']
+        relation_ids.return_value = ['1']
+        related_units.return_value = ['2']
+        hooks.ha_changed()
+        self.assertTrue(configs.write_all.called)
+        update_ids.assert_called_once_with()
+        update_domains.assert_called_once_with()
+        update_fids.assert_called_once_with()
+        certs_changed.assert_called_once_with('1', '2')
 
     @patch('keystone_utils.log')
     @patch.object(hooks, 'CONFIGS')

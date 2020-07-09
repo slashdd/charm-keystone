@@ -607,6 +607,10 @@ def ha_changed():
     if clustered:
         log('Cluster configured, notifying other services and updating '
             'keystone endpoint configuration')
+        for rid in relation_ids('certificates'):
+            if related_units(rid):
+                for unit in related_units(rid):
+                    certs_changed(rid, unit)
         if (is_db_initialised() and is_elected_leader(CLUSTER_RES) and not
                 is_unit_paused_set()):
             ensure_initial_admin(config)

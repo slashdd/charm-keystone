@@ -850,6 +850,7 @@ class TestKeystoneUtils(CharmTestCase):
         mock_relation_set.assert_called_once_with(relation_id=relation_id,
                                                   relation_settings=checksums)
 
+    @patch.object(utils, 'service_endpoint_dict')
     @patch.object(utils, 'relation_ids')
     @patch.object(utils, 'related_units')
     @patch.object(utils, 'relation_get')
@@ -857,7 +858,8 @@ class TestKeystoneUtils(CharmTestCase):
     def test_send_id_service_notifications(self, mock_relation_set,
                                            mock_relation_get,
                                            mock_related_units,
-                                           mock_relation_ids):
+                                           mock_relation_ids,
+                                           mock_service_endpoint_dict):
         id_svc_rel_units = {
             'identity-service:1': ['neutron-gateway/0'],
             'identity-service:2': [
@@ -888,22 +890,41 @@ class TestKeystoneUtils(CharmTestCase):
         def _relation_get(unit, rid, attribute):
             return id_svc_rel_data[unit].get(attribute)
 
+        def _service_endpoint_dict(service_name):
+            _services = {
+                'neutron': {'internal': 'http://neutron.demo.com:9696'}
+            }
+            return _services.get(service_name)
+
         mock_relation_ids.return_value = id_svc_rel_units.keys()
         mock_related_units.side_effect = _related_units
         mock_relation_get.side_effect = _relation_get
+        mock_service_endpoint_dict.side_effect = _service_endpoint_dict
         self.local_unit.return_value = 'keystone/0'
 
         # Check all services subscribed to placement changes are notified.
         mock_relation_set.reset_mock()
         utils.send_id_service_notifications(
             {'placement-endpoint-changed': {"internal": "http://demo.com"}})
-        mock_relation_set.assert_called_once_with(
-            relation_id='identity-service:2',
-            relation_settings={
-                'ep_changed':
-                    '{"placement": {"internal": "http://demo.com"}}'
-            }
-        )
+        mock_relation_set.assert_has_calls([
+            call(
+                relation_id='identity-service:1',
+                relation_settings={
+                    'ep_changed':
+                        ('{"neutron": {"internal": '
+                         '"http://neutron.demo.com:9696"}}')
+                }
+            ),
+            call(
+                relation_id='identity-service:2',
+                relation_settings={
+                    'ep_changed':
+                        ('{"neutron": {"internal": '
+                         '"http://neutron.demo.com:9696"},'
+                         ' "placement": {"internal": "http://demo.com"}}')
+                }
+            )
+        ], any_order=True)
 
         # Check all services subscribed to neutron changes are notified.
         mock_relation_set.reset_mock()
@@ -955,6 +976,48 @@ class TestKeystoneUtils(CharmTestCase):
         mock_relation_set.assert_has_calls(
             expected_rel_set_calls,
             any_order=True)
+
+    @patch.object(utils, 'get_manager')
+    def test_service_endpoint_dict(self, mock_get_manager):
+        mock_manager = MagicMock()
+        mock_get_manager.return_value = mock_manager
+        mock_manager.resolve_service_id.return_value = None
+
+        self.assertIsNone(utils.service_endpoint_dict('dummyservice'))
+
+        mock_manager.reset_mock()
+
+        mock_manager.resolve_service_id.return_value = 'd123456'
+        mock_manager.list_endpoints.return_value = [
+            {'service_id': 'd123456',
+             'interface': 'internal',
+             'url': 'http://dummyservice.demo.com'},
+            {'service_id': 'd789102',
+             'interface': 'internal',
+             'url': 'http://anotherservice.demo.com'},
+        ]
+
+        self.assertEqual(
+            utils.service_endpoint_dict('dummyservice'),
+            {'internal': 'http://dummyservice.demo.com'}
+        )
+
+        mock_manager.reset_mock()
+
+        mock_manager.resolve_service_id.return_value = 'd123456'
+        mock_manager.list_endpoints.return_value = [
+            {'service_id': 'd789102',
+             'interface': 'public',
+             'url': 'http://anotherservice.demo.com'},
+            {'service_id': 'd789102',
+             'interface': 'internal',
+             'url': 'http://anotherservice.demo.com'},
+        ]
+
+        self.assertEqual(
+            utils.service_endpoint_dict('dummyservice'),
+            {}
+        )
 
     def test_get_admin_passwd_pwd_set(self):
         self.test_config.set('admin-password', 'supersecret')

@@ -14,7 +14,8 @@ gate_bundles:
 - xenial-mitaka
 - trusty-mitaka
 dev_bundles:
-- focal-ussuri
+- groovy-victoria
+- focal-victoria
 comment: |
   the glance configure job validates operation of identity-service relation.
   The policyd test is generic and validates the policy.d overrides work
@@ -30,4 +31,4 @@ tests_options:
   policyd:
     service: keystone
   force_deploy:
-    - focal-ussuri
+    - groovy-victoria

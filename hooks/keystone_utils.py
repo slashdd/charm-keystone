@@ -2090,6 +2090,28 @@ def setup_ipv6():
         apt_install('haproxy/trusty-backports', fatal=True)
 
 
+def service_endpoint_dict(service_name):
+    """Retrieve endpoint information for a named service
+
+    Build and return a dict of information for the provided service
+    (by name) including internal, public and admin URL's if they
+    are present in the endpoint catalog.
+
+    :returns: dict of endpoint information or None if not found
+    """
+    manager = get_manager()
+    service_id = manager.resolve_service_id(service_name)
+    if not service_id:
+        return None
+
+    current_endpoints = manager.list_endpoints()
+    endpoint_dict = {}
+    for endpoint in current_endpoints:
+        if endpoint['service_id'] == service_id:
+            endpoint_dict[endpoint['interface']] = endpoint['url']
+    return endpoint_dict
+
+
 def send_id_service_notifications(data):
     """Send notification on identity-service relation.
 
@@ -2117,15 +2139,19 @@ def send_id_service_notifications(data):
         else:
             changed = {}
         for unit in related_units(rid):
-            rs = relation_get(
+            service_names = relation_get(
                 unit=unit,
                 rid=rid,
                 attribute='subscribe_ep_change')
-            if rs:
-                for r in rs.split():
-                    key = '{}-endpoint-changed'.format(r)
+            if service_names:
+                for service_name in service_names.split():
+                    key = '{}-endpoint-changed'.format(service_name)
                     if data.get(key):
-                        changed[r] = data[key]
+                        changed[service_name] = data[key]
+                    elif service_name not in changed:
+                        service_endpoint = service_endpoint_dict(service_name)
+                        if service_endpoint:
+                            changed[service_name] = service_endpoint
         if changed:
             relation_set(
                 relation_id=rid,

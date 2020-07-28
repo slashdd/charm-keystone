@@ -2108,7 +2108,15 @@ def service_endpoint_dict(service_name):
     endpoint_dict = {}
     for endpoint in current_endpoints:
         if endpoint['service_id'] == service_id:
-            endpoint_dict[endpoint['interface']] = endpoint['url']
+            if 'interface' in endpoint:
+                # NOTE: v3 API response - endpoint per interface
+                endpoint_dict[endpoint['interface']] = endpoint['url']
+            else:
+                # NOTE: v2 API response - endpoint has all interfaces
+                for interface in ('public', 'internal', 'admin'):
+                    endpoint_url = endpoint.get('{}url'.format(interface))
+                    if endpoint_url:
+                        endpoint_dict[interface] = endpoint_url
     return endpoint_dict
 
 

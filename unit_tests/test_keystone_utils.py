@@ -978,7 +978,7 @@ class TestKeystoneUtils(CharmTestCase):
             any_order=True)
 
     @patch.object(utils, 'get_manager')
-    def test_service_endpoint_dict(self, mock_get_manager):
+    def test_service_endpoint_dict_v3(self, mock_get_manager):
         mock_manager = MagicMock()
         mock_get_manager.return_value = mock_manager
         mock_manager.resolve_service_id.return_value = None
@@ -1012,6 +1012,46 @@ class TestKeystoneUtils(CharmTestCase):
             {'service_id': 'd789102',
              'interface': 'internal',
              'url': 'http://anotherservice.demo.com'},
+        ]
+
+        self.assertEqual(
+            utils.service_endpoint_dict('dummyservice'),
+            {}
+        )
+
+    @patch.object(utils, 'get_manager')
+    def test_service_endpoint_dict_v2(self, mock_get_manager):
+        mock_manager = MagicMock()
+        mock_get_manager.return_value = mock_manager
+        mock_manager.resolve_service_id.return_value = None
+
+        self.assertIsNone(utils.service_endpoint_dict('dummyservice'))
+
+        mock_manager.reset_mock()
+
+        mock_manager.resolve_service_id.return_value = 'd123456'
+        mock_manager.list_endpoints.return_value = [
+            {'service_id': 'd123456',
+             'internalurl': 'http://dummyservice.demo.com',
+             'publicurl': 'http://anotherservice.demo.com'},
+        ]
+
+        self.assertEqual(
+            utils.service_endpoint_dict('dummyservice'),
+            {'internal': 'http://dummyservice.demo.com',
+             'public': 'http://anotherservice.demo.com'}
+        )
+
+        mock_manager.reset_mock()
+
+        mock_manager.resolve_service_id.return_value = 'd123456'
+        mock_manager.list_endpoints.return_value = [
+            {'service_id': 'd789102',
+             'internalurl': 'http://dummyservice.demo.com',
+             'publicurl': 'http://anotherservice.demo.com'},
+            {'service_id': 'd789102',
+             'internalurl': 'http://dummyservice.demo.com',
+             'publicurl': 'http://anotherservice.demo.com'},
         ]
 
         self.assertEqual(

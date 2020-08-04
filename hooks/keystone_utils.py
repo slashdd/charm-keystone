@@ -1462,7 +1462,7 @@ def set_admin_passwd(passwd, user=None):
     if user is None:
         user = config('admin-user')
 
-    leader_set({'{}_passwd'.format(user): passwd})
+    _leader_set_secret({'{}_passwd'.format(user): passwd})
 
 
 def get_api_version():
@@ -1620,7 +1620,7 @@ def _migrate_admin_password():
     if is_leader() and os.path.exists(STORED_PASSWD):
         log('Migrating on-disk stored passwords to leader storage')
         with open(STORED_PASSWD) as fd:
-            leader_set({"admin_passwd": fd.readline().strip('\n')})
+            _leader_set_secret({"admin_passwd": fd.readline().strip('\n')})
 
         os.unlink(STORED_PASSWD)
 
@@ -1630,8 +1630,8 @@ def _migrate_service_passwords():
     if is_leader() and os.path.exists(SERVICE_PASSWD_PATH):
         log('Migrating on-disk stored passwords to leader storage')
         creds = load_stored_passwords()
-        for k, v in creds.items():
-            leader_set({"{}_passwd".format(k): v})
+        _leader_set_secret({"{}_passwd".format(k): v
+                            for k, v in creds.items()})
         os.unlink(SERVICE_PASSWD_PATH)
 
 
@@ -1645,7 +1645,7 @@ def get_service_password(service_username):
 
 
 def set_service_password(passwd, user):
-    leader_set({"{}_passwd".format(user): passwd})
+    _leader_set_secret({"{}_passwd".format(user): passwd})
 
 
 def is_password_changed(username, passwd):
@@ -2535,7 +2535,7 @@ def key_leader_set():
     `CREDENTIAL_KEY_REPOSITORY` directories.  Note that this function will fail
     if it is called on the unit that is not the leader.
 
-    :raises: :class:`subprocess.CalledProcessError` if the leader_set fails.
+    :raises: :class:`RuntimeError` if the leader_set fails.
     """
     disk_keys = {}
     for key_repository in [FERNET_KEY_REPOSITORY, CREDENTIAL_KEY_REPOSITORY]:
@@ -2544,7 +2544,7 @@ def key_leader_set():
             with open(os.path.join(key_repository, key_number),
                       'r') as f:
                 disk_keys[key_repository][key_number] = f.read()
-    leader_set({'key_repository': json.dumps(disk_keys)})
+    _leader_set_secret({'key_repository': json.dumps(disk_keys)})
 
 
 def key_write():
@@ -2702,3 +2702,18 @@ def endpoints_dict(settings):
     }
 
     return endpoints
+
+
+def _leader_set_secret(secret_dict):
+    """Wrapper around leader_set doing its best to prevent leaking secrets."""
+    if not is_leader():
+        raise RuntimeError("This unit isn't the leader and therefore can't "
+                           "call leader_set() with the given secrets")
+    try:
+        leader_set(secret_dict)
+    except subprocess.CalledProcessError as e:
+        # Do not log 'e' or 'e.cmd' as this would leak secrets. Raise a
+        # different exception to make sure that no one above will leak the
+        # secrets by accident.
+        raise RuntimeError('leader-set failed with {}: {}'.format(e.returncode,
+                                                                  e.output))

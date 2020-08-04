@@ -367,6 +367,7 @@ class TestKeystoneUtils(CharmTestCase):
                                                    **relation_data)
 
     @patch.object(utils, 'get_real_role_names')
+    @patch.object(utils, 'is_leader')
     @patch.object(utils, 'leader_set')
     @patch.object(utils, 'leader_get')
     @patch.object(utils, 'get_api_version')
@@ -378,10 +379,11 @@ class TestKeystoneUtils(CharmTestCase):
     def test_add_service_to_keystone_no_clustered_no_https_complete_values(
             self, KeystoneManager, add_endpoint, ensure_valid_service,
             _resolve_address, create_user, get_api_version, leader_get,
-            leader_set, _get_real_role_names, test_api_version=2):
+            leader_set, is_leader, _get_real_role_names, test_api_version=2):
         _get_real_role_names.return_value = ['Member', 'SpecialRole']
         get_api_version.return_value = test_api_version
         leader_get.return_value = None
+        is_leader.return_value = True
         relation_id = 'identity-service:0'
         remote_unit = 'unit/0'
         self.get_service_password.return_value = 'password'
@@ -1099,19 +1101,25 @@ class TestKeystoneUtils(CharmTestCase):
         self.assertEqual(utils.get_admin_passwd(), 'admin')
         leader_get.assert_called_with('test_passwd')
 
+    @patch.object(utils, 'is_leader')
     @patch.object(utils, 'leader_set')
-    def test_set_admin_password(self, leader_set):
+    def test_set_admin_password(self, leader_set, is_leader):
+        is_leader.return_value = True
         utils.set_admin_passwd('secret')
         leader_set.assert_called_once_with({'admin_passwd': 'secret'})
 
+    @patch.object(utils, 'is_leader')
     @patch.object(utils, 'leader_set')
-    def test_set_admin_password_config_username(self, leader_set):
+    def test_set_admin_password_config_username(self, leader_set, is_leader):
+        is_leader.return_value = True
         self.test_config.set('admin-user', 'username')
         utils.set_admin_passwd('secret')
         leader_set.assert_called_once_with({'username_passwd': 'secret'})
 
+    @patch.object(utils, 'is_leader')
     @patch.object(utils, 'leader_set')
-    def test_set_admin_password_username(self, leader_set):
+    def test_set_admin_password_username(self, leader_set, is_leader):
+        is_leader.return_value = True
         utils.set_admin_passwd('secret', user='username')
         leader_set.assert_called_once_with({'username_passwd': 'secret'})
 
@@ -1688,10 +1696,12 @@ class TestKeystoneUtils(CharmTestCase):
         utils.fernet_rotate()
         self.subprocess.check_output.called_with(cmd)
 
+    @patch.object(utils, 'is_leader')
     @patch.object(utils, 'leader_set')
     @patch('os.listdir')
-    def test_key_leader_set(self, listdir, leader_set):
+    def test_key_leader_set(self, listdir, leader_set, is_leader):
         listdir.return_value = ['0', '1']
+        is_leader.return_value = True
         self.time.time.return_value = "the-time"
         with patch.object(builtins, 'open', mock_open(
                 read_data="some_data")):
@@ -1881,6 +1891,7 @@ class TestKeystoneUtils(CharmTestCase):
         mock_leader_get.assert_called_with('_charm-keystone-admin_passwd')
 
     @patch.object(utils, 'get_manager')
+    @patch.object(utils, 'is_leader')
     @patch.object(utils, 'leader_set')
     @patch.object(utils, 'resolve_address')
     @patch.object(utils, 'endpoint_url')
@@ -1895,6 +1906,7 @@ class TestKeystoneUtils(CharmTestCase):
             mock_endpoint_url,
             mock_resolve_address,
             mock_leader_set,
+            mock_is_leader,
             mock_get_manager):
         configs = MagicMock()
         mock_get_api_suffix.return_value = 'suffix'
@@ -1902,6 +1914,7 @@ class TestKeystoneUtils(CharmTestCase):
         mock_endpoint_url.side_effect = (
             lambda x, y, z: 'http://{}:{}/{}'.format(x, y, z))
         mock_leader_get.return_value = 'fakepassword'
+        mock_is_leader.return_value = True
         mock_get_manager().resolve_user_id.return_value = 'fakeid'
         self.os_release.return_value = 'queens'
         utils.bootstrap_keystone(configs=configs)

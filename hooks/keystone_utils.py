@@ -1795,9 +1795,32 @@ def ensure_all_service_accounts_protected_for_pci_dss_options():
         protect_user_account_from_pci_dss_force_change_password(user['name'])
 
 
+def get_real_role_names(roles, manager):
+    """Return the name names of the roles.
+
+    Keystone attempts to be case insensative but not all client code is so
+    sometimes the case sensative role name as it is stored in the DB is
+    needed.
+
+    :param roles: List of role names
+    :type roles: List[str]
+    :param manager: Manager for this keystone api
+    :type manager: keystone_utils.KeystoneManagerProxy
+    :returns: List of role names
+    :rtype: List[str]
+    """
+    resolved_roles = []
+    for role in roles:
+        resolved_role = manager.resolve_role_name(role)
+        if resolved_role:
+            resolved_roles.append(resolved_role)
+    return resolved_roles
+
+
 def add_service_to_keystone(relation_id=None, remote_unit=None):
     manager = get_manager()
     settings = relation_get(rid=relation_id, unit=remote_unit)
+    requested_roles = get_requested_roles(settings)
     # the minimum settings needed per endpoint
     single = {'service', 'region', 'public_url', 'admin_url', 'internal_url'}
     https_cns = []
@@ -1822,12 +1845,14 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
             relation_data["api_version"] = get_api_version()
             relation_data["admin_domain_id"] = leader_get(
                 attribute='admin_domain_id')
-
             # Allow the remote service to request creation of any additional
             # roles. Currently used by Horizon
-            for role in get_requested_roles(settings):
+            for role in requested_roles:
                 log("Creating requested role: {}".format(role))
                 create_role(role)
+            relation_data["created_roles"] = ','.join(get_real_role_names(
+                requested_roles,
+                manager))
 
             peer_store_and_set(relation_id=relation_id, **relation_data)
             return
@@ -1940,6 +1965,8 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         "admin_domain_id": leader_get(attribute='admin_domain_id'),
         "admin_project_id": admin_project_id,
         "admin_user_id": admin_user_id,
+        "created_roles": ','.join(
+            get_real_role_names(requested_roles, manager))
     }
 
     peer_store_and_set(relation_id=relation_id, **relation_data)
@@ -2673,4 +2700,5 @@ def endpoints_dict(settings):
         'admin': settings.get('admin_url', None),
         'internal': settings.get('internal_url', None),
     }
+
     return endpoints

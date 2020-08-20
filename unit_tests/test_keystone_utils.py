@@ -320,13 +320,16 @@ class TestKeystoneUtils(CharmTestCase):
         _leader_set.assert_called_with({'db-initialised': True})
         mock_stop_manager_instance.assert_called_once_with()
 
+    @patch.object(utils, 'get_real_role_names')
     @patch.object(utils, 'leader_get')
     @patch.object(utils, 'get_api_version')
     @patch.object(utils, 'get_manager')
     @patch.object(utils, 'resolve_address')
     def test_add_service_to_keystone_clustered_https_none_values(
             self, _resolve_address, _get_manager,
-            _get_api_version, _leader_get):
+            _get_api_version, _leader_get,
+            _get_real_role_names):
+        _get_real_role_names.return_value = ['Member', 'SpecialRole']
         _get_api_version.return_value = 2
         _leader_get.return_value = None
         relation_id = 'identity-service:0'
@@ -358,10 +361,12 @@ class TestKeystoneUtils(CharmTestCase):
                          'service_port': 81,
                          'region': 'RegionOne',
                          'api_version': 2,
-                         'admin_domain_id': None}
+                         'admin_domain_id': None,
+                         'created_roles': 'Member,SpecialRole'}
         self.peer_store_and_set.assert_called_with(relation_id=relation_id,
                                                    **relation_data)
 
+    @patch.object(utils, 'get_real_role_names')
     @patch.object(utils, 'leader_set')
     @patch.object(utils, 'leader_get')
     @patch.object(utils, 'get_api_version')
@@ -373,7 +378,8 @@ class TestKeystoneUtils(CharmTestCase):
     def test_add_service_to_keystone_no_clustered_no_https_complete_values(
             self, KeystoneManager, add_endpoint, ensure_valid_service,
             _resolve_address, create_user, get_api_version, leader_get,
-            leader_set, test_api_version=2):
+            leader_set, _get_real_role_names, test_api_version=2):
+        _get_real_role_names.return_value = ['Member', 'SpecialRole']
         get_api_version.return_value = test_api_version
         leader_get.return_value = None
         relation_id = 'identity-service:0'
@@ -449,7 +455,8 @@ class TestKeystoneUtils(CharmTestCase):
                          'ca_cert': '__null__',
                          'auth_protocol': 'http', 'service_protocol': 'http',
                          'service_tenant_id': 'tenant_id',
-                         'api_version': test_api_version}
+                         'api_version': test_api_version,
+                         'created_roles': 'Member,SpecialRole'}
 
         filtered = collections.OrderedDict()
         for k, v in relation_data.items():
@@ -504,6 +511,7 @@ class TestKeystoneUtils(CharmTestCase):
                                         adminurl='10.0.0.2',
                                         internalurl='192.168.1.2')
 
+    @patch.object(utils, 'get_real_role_names')
     @patch.object(utils, 'get_requested_roles')
     @patch.object(utils, 'create_service_credentials')
     @patch.object(utils, 'leader_get')
@@ -514,7 +522,8 @@ class TestKeystoneUtils(CharmTestCase):
     def test_add_service_to_keystone_multi_endpoints_bug_1739409(
             self, KeystoneManager, add_endpoint, ensure_valid_service,
             ip_config, leader_get, create_service_credentials,
-            get_requested_roles):
+            get_requested_roles, _get_real_role_names):
+        _get_real_role_names.return_value = ['Member', 'SpecialRole']
         relation_id = 'identity-service:8'
         remote_unit = 'nova-cloud-controller/0'
         get_requested_roles.return_value = 'role1'
@@ -1921,3 +1930,17 @@ class TestKeystoneUtils(CharmTestCase):
             call({'transitional_charm_user_id': 'fakeid'}),
         ])
         configs.write_all.assert_called_once_with()
+
+    def test_get_real_role_name(self):
+
+        def _resolve_role_name(role_name):
+            roles = {'member': 'Member'}
+            return roles.get(role_name)
+
+        manager = MagicMock()
+        manager.resolve_role_name.side_effect = _resolve_role_name
+        self.assertEqual(
+            utils.get_real_role_names(
+                ['member', 'MissingRole'],
+                manager),
+            ['Member'])

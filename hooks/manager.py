@@ -190,6 +190,22 @@ class KeystoneManager(object):
     def resolve_domain_id(self, name):
         pass
 
+    def resolve_role_name(self, name):
+        """Find the role_name of a given role
+
+        Find the case-sensative role name that matches the case-insensative
+        role name supplied.
+
+        :param name: Name of role to look up.
+        :type name: str
+        :returns: Role name
+        :rtype: Optional[str]
+        """
+        roles = [r._info for r in self.api.roles.list()]
+        for r in roles:
+            if name.lower() == r['name'].lower():
+                return r['name']
+
     def resolve_role_id(self, name):
         """Find the role_id of a given role"""
         roles = [r._info for r in self.api.roles.list()]

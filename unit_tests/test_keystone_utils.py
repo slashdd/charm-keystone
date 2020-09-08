@@ -502,7 +502,9 @@ class TestKeystoneUtils(CharmTestCase):
         add_endpoint.assert_called_with(region='RegionOne', service='nova',
                                         publicurl='10.0.0.1',
                                         adminurl='10.0.0.2',
-                                        internalurl='192.168.1.2')
+                                        internalurl='192.168.1.2',
+                                        list_services=ANY,
+                                        list_endpoints=ANY)
 
     @patch.object(utils, 'get_requested_roles')
     @patch.object(utils, 'create_service_credentials')
@@ -813,7 +815,8 @@ class TestKeystoneUtils(CharmTestCase):
         self.create_service_entry.assert_called_with(
             'nova',
             'compute',
-            'Nova Compute Service')
+            'Nova Compute Service',
+            list_services=None)
         self.create_endpoint_template.asssert_called_with(
             region='RegionOne', service='nova',
             publicurl=publicurl, adminurl=adminurl,

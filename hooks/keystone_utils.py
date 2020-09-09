@@ -1054,7 +1054,6 @@ def create_endpoint_template_v2(manager, region, service, publicurl, adminurl,
 
 def create_endpoint_template_v3(manager, region, service, publicurl, adminurl,
                                 internalurl, list_endpoints=None):
-    # //HERE
     service_id = manager.resolve_service_id(service)
     endpoints = {
         'public': publicurl,

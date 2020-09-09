@@ -979,10 +979,13 @@ def delete_service_entry(service_name, service_type):
         log("Deleted service entry '{}'".format(service_name), level=DEBUG)
 
 
-def create_service_entry(service_name, service_type, service_desc, owner=None):
+def create_service_entry(service_name, service_type, service_desc, owner=None,
+                         list_services=None):
     """ Add a new service entry to keystone if one does not already exist """
     manager = get_manager()
-    for service in manager.list_services():
+    if list_services is None:
+        list_services = manager.list_services()
+    for service in list_services:
         if service['name'] == service_name:
             log("Service entry for '{}' already exists.".format(service_name),
                 level=DEBUG)
@@ -995,24 +998,28 @@ def create_service_entry(service_name, service_type, service_desc, owner=None):
 
 
 def create_endpoint_template(region, service, publicurl, adminurl,
-                             internalurl):
+                             internalurl, list_endpoints=None):
     manager = get_manager()
     # this needs to be a round-trip to the manager.py script to discover what
     # the "current" api_version might be, as it can't just be asserted.
     if manager.resolved_api_version() == 2:
         create_endpoint_template_v2(manager, region, service, publicurl,
-                                    adminurl, internalurl)
+                                    adminurl, internalurl,
+                                    list_endpoints=list_endpoints)
     else:
         create_endpoint_template_v3(manager, region, service, publicurl,
-                                    adminurl, internalurl)
+                                    adminurl, internalurl,
+                                    list_endpoints=list_endpoints)
 
 
 def create_endpoint_template_v2(manager, region, service, publicurl, adminurl,
-                                internalurl):
+                                internalurl, list_endpoints=None):
     """ Create a new endpoint template for service if one does not already
         exist matching name *and* region """
     service_id = manager.resolve_service_id(service)
-    for ep in manager.list_endpoints():
+    if list_endpoints is None:
+        list_endpoints = manager.list_endpoints()
+    for ep in list_endpoints:
         if ep['service_id'] == service_id and ep['region'] == region:
             log("Endpoint template already exists for '%s' in '%s'"
                 % (service, region))
@@ -1046,27 +1053,33 @@ def create_endpoint_template_v2(manager, region, service, publicurl, adminurl,
 
 
 def create_endpoint_template_v3(manager, region, service, publicurl, adminurl,
-                                internalurl):
+                                internalurl, list_endpoints=None):
+    # //HERE
     service_id = manager.resolve_service_id(service)
     endpoints = {
         'public': publicurl,
         'admin': adminurl,
         'internal': internalurl,
     }
+    if list_endpoints is None:
+        list_endpoints = manager.list_endpoints()
+    # Optimisation: we want to check the list of endpoints with the details and
+    # ONLY create an endpoint if it doesn't exist and only update an existing
+    # one if the details don't match.  `list_endpoints` is a list of
+    # dictionaries of the associated from manager.list_endpoints() as
+    # serialised by to_dict()
+    # NOTE: ep_type is 'interface' in python_keystoneclient 'speak'.
     for ep_type in endpoints.keys():
-        # Delete endpoint if its has changed
-        ep_deleted = manager.delete_old_endpoint_v3(
-            ep_type,
-            service_id,
-            region,
-            endpoints[ep_type]
-        )
-        ep_exists = manager.find_endpoint_v3(
-            ep_type,
-            service_id,
-            region
-        )
-        if ep_deleted or not ep_exists:
+        # see if the endpoint exists, but the URL doesn't match
+        for ep in list_endpoints:
+            if (ep['interface'] == ep_type and
+                    ep['service_id'] == service_id and ep['region'] == region):
+                # if the url doesn't match then it needs to be modified
+                if ep.get('url', None) != endpoints[ep_type]:
+                    manager.update_endpoint(ep['id'], url=endpoints[ep_type])
+                break
+        else:
+            # Not found so create the endpoint
             manager.create_endpoint_by_type(
                 region=region,
                 service_id=service_id,
@@ -1881,11 +1894,13 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
                 urllib.parse.urlparse(settings['admin_url']).hostname)
     else:
         endpoints = assemble_endpoints(settings)
+        _list_services_result = manager.list_services()
+        _list_endpoints_result = manager.list_endpoints()
 
         services = []
         for ep in endpoints:
             # weed out any unrelated relation stuff Juju might have added
-            # by ensuring each possible endpiont has appropriate fields
+            # by ensuring each possible endpoint has appropriate fields
             #  ['service', 'region', 'public_url', 'admin_url', 'internal_url']
             if single.issubset(endpoints[ep]):
                 ep = endpoints[ep]
@@ -1893,7 +1908,9 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
                 add_endpoint(region=ep['region'], service=ep['service'],
                              publicurl=ep['public_url'],
                              adminurl=ep['admin_url'],
-                             internalurl=ep['internal_url'])
+                             internalurl=ep['internal_url'],
+                             list_services=_list_services_result,
+                             list_endpoints=_list_endpoints_result)
                 services.append(ep['service'])
                 # NOTE(jamespage) internal IP for backwards compat for
                 # SSL certs
@@ -2064,17 +2081,21 @@ def ensure_valid_service(service):
         return
 
 
-def add_endpoint(region, service, publicurl, adminurl, internalurl):
+def add_endpoint(region, service, publicurl, adminurl, internalurl,
+                 list_services=None,
+                 list_endpoints=None):
     status_message = 'Updating endpoint for {}'.format(service)
     log(status_message)
     status_set('maintenance', status_message)
     desc = valid_services[service]["desc"]
     service_type = valid_services[service]["type"]
-    create_service_entry(service, service_type, desc)
+    create_service_entry(service, service_type, desc,
+                         list_services=list_services)
     create_endpoint_template(region=region, service=service,
                              publicurl=publicurl,
                              adminurl=adminurl,
-                             internalurl=internalurl)
+                             internalurl=internalurl,
+                             list_endpoints=list_endpoints)
 
 
 def get_requested_roles(settings):

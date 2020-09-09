@@ -419,6 +419,32 @@ class KeystoneManager3(KeystoneManager):
         self.api.endpoints.create(
             service_id, endpoint, interface=interface, region=region)
 
+    def update_endpoint(self, endpoint_id, service_id=None, url=None,
+                        interface=None, region=None, enabled=None, **kwargs):
+        """Update the endpoint by the endpoint_id.
+
+        Any param that is None is not changed.
+        """
+        res = self.api.endpoints.update(
+            endpoint_id, service_id, url, interface, region, enabled, **kwargs)
+        return res.to_dict()
+
+    def find_endpoint_v3(self, interface, service_id, region):
+        found_eps = []
+        for ep in self.api.endpoints.list():
+            if ep.service_id == service_id and ep.region == region and \
+                    ep.interface == interface:
+                found_eps.append(ep)
+        return [e.to_dict() for e in found_eps]
+
+    def delete_old_endpoint_v3(self, interface, service_id, region, url):
+        eps = self.find_endpoint_v3(interface, service_id, region)
+        for ep in eps:
+            if ep.get('url', None) != url:
+                self.api.endpoints.delete(ep['id'])
+                return True
+        return False
+
     def tenants_list(self):
         return self.api.projects.list()
 
@@ -570,24 +596,6 @@ class KeystoneManager3(KeystoneManager):
             self.api.roles.grant(role, user=user, domain=domain)
         if tenant:
             self.api.roles.grant(role, user=user, project=tenant)
-
-    def find_endpoint_v3(self, interface, service_id, region):
-        found_eps = []
-        for ep in self.api.endpoints.list():
-            if ep.service_id == service_id and ep.region == region and \
-                    ep.interface == interface:
-                found_eps.append(ep)
-        return [e.to_dict() for e in found_eps]
-
-    def delete_old_endpoint_v3(self, interface, service_id, region, url):
-        eps = self.find_endpoint_v3(interface, service_id, region)
-        for ep in eps:
-            # if getattr(ep, 'url') != url:
-            if ep.get('url', None) != url:
-                # self.api.endpoints.delete(ep.id)
-                self.api.endpoints.delete(ep['id'])
-                return True
-        return False
 
 
 # the following functions are proxied from keystone_utils, so that a Python3

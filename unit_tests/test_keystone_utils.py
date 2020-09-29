@@ -924,6 +924,7 @@ class TestKeystoneUtils(CharmTestCase):
             call(
                 relation_id='identity-service:1',
                 relation_settings={
+                    'catalog_ttl': 60,
                     'ep_changed':
                         ('{"neutron": {"internal": '
                          '"http://neutron.demo.com:9696"}}')
@@ -932,6 +933,7 @@ class TestKeystoneUtils(CharmTestCase):
             call(
                 relation_id='identity-service:2',
                 relation_settings={
+                    'catalog_ttl': 60,
                     'ep_changed':
                         ('{"neutron": {"internal": '
                          '"http://neutron.demo.com:9696"},'
@@ -948,6 +950,7 @@ class TestKeystoneUtils(CharmTestCase):
             call(
                 relation_id='identity-service:1',
                 relation_settings={
+                    'catalog_ttl': 60,
                     'ep_changed':
                         '{"neutron": {"internal": "http://demo.com"}}'
                 }
@@ -955,6 +958,7 @@ class TestKeystoneUtils(CharmTestCase):
             call(
                 relation_id='identity-service:2',
                 relation_settings={
+                    'catalog_ttl': 60,
                     'ep_changed':
                         '{"neutron": {"internal": "http://demo.com"}}'
                 }
@@ -973,6 +977,7 @@ class TestKeystoneUtils(CharmTestCase):
             call(
                 relation_id='identity-service:1',
                 relation_settings={
+                    'catalog_ttl': 60,
                     'ep_changed':
                         '{"neutron": {"internal": "http://demo.com"}}'
                 }
@@ -980,6 +985,7 @@ class TestKeystoneUtils(CharmTestCase):
             call(
                 relation_id='identity-service:2',
                 relation_settings={
+                    'catalog_ttl': 60,
                     'ep_changed': (
                         '{"neutron": {"internal": "http://demo.com"}, '
                         '"placement": {"internal": "http://demo.com"}}'

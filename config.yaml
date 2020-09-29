@@ -102,6 +102,10 @@ options:
     type: int
     default: 3600
     description: Amount of time (in seconds) a token should remain valid.
+  catalog-cache-expiration:
+    type: int
+    default: 60
+    description: Amount of time (in seconds) the catalog should be cached for.
   fernet-max-active-keys:
     type: int
     default: 3

@@ -2211,6 +2211,7 @@ def send_id_service_notifications(data):
             relation_set(
                 relation_id=rid,
                 relation_settings={
+                    'catalog_ttl': config('catalog-cache-expiration'),
                     'ep_changed': json.dumps(changed, sort_keys=True)})
 
 

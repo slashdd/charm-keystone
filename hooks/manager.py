@@ -31,7 +31,6 @@ from keystoneclient.v3 import client as keystoneclient_v3
 from keystoneclient import exceptions
 
 import uds_comms as uds
-
 import keystone_types
 
 

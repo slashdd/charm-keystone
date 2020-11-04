@@ -192,7 +192,7 @@ Note that, in this, case the `config.yaml` file requires the YAML key
 following lines, indented for a dictionary.
 
 > **Note**: Please ensure that the page [Security compliance and PCI-DSS][SCPD]
-  is consulted before setting these option.
+  is consulted before setting these options.
 
 The charm will protect service accounts (accounts requested by other units that
 are in the service domain) against being forced to change their password.

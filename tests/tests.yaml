@@ -2,6 +2,7 @@ charm_name: keystone
 smoke_bundles:
 - bionic-train
 gate_bundles:
+- groovy-victoria
 - focal-victoria
 - focal-ussuri
 - bionic-ussuri
@@ -14,8 +15,6 @@ gate_bundles:
 - xenial-ocata
 - xenial-mitaka
 - trusty-mitaka
-dev_bundles:
-- groovy-victoria
 comment: |
   the glance configure job validates operation of identity-service relation.
   The policyd test is generic and validates the policy.d overrides work

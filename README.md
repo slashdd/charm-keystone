@@ -187,7 +187,7 @@ command:
 
     juju config keystone --file path/to/config.yaml
 
-Note that, in this, case the `config.yaml` file requires the YAML key
+Note that, in this case, the `config.yaml` file requires the YAML key
 `password-security-compliance:` with the desired config keys and values on the
 following lines, indented for a dictionary.
 

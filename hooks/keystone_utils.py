@@ -50,25 +50,25 @@ from charmhelpers.contrib.openstack.ip import (
 )
 
 from charmhelpers.contrib.openstack.utils import (
-    configure_installation_source,
-    error_out,
-    get_os_codename_install_source,
-    os_release,
-    save_script_rc as _save_script_rc,
-    pause_unit,
-    resume_unit,
-    make_assess_status_func,
-    os_application_version_set,
-    os_application_status_set,
-    CompareOpenStackReleases,
-    reset_os_release,
-    snap_install_requested,
-    install_os_snaps,
-    get_snaps_install_info_from_origin,
-    enable_memcache,
-    is_unit_paused_set,
     check_api_unit_ready,
+    CompareOpenStackReleases,
+    configure_installation_source,
+    enable_memcache,
+    error_out,
     get_api_application_status,
+    get_os_codename_install_source,
+    get_snaps_install_info_from_origin,
+    install_os_snaps,
+    is_unit_paused_set,
+    make_assess_status_func,
+    os_application_status_set,
+    os_application_version_set,
+    os_release,
+    pause_unit,
+    reset_os_release,
+    resume_unit,
+    save_script_rc as _save_script_rc,
+    snap_install_requested,
 )
 
 from charmhelpers.core.decorators import (
@@ -2507,8 +2507,8 @@ def key_setup():
 
         keystone-manage credential_migrate
 
-    Note that we only want to do this once, so we store success in the leader
-    settings (which we should be).
+    Note that we only want to do this once, so we touch an empty file
+    (KEY_SETUP_FILE) to indicate that it has been done.
 
     :raises: `:class:subprocess.CallProcessError` if either of the commands
         fails.
@@ -2565,10 +2565,14 @@ def key_leader_set():
             with open(os.path.join(key_repository, key_number),
                       'r') as f:
                 disk_keys[key_repository][key_number] = f.read()
-    _leader_set_secret({'key_repository': json.dumps(disk_keys)})
+    # compare current leader_settings of the keys with the current set of keys
+    leader_keys_str = leader_get('key_repository') or "{}"
+    current_disk_keys = json.loads(leader_keys_str)
+    if current_disk_keys != disk_keys:
+        _leader_set_secret({'key_repository': json.dumps(disk_keys)})
 
 
-def key_write():
+def key_write(log_func=log):
     """Get keys from leader storage and write out to disk
 
     The keys are written to the `FERNET_KEY_REPOSITORY` and
@@ -2576,38 +2580,109 @@ def key_write():
     written to a tmp file and then moved to the key to avoid any races.  Any
     'excess' keys are deleted, which may occur if the "number of keys" has been
     reduced on the leader.
+
+    Note: Only the non leaders do this; the leader uses
+    fernet_keys_rotate_and_sync() to perform rotations and 'owns' the keys that
+    are in use.
     """
+    # don't do this on the leader
+    if is_leader():
+        return
     leader_keys = leader_get('key_repository')
     if not leader_keys:
-        log('"key_repository" not in leader settings yet...', level=DEBUG)
+        log_func('"key_repository" not in leader settings yet...', level=DEBUG)
         return
     leader_keys = json.loads(leader_keys)
-    for key_repository in [FERNET_KEY_REPOSITORY, CREDENTIAL_KEY_REPOSITORY]:
-        mkdir(key_repository,
-              owner=KEYSTONE_USER,
-              group=KEYSTONE_USER,
-              perms=0o700)
-        for key_number, key in leader_keys[key_repository].items():
-            tmp_filename = os.path.join(key_repository,
-                                        ".{}".format(key_number))
-            key_filename = os.path.join(key_repository, key_number)
-            # write to tmp file first, move the key into place in an atomic
-            # operation avoiding any races with consumers of the key files
-            write_file(tmp_filename,
-                       key,
-                       owner=KEYSTONE_USER,
-                       group=KEYSTONE_USER,
-                       perms=0o600)
-            os.rename(tmp_filename, key_filename)
-        # now delete any keys that shouldn't be there
-        for key_number in os.listdir(key_repository):
-            if key_number not in leader_keys[key_repository].keys():
-                # ignore if it is not a file
-                if os.path.isfile(os.path.join(key_repository, key_number)):
-                    os.remove(os.path.join(key_repository, key_number))
+    for key_repository in [FERNET_KEY_REPOSITORY,
+                           CREDENTIAL_KEY_REPOSITORY]:
+        tmp_key_repository = key_repository + ".tmp"
+        try:
+            if not os.path.exists(key_repository):
+                mkdir(key_repository,
+                      owner=KEYSTONE_USER,
+                      group=KEYSTONE_USER,
+                      perms=0o700)
+            # order of this mkdir's is important as this is inside the above
+            # one.
+            mkdir(tmp_key_repository,
+                  owner=KEYSTONE_USER,
+                  group=KEYSTONE_USER,
+                  perms=0o700)
+            for key_number, key in leader_keys[key_repository].items():
+                tmp_filename = os.path.join(tmp_key_repository,
+                                            "{}".format(key_number))
+                key_filename = os.path.join(key_repository, key_number)
+                if not _file_equal_to(key_filename, key):
+                    log_func("Replacing/adding into repository: {}, "
+                             "key number: {}"
+                             .format(key_repository, key_number),
+                             level=DEBUG)
+                    # write to tmp file first, move the key into place in an
+                    # atomic operation avoiding any races with consumers of the
+                    # key files
+                    write_file(tmp_filename,
+                               key,
+                               owner=KEYSTONE_USER,
+                               group=KEYSTONE_USER,
+                               perms=0o600)
+                    os.rename(tmp_filename, key_filename)
+            # now delete any keys that shouldn't be there
+            for key_number in os.listdir(key_repository):
+                if key_number not in leader_keys[key_repository].keys():
+                    # ignore if it is not a file
+                    if os.path.isfile(
+                            os.path.join(key_repository, key_number)):
+                        log_func("fernet keys: repository: {}, "
+                                 "removing key number: {}"
+                                 .format(key_repository, key),
+                                 level=DEBUG)
+                        os.remove(os.path.join(key_repository, key_number))
+        finally:
+            if os.path.exists(tmp_key_repository):
+                shutil.rmtree(tmp_key_repository, ignore_errors=False,
+                              onerror=None)
 
         # also say that keys have been setup for this system.
         open(KEY_SETUP_FILE, "w").close()
+
+
+def _file_equal_to(name, contents):
+    """Compare a file and a string
+
+    The file is assumed to be small so that they can be compared in memory.  Do
+    not use a large file!
+
+    :param name: name of file contents to compare
+    :type name: str
+    :param contents: contents to compare to
+    :type contents: str
+    :returns: true if the file's contents is the same as contents
+    :rtype: boolean
+    """
+    try:
+        with open(name, "rt") as f1:
+            return f1.read() == contents
+    except FileNotFoundError:
+        return False
+
+
+def handle_fernet_keys_cron_call(log_func=log):
+    """Handle the cronjob which runs on all units (including leader)
+
+    This calls the fernet_keys_rotate_and_sync() on the leader and
+    key_write() on the non-leader to ensure that keys are always synced across
+    all units regardless of hook execution issues or other failures.
+
+    Note if a unit is in error then it won't get synced keys due to not being
+    able to use the leadership settings.
+
+    :param log_func: The log function to use.
+    :type log_func: Callable[str, str]
+    """
+    if is_leader():
+        fernet_keys_rotate_and_sync(log_func)
+    else:
+        key_write(log_func)
 
 
 def fernet_keys_rotate_and_sync(log_func=log):
@@ -2649,11 +2724,13 @@ def fernet_keys_rotate_and_sync(log_func=log):
     rotation_time = expiration // (max_keys - 2)
     now = time.time()
     if last_rotation + rotation_time > now:
-        # Nothing to do as not reached rotation time
-        log_func("No rotation until at least {}"
+        # No rotation to do as not reached rotation time
+        log_func("No rotation until at least {}, but checking keys are "
+                 "set in leader settings."
                  .format(
                      time.asctime(time.gmtime(last_rotation + rotation_time))),
                  level=DEBUG)
+        key_leader_set()
         return
     # now rotate the keys and sync them
     fernet_rotate()

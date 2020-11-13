@@ -1706,11 +1706,13 @@ class TestKeystoneUtils(CharmTestCase):
         self.subprocess.check_output.called_with(cmd)
 
     @patch.object(utils, 'is_leader')
+    @patch.object(utils, 'leader_get')
     @patch.object(utils, 'leader_set')
     @patch('os.listdir')
-    def test_key_leader_set(self, listdir, leader_set, is_leader):
+    def test_key_leader_set(self, listdir, leader_set, leader_get, is_leader):
         listdir.return_value = ['0', '1']
         is_leader.return_value = True
+        leader_get.return_value = None
         self.time.time.return_value = "the-time"
         with patch.object(builtins, 'open', mock_open(
                 read_data="some_data")):
@@ -1726,11 +1728,40 @@ class TestKeystoneUtils(CharmTestCase):
                     {'0': 'some_data', '1': 'some_data'}})
              })
 
+    @patch.object(utils, 'is_leader')
+    @patch.object(utils, 'leader_get')
+    @patch.object(utils, 'leader_set')
+    @patch('os.listdir')
+    def test_key_leader_set_no_change(
+            self, listdir, leader_set, leader_get, is_leader):
+        listdir.return_value = ['0', '1']
+        is_leader.return_value = True
+        leader_get.return_value = json.dumps(
+            {utils.FERNET_KEY_REPOSITORY:
+                {'0': 'some_data', '1': 'some_data'},
+             utils.CREDENTIAL_KEY_REPOSITORY:
+                {'0': 'some_data', '1': 'some_data'}})
+        self.time.time.return_value = "the-time"
+        with patch.object(builtins, 'open', mock_open(
+                read_data="some_data")):
+            utils.key_leader_set()
+        listdir.has_calls([
+            call(utils.FERNET_KEY_REPOSITORY),
+            call(utils.CREDENTIAL_KEY_REPOSITORY)])
+        leader_set.assert_not_called()
+
+    @patch.object(utils, '_file_equal_to')
+    @patch.object(utils, "is_leader")
     @patch('os.rename')
     @patch.object(utils, 'leader_get')
     @patch('os.listdir')
     @patch('os.remove')
-    def test_key_write(self, remove, listdir, leader_get, rename):
+    def test_key_write(
+        self, remove, listdir, leader_get, rename, is_leader,
+        mock_file_equal_to
+    ):
+        mock_file_equal_to.return_value = False
+        is_leader.return_value = False
         leader_get.return_value = json.dumps(
             {utils.FERNET_KEY_REPOSITORY:
                 {'0': 'key0', '1': 'key1'},
@@ -1746,27 +1777,29 @@ class TestKeystoneUtils(CharmTestCase):
                               call(utils.FERNET_KEY_REPOSITORY,
                                    owner='keystone', group='keystone',
                                    perms=0o700)])
+        tmp_fernet_dir = utils.FERNET_KEY_REPOSITORY + ".tmp"
+        tmp_creds_dir = utils.CREDENTIAL_KEY_REPOSITORY + ".tmp"
         # note 'any_order=True' as we are dealing with dictionaries in Py27
         self.write_file.assert_has_calls(
             [
-                call(os.path.join(utils.CREDENTIAL_KEY_REPOSITORY, '.0'),
+                call(os.path.join(tmp_creds_dir, '0'),
                      u'key0', owner='keystone', group='keystone', perms=0o600),
-                call(os.path.join(utils.CREDENTIAL_KEY_REPOSITORY, '.1'),
+                call(os.path.join(tmp_creds_dir, '1'),
                      u'key1', owner='keystone', group='keystone', perms=0o600),
-                call(os.path.join(utils.FERNET_KEY_REPOSITORY, '.0'), u'key0',
+                call(os.path.join(tmp_fernet_dir, '0'), u'key0',
                      owner='keystone', group='keystone', perms=0o600),
-                call(os.path.join(utils.FERNET_KEY_REPOSITORY, '.1'), u'key1',
+                call(os.path.join(tmp_fernet_dir, '1'), u'key1',
                      owner='keystone', group='keystone', perms=0o600),
             ], any_order=True)
         rename.assert_has_calls(
             [
-                call(os.path.join(utils.CREDENTIAL_KEY_REPOSITORY, '.0'),
+                call(os.path.join(tmp_creds_dir, '0'),
                      os.path.join(utils.CREDENTIAL_KEY_REPOSITORY, '0')),
-                call(os.path.join(utils.CREDENTIAL_KEY_REPOSITORY, '.1'),
+                call(os.path.join(tmp_creds_dir, '1'),
                      os.path.join(utils.CREDENTIAL_KEY_REPOSITORY, '1')),
-                call(os.path.join(utils.FERNET_KEY_REPOSITORY, '.0'),
+                call(os.path.join(tmp_fernet_dir, '0'),
                      os.path.join(utils.FERNET_KEY_REPOSITORY, '0')),
-                call(os.path.join(utils.FERNET_KEY_REPOSITORY, '.1'),
+                call(os.path.join(tmp_fernet_dir, '1'),
                      os.path.join(utils.FERNET_KEY_REPOSITORY, '1')),
             ], any_order=True)
 
@@ -1806,13 +1839,18 @@ class TestKeystoneUtils(CharmTestCase):
         _stat = MagicMock()
         _stat.st_mtime = 10
         mock_os.stat.return_value = _stat
+        mock_key_leader_set.reset_mock()
         utils.fernet_keys_rotate_and_sync(log_func=self.log)
         self.log.assert_called_once_with(
-            'No rotation until at least Thu Jan  1 00:01:10 1970',
+            'No rotation until at least Thu Jan  1 00:01:10 1970, '
+            'but checking keys are set in leader settings.',
             level='DEBUG')
-        mock_key_leader_set.assert_not_called()
+        # key_leader_set is always called once, as even if keys are not rotated
+        # it's needs to be certain that they are in the leader settings
+        mock_key_leader_set.assert_called_once_with()
         # finally, set it up so that the rotation and sync occur
         self.time.time.return_value = 71
+        mock_key_leader_set.reset_mock()
         utils.fernet_keys_rotate_and_sync()
         mock_fernet_rotate.assert_called_once_with()
         mock_key_leader_set.assert_called_once_with()

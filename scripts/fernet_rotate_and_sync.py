@@ -45,7 +45,5 @@ def cli_log(msg, level=charmhelpers.core.hookenv.INFO):
     print('{}: {}'.format(time.ctime(), msg), file=output)
 
 
-# the rotate_and_sync_keys() function checks for leadership AND whether to
-# rotate the keys or not.
 if __name__ == "__main__":
-    keystone_utils.fernet_keys_rotate_and_sync(log_func=cli_log)
+    keystone_utils.handle_fernet_keys_cron_call(log_func=cli_log)

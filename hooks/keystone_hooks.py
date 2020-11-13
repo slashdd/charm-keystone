@@ -566,6 +566,11 @@ def leader_elected():
 @restart_on_change(restart_map(), stopstart=True)
 def leader_settings_changed():
 
+    # we always want to write the keys on leader-settings-changed regardless of
+    # whether the unit is paused or not.
+    if fernet_enabled():
+        key_write()
+
     # if we are paused, delay doing any config changed hooks.
     # It is forced on the resume.
     if is_unit_paused_set():
@@ -581,9 +586,6 @@ def leader_settings_changed():
     if CompareOpenStackReleases(
             os_release('keystone')) >= 'liberty':
         CONFIGS.write(POLICY_JSON)
-
-    if fernet_enabled():
-        key_write()
 
     update_all_identity_relation_units()
     inform_peers_if_ready(check_api_unit_ready)

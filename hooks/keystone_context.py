@@ -365,7 +365,7 @@ class FernetCronContext(context.OSContextGenerator):
     def __call__(self):
         token_expiration = int(config('token-expiration'))
         ctxt = {
-            'enabled': (fernet_enabled() and is_leader()),
+            'enabled': fernet_enabled(),
             'unit_name': local_unit(),
             'charm_dir': charm_dir(),
             'minute': ('*/5' if token_expiration > 300 else '*')

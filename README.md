@@ -5,48 +5,6 @@ platform is (ideally) Ubuntu LTS + OpenStack.
 
 # Usage
 
-The following interfaces are provided:
-
-- nrpe-external-master: Used to generate Nagios checks.
-
-- identity-service: OpenStack API endpoints request an entry in the
-  Keystone service catalog + endpoint template catalog. When a relation is
-  established, Keystone receives: `service_name`, `region`, `public_url`,
-  `admin_url` and `internal_url`. It first checks that the requested service is
-  listed as a supported service. This list should stay updated to support
-  current OpenStack core services. If the service is supported, an entry in the
-  service catalog is created, an endpoint template is created and an admin token
-  is generated. The other end of the relation receives the token as well as
-  info on which ports Keystone is listening on.
-
-- keystone-service: This is currently only used by Horizon/dashboard
-  as its interaction with Keystone is different from other OpenStack API
-  services. That is, Horizon requests a Keystone role and token exists. During
-  a relation, Horizon requests its configured default role and Keystone
-  responds with a token and the auth + admin ports on which Keystone is
-  listening.
-
-- identity-admin: Charms use this relation to obtain the credentials
-  for the admin user. This is intended for charms that automatically provision
-  users, tenants, etc. or that otherwise automate using the OpenStack cluster
-  deployment.
-
-- identity-notifications: Used to broadcast messages to any services
-  listening on the interface.
-
-- identity-credentials: Charms use this relation to obtain Keystone
-  credentials without creating a service catalog entry. Set 'username'
-  only on the relation and Keystone will set defaults and return
-  authentication details. Possible relation settings:
-  - `username` Username to be created.
-  - `project` Project (tenant) name to be created. Defaults to services
-              project.
-  - `requested_roles` Comma delimited list of roles to be created.
-  - `requested_grants` Comma delimited list of roles to be granted.
-                       Defaults to Admin role.
-  - `domain` Keystone v3 domain the user will be created in. Defaults
-             to the Default domain.
-
 ## Database
 
 Keystone requires a database. The charm supports relation to a shared database
@@ -164,6 +122,64 @@ Here are the essential commands (filenames are arbitrary):
 
 See appendix [Policy Overrides][cdg-appendix-n] in the [OpenStack Charms
 Deployment Guide][cdg] for a thorough treatment of this feature.
+
+## Relations
+
+The charm supports the following relations. They are primarily of use to
+developers:
+
+* `identity-admin`: Used by charms to obtain the credentials for the admin
+  user. This is intended for charms that automatically provision users,
+  tenants, etc.
+
+* `identity-credentials`: Used by charms to obtain Keystone credentials without
+  creating a service catalogue entry. Set 'username' only on the relation and
+  Keystone will set defaults and return authentication details. Possible
+  relation settings:
+
+  * `username`: Username to be created.
+  * `project`: Project (tenant) name to be created. Defaults to service's
+               project.
+  * `requested_roles`: Comma-delimited list of roles to be created.
+  * `requested_grants`: Comma-delimited list of roles to be granted. Defaults
+                        to Admin role.
+  * `domain`: Keystone v3 domain the user will be created in. Defaults to the
+              Default domain.
+
+* `identity-notifications`: Used to broadcast messages to services listening on
+  the corresponding interface.
+
+* `identity-service`: Used by API endpoints to request an entry in the Keystone
+  service catalogue and the endpoint template catalogue.
+
+  > **Note**: The `identity-service` relation is not used by Horizon (see
+    `keystone-service` instead).
+
+  When a relation is established Keystone receives the following data from the
+  requesting API endpoint:
+
+  * `service_name`
+  * `region`
+  * `public_url`
+  * `admin_url`
+  * `internal_url`
+
+  Keystone verifies that the requested service is supported (the list of
+  supported services should remain updated). The following will occur for a
+  supported service:
+
+  1. an entry in the service catalogue is created
+  1. an endpoint template is created
+  1. an admin token is generated.
+
+  The API endpoint receives the token and is informed of the ports that
+  Keystone is listening on.
+
+* `keystone-service`: Used only by Horizon. Horizon requests its configured
+  default role and Keystone responds with a token. Horizon also receives the
+  authentication and admin ports on which Keystone is listening.
+
+* `nrpe-external-master`: Used to generate Nagios checks.
 
 ## Security Compliance config option "password-security-compliance"
 

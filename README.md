@@ -66,37 +66,40 @@ Corosync and Pacemaker backend HA functionality.
 See [OpenStack high availability][cdg-ha-apps] in the [OpenStack Charms
 Deployment Guide][cdg] for details.
 
-## TLS/HTTPS
+### TLS
 
-Support for TLS and HTTPS endpoints can be enabled through configuration
-options.
+Communication between Keystone and cloud services (as well as the OpenStack
+client) can be encrypted with TLS. Keystone also publishes API endpoints for
+the cloud (e.g. cinder, glance, keystone, neutron, nova, and placement), which
+may be TLS-based.
 
-To enable TLS and HTTPS endpoints with a certificate signed by your own
-Certificate Authority, set the following configuration options:
+There are two methods for managing TLS keys and certificates:
 
-- `ssl_ca`
+1. with Vault
+1. manually (via charm options)
 
-- `ssl_cert`
+Vault can set up private keys and server certificates for an application. It
+can also store a central CA certificate for the cloud. See the
+[vault][vault-charm] charm for more information.
 
-- `ssl_key`
+Vault is the recommended method and is what will be covered here.
 
-Example bundle usage:
+The private key and server certificate (and its signing) are enabled via a
+relation made to the vault application:
 
-    keystone:
-      charm: cs:keystone
-      num_units: 1
-      options:
-        ssl_ca:   include-base64://path-to-PEM-formatted-ca-data
-        ssl_cert: include-base64://path-to-PEM-formatted-certificate-data
-        ssl_key:  include-base64://path-to-PEM-formatted-key-data
+    juju add-relation keystone:certificates vault:certificates
 
-> **Note**: If your certificate is signed by a Certificate Authority present in
-  the CA Certificate Store in operating systems used in your deployment, you do
-  not need to provide the `ssl_ca` configuration option.
+#### Other applications
 
-> **Note**: The `include-base64` bundle keyword tells Juju to source a file and
-  Base64 encode it before storing it as a configuration option value. The path
-  can be absolute or relative to the location of the bundle file.
+Other applications can enable TLS by adding their own relation to Vault. Vault
+will issue certificates to the application and Keystone will update the
+corresponding API endpoint from HTTP to HTTPS.
+
+For example, the Placement API:
+
+    juju add-relation placement:certificates vault:certificates
+
+> **Note**: API endpoints can be listed with `openstack catalog list`.
 
 ## Spaces
 
@@ -307,6 +310,7 @@ For general charm questions refer to the OpenStack [Charm Guide][cg].
 <!-- LINKS -->
 
 [hacluster-charm]: https://jaas.ai/hacluster
+[vault-charm]: https://jaas.ai/vault
 [cg]: https://docs.openstack.org/charm-guide
 [cdg]: https://docs.openstack.org/project-deploy-guide/charm-deployment-guide
 [cdg-appendix-n]: https://docs.openstack.org/project-deploy-guide/charm-deployment-guide/latest/app-policy-overrides.html

@@ -1,16 +1,63 @@
 # Overview
 
-This charm provides Keystone, the OpenStack identity service. Its target
-platform is (ideally) Ubuntu LTS + OpenStack.
+The keystone charm deploys [Keystone][upstream-keystone], the core OpenStack
+service that provides API client authentication, service discovery, and
+distributed multi-tenant authorization. The charm works alongside other
+Juju-deployed OpenStack services.
 
 # Usage
 
-## Database
+## Configuration
 
-Keystone requires a database. The charm supports relation to a shared database
-server through the `mysql-shared` interface. When a new data store is
-configured, the charm ensures the minimum administrator credentials exist (as
-configured in charm configuration)
+This section covers common and/or important configuration options. See file
+`config.yaml` for the full list of options, along with their descriptions and
+default values. See the [Juju documentation][juju-docs-config-apps] for details
+on configuring applications.
+
+#### `openstack-origin`
+
+The `openstack-origin` option states the software sources. A common value is an
+OpenStack UCA release (e.g. 'cloud:bionic-ussuri' or 'cloud:focal-victoria').
+See [Ubuntu Cloud Archive][wiki-uca]. The underlying host's existing apt
+sources will be used if this option is not specified (this behaviour can be
+explicitly chosen by using the value of 'distro').
+
+## Deployment
+
+Keystone is often containerised. Here a single unit is deployed to a new
+container on machine '1':
+
+    juju deploy --to lxd:1 keystone
+
+Now connect the keystone application to an existing cloud database. The
+database application is determined by the series. Prior to focal
+[percona-cluster][percona-cluster-charm] is used, otherwise it is
+[mysql-innodb-cluster][mysql-innodb-cluster-charm]. In the example deployment
+below mysql-innodb-cluster has been chosen.
+
+    juju deploy mysql-router keystone-mysql-router
+    juju add-relation keystone-mysql-router:db-router mysql-innodb-cluster:db-router
+    juju add-relation keystone-mysql-router:shared-db keystone:shared-db
+
+## Credentials
+
+The `keystone:shared-db` relation added at deployment time stores the Keystone
+admin password in the cloud database. By default this password is generated
+randomly but, for testing purposes, can be set via the `admin-password`
+configuration option. This option can also be used to view and change the
+password post-deployment.
+
+## Actions
+
+This section covers Juju [actions][juju-docs-actions] supported by the charm.
+Actions allow specific operations to be performed on a per-unit basis. To
+display action descriptions run `juju actions keystone`. If the charm is not
+deployed then see file `actions.yaml`.
+
+* `openstack-upgrade`
+* `pause`
+* `resume`
+* `security-checklist`
 
 ## High availability
 
@@ -102,10 +149,10 @@ binding provided if set.
 
 ## Policy Overrides
 
-Policy overrides is an **advanced** feature that allows an operator to override
-the default policy of an OpenStack service. The policies that the service
-supports, the defaults it implements in its code, and the defaults that a charm
-may include should all be clearly understood before proceeding.
+Policy overrides is an advanced feature that allows an operator to override the
+default policy of an OpenStack service. The policies that the service supports,
+the defaults it implements in its code, and the defaults that a charm may
+include should all be clearly understood before proceeding.
 
 > **Caution**: It is possible to break the system (for tenants and other
   services) if policies are incorrectly applied to the service.
@@ -321,7 +368,7 @@ but the running instances will be unaffected.
 
 Please report bugs on [Launchpad][lp-bugs-charm-keystone].
 
-For general charm questions refer to the OpenStack [Charm Guide][cg].
+For general charm questions refer to the [OpenStack Charm Guide][cg].
 
 <!-- LINKS -->
 
@@ -333,3 +380,9 @@ For general charm questions refer to the OpenStack [Charm Guide][cg].
 [lp-bugs-charm-keystone]: https://bugs.launchpad.net/charm-keystone/+filebug
 [SCPD]: https://docs.openstack.org/keystone/latest/admin/configuration.html#security-compliance-and-pci-dss
 [cdg-ha-apps]: https://docs.openstack.org/project-deploy-guide/charm-deployment-guide/latest/app-ha.html#ha-applications
+[upstream-keystone]: https://docs.openstack.org/keystone/latest/
+[juju-docs-config-apps]: https://juju.is/docs/configuring-applications
+[wiki-uca]: https://wiki.ubuntu.com/OpenStack/CloudArchive
+[juju-docs-actions]: https://jaas.ai/docs/actions
+[percona-cluster-charm]: https://jaas.ai/percona-cluster
+[mysql-innodb-cluster-charm]: https://jaas.ai/mysql-innodb-cluster

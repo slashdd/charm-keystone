@@ -71,7 +71,7 @@ Corosync and Pacemaker backend HA functionality.
 See [OpenStack high availability][cdg-ha-apps] in the [OpenStack Charms
 Deployment Guide][cdg] for details.
 
-### TLS
+## TLS
 
 Communication between Keystone and cloud services (as well as the OpenStack
 client) can be encrypted with TLS. Keystone also publishes API endpoints for
@@ -94,7 +94,7 @@ relation made to the vault application:
 
     juju add-relation keystone:certificates vault:certificates
 
-#### Other applications
+### Other applications
 
 Other applications can enable TLS by adding their own relation to Vault. Vault
 will issue certificates to the application and Keystone will update the

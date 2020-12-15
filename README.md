@@ -141,7 +141,7 @@ configuration:
 ```
 
 NOTE: Spaces must be configured in the underlying provider prior to attempting
-to use them.
+to use them (i.e. see [MAAS spaces][ms]).
 
 NOTE: Existing deployments using `os\-\*-network` configuration options will
 continue to function; these options are preferred over any network space
@@ -386,3 +386,4 @@ For general charm questions refer to the [OpenStack Charm Guide][cg].
 [juju-docs-actions]: https://jaas.ai/docs/actions
 [percona-cluster-charm]: https://jaas.ai/percona-cluster
 [mysql-innodb-cluster-charm]: https://jaas.ai/mysql-innodb-cluster
+[ms]: https://maas.io/docs/concepts-and-terms#heading--spaces

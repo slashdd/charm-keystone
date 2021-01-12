@@ -51,12 +51,10 @@ class TestKeystoneContexts(CharmTestCase):
     @patch('charmhelpers.contrib.openstack.context.is_clustered')
     @patch('charmhelpers.contrib.openstack.context.determine_apache_port')
     @patch('charmhelpers.contrib.openstack.context.determine_api_port')
-    @patch('charmhelpers.contrib.openstack.context.unit_get')
     @patch('charmhelpers.contrib.openstack.context.relation_ids')
     @patch('charmhelpers.contrib.openstack.context.https')
     def test_apache_ssl_context_service_enabled(self, mock_https,
                                                 mock_relation_ids,
-                                                mock_unit_get,
                                                 mock_determine_api_port,
                                                 mock_determine_apache_port,
                                                 mock_is_clustered,
@@ -68,7 +66,6 @@ class TestKeystoneContexts(CharmTestCase):
                                                 mock_rel_ids,
                                                 ):
         mock_https.return_value = True
-        mock_unit_get.return_value = '1.2.3.4'
         mock_ip_unit_get.return_value = '1.2.3.4'
         mock_determine_api_port.return_value = '12'
         mock_determine_apache_port.return_value = '34'
@@ -88,7 +85,6 @@ class TestKeystoneContexts(CharmTestCase):
                                   'namespace': 'keystone',
                                   'ext_ports': [34]})
         self.assertTrue(mock_https.called)
-        mock_unit_get.assert_called_with('private-address')
 
     @patch('charmhelpers.contrib.openstack.context.is_ipv6_disabled')
     @patch('charmhelpers.contrib.openstack.context.get_relation_ip')
@@ -98,7 +94,6 @@ class TestKeystoneContexts(CharmTestCase):
     @patch('charmhelpers.contrib.openstack.context.get_address_in_network')
     @patch('charmhelpers.contrib.openstack.context.config')
     @patch('charmhelpers.contrib.openstack.context.relation_ids')
-    @patch('charmhelpers.contrib.openstack.context.unit_get')
     @patch('charmhelpers.contrib.openstack.context.related_units')
     @patch('charmhelpers.contrib.openstack.context.relation_get')
     @patch('charmhelpers.contrib.openstack.context.log')
@@ -106,13 +101,12 @@ class TestKeystoneContexts(CharmTestCase):
     @patch('builtins.open')
     def test_haproxy_context_service_enabled(
         self, mock_open, mock_kv, mock_log, mock_relation_get,
-            mock_related_units, mock_unit_get, mock_relation_ids, mock_config,
+            mock_related_units, mock_relation_ids, mock_config,
             mock_get_address_in_network, mock_get_netmask_for_address,
             mock_api_port, mock_mkdir, mock_get_relation_ip, is_ipv6_disabled):
         os.environ['JUJU_UNIT_NAME'] = 'keystone'
 
         mock_relation_ids.return_value = ['identity-service:0', ]
-        mock_unit_get.return_value = '1.2.3.4'
         mock_get_relation_ip.return_value = '1.2.3.4'
         mock_relation_get.return_value = '10.0.0.0'
         mock_related_units.return_value = ['unit/0', ]

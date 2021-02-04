@@ -419,6 +419,10 @@ valid_services = {
         "type": "database",
         "desc": "Database as a service"
     },
+    "magnum": {
+        "type": "container-infra",
+        "desc": "OpenStack Container Infrastructure Management Service",
+    },
     "manila": {
         "type": "share",
         "desc": "Shared Filesystem service"

@@ -96,13 +96,16 @@ relation made to the vault application:
 
 ### Other applications
 
-Other applications can enable TLS by adding their own relation to Vault. Vault
-will issue certificates to the application and Keystone will update the
-corresponding API endpoint from HTTP to HTTPS.
-
-For example, the Placement API:
+When Keystone is TLS-enabled every application that talks to Keystone (i.e.
+there exists a relation between the two) must be in possession of the signing
+CA cert. This is achieved by adding a relation between the application and
+Vault. Doing so will also encrypt the application's own endpoint. For example,
+the Placement API:
 
     juju add-relation placement:certificates vault:certificates
+
+Vault will issue certificates to the application and Keystone will update the
+corresponding API endpoint from HTTP to HTTPS.
 
 > **Note**: API endpoints can be listed with `openstack catalog list`.
 
@@ -240,11 +243,17 @@ The below topics are covered in the [OpenStack Charms Deployment Guide][cdg].
   and tokens. It explains key rotation, and how to use the
   `fernet-max-active-keys` and `token-expiration` charm options.
 
+# Documentation
+
+The OpenStack Charms project maintains two documentation guides:
+
+* [OpenStack Charm Guide][cg]: for project information, including development
+  and support notes
+* [OpenStack Charms Deployment Guide][cdg]: for charm usage information
+
 # Bugs
 
 Please report bugs on [Launchpad][lp-bugs-charm-keystone].
-
-For general charm questions refer to the [OpenStack Charm Guide][cg].
 
 <!-- LINKS -->
 

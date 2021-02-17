@@ -1852,11 +1852,19 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
             # Check if clustered and use vip + haproxy ports if so
             relation_data["auth_host"] = resolve_address(ADMIN)
             relation_data["service_host"] = resolve_address(PUBLIC)
+            relation_data["internal_host"] = resolve_address(INTERNAL)
 
             relation_data["auth_protocol"] = protocol
             relation_data["service_protocol"] = protocol
+            relation_data["internal_protocol"] = protocol
+
             relation_data["auth_port"] = config('admin-port')
             relation_data["service_port"] = config('service-port')
+            # the internal url is binded to the service-port when
+            # bootstrapping keystone in the function bootstrap_keystone(), the
+            # same config is handed over in the relation.
+            relation_data["internal_port"] = config('service-port')
+
             relation_data["region"] = config('region')
             relation_data["api_version"] = get_api_version()
             relation_data["admin_domain_id"] = leader_get(
@@ -1967,7 +1975,9 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
     relation_data = {
         "auth_host": resolve_address(ADMIN),
         "service_host": resolve_address(PUBLIC),
+        "internal_host": resolve_address(INTERNAL),
         "service_port": config("service-port"),
+        "internal_port": config("service-port"),
         "auth_port": config("admin-port"),
         "service_username": service_username,
         "service_password": service_password,
@@ -1981,6 +1991,7 @@ def add_service_to_keystone(relation_id=None, remote_unit=None):
         "ca_cert": '__null__',
         "auth_protocol": protocol,
         "service_protocol": protocol,
+        "internal_protocol": protocol,
         "api_version": get_api_version(),
         "admin_domain_id": leader_get(attribute='admin_domain_id'),
         "admin_project_id": admin_project_id,

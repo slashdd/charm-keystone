@@ -1103,6 +1103,9 @@ class ApacheSSLContext(OSContextGenerator):
             endpoint = resolve_address(net_type)
             addresses.append((addr, endpoint))
 
+        log('F5 debug unsorted: %s' % addresses, level=ERROR)
+        log('F5 debug sorted: %s' % sorted(set(addresses)), level=ERROR)
+
         return sorted(set(addresses))
 
     def __call__(self):
